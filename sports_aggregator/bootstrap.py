@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """One entry point for building and refreshing the whole data store.
 
 Three commands, distinguished by how often the underlying data actually changes:
@@ -14,14 +13,11 @@ continues, because one unavailable secondary source must not stop the rest of
 the store from updating. The exit code reflects whether anything failed, so a
 scheduler can still alert.
 """
-=======
 """One-command bootstrap, refresh, PFF import, and status utilities."""
->>>>>>> fc09959a113bd2bf501b2c8b0a87c716934999fd
 
 from __future__ import annotations
 
 import argparse
-<<<<<<< HEAD
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
@@ -217,7 +213,6 @@ def main(argv=None) -> int:
     for row in failures:
         print(f"   FAILED {row['step']}: {row['message']}")
     return 1 if failures else 0
-=======
 import subprocess
 import sys
 
@@ -369,7 +364,6 @@ def main(argv: list[str] | None = None) -> int:
     else:
         status()
     return 0
->>>>>>> fc09959a113bd2bf501b2c8b0a87c716934999fd
 
 
 if __name__ == "__main__":
