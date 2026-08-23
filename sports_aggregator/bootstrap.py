@@ -1,3 +1,4 @@
+from __future__ import annotations
 """One entry point for building and refreshing the whole data store.
 
 Three commands, distinguished by how often the underlying data actually changes:
@@ -15,7 +16,6 @@ scheduler can still alert.
 """
 """One-command bootstrap, refresh, PFF import, and status utilities."""
 
-from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, field
