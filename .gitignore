@@ -18,7 +18,7 @@ sna-env/
 instance/
 
 # User-provided licensed data snapshots
-PFF/
+
 
 # Generated analytics images
 static/break_chart.png
