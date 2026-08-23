@@ -308,3 +308,73 @@ class UnscopedGuardTests(unittest.TestCase):
             "SEC previews: LSU coordinator Blake Baker returns", "Blake Baker"))
         self.assertFalse(names_staff(
             "Blake Baker caught two passes on Saturday", "Blake Baker"))
+
+
+class PersonNameTests(unittest.TestCase):
+    """Rosters and articles disagree about punctuation in initials."""
+
+    def test_initials_collapse_to_one_token(self):
+        from sports_aggregator.cfb.models import normalize_person_name
+        self.assertEqual(normalize_person_name("C.J. Carr"), "cj carr")
+        self.assertEqual(normalize_person_name("CJ Carr"), "cj carr")
+        self.assertEqual(normalize_person_name("J.T. Daniels"), "jt daniels")
+
+    def test_ordinary_names_are_unchanged(self):
+        from sports_aggregator.cfb.models import normalize_person_name
+        self.assertEqual(normalize_person_name("Arch Manning"), "arch manning")
+        self.assertEqual(normalize_person_name("Amari Cooper"), "amari cooper")
+
+    def test_suffixes_survive_normalization(self):
+        from sports_aggregator.cfb.models import normalize_person_name
+        self.assertEqual(normalize_person_name("A.J. Green Jr."), "aj green jr")
+
+    def test_team_aliases_keep_the_original_rule(self):
+        # Merging letters in team aliases would rewrite established entries.
+        from sports_aggregator.cfb.models import normalize_alias
+        self.assertEqual(normalize_alias("C.J. Carr"), "c j carr")
+
+
+class StatCoverageTests(unittest.TestCase):
+    """A silent conference gap left Notre Dame with no statistics for years."""
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        self.repository = CFBRepository(self.path)
+        self.repository.replace_teams([Team.from_cfbd(payload) for payload in (
+            {"id": 1, "school": "Alpha", "mascot": "Ones", "abbreviation": "AL",
+             "alternateNames": [], "conference": "SEC", "classification": "fbs",
+             "color": "#123456", "logos": []},
+            {"id": 2, "school": "Solo", "mascot": "Ones", "abbreviation": "SO",
+             "alternateNames": [], "conference": "FBS Independents",
+             "classification": "fbs", "color": "#654321", "logos": []},
+        )])
+        self.repository.replace_player_stats(2025, [
+            {"season": 2025, "playerId": "a1", "player": "A One", "team": "Alpha",
+             "conference": "SEC", "position": "QB", "category": "passing",
+             "statType": "YDS", "stat": "3000"},
+        ], "SEC")
+
+    def tearDown(self):
+        os.unlink(self.path)
+
+    def test_a_conference_with_no_rows_is_reported_as_a_gap(self):
+        report = self.repository.stat_coverage()
+        self.assertEqual(report["gap_count"], 1)
+        self.assertEqual(report["gaps"][0]["conference"], "FBS Independents")
+        self.assertEqual(report["gaps"][0]["season"], 2025)
+
+    def test_a_complete_season_reports_no_gaps(self):
+        self.repository.replace_player_stats(2025, [
+            {"season": 2025, "playerId": "s1", "player": "S One", "team": "Solo",
+             "conference": "FBS Independents", "position": "QB",
+             "category": "passing", "statType": "YDS", "stat": "2000"},
+        ], "FBS Independents")
+        self.assertEqual(self.repository.stat_coverage()["gap_count"], 0)
+
+    def test_explicit_seasons_can_be_requested(self):
+        report = self.repository.stat_coverage(seasons=[2019, 2025])
+        self.assertEqual(report["seasons"], [2019, 2025])
+        # A season with nothing stored is all gaps, not an absent row.
+        self.assertTrue(any(row["season"] == 2019 and row["total"] == 0
+                            for row in report["grid"]))

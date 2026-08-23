@@ -18,7 +18,10 @@ from sports_aggregator.cfb.sync import CFBDataSync
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Synchronize college-football data from CFBD")
     parser.add_argument("command", choices=("sync", "status", "sync-player-stats",
-                                           "sync-roster-context", "backfill"))
+                                           "sync-roster-context", "backfill",
+                                           "sync-promoted", "coverage", "sync-lines",
+                                           "sync-venues", "sync-recruits",
+                                           "link-transfer-grades"))
     parser.add_argument("--year", type=int, default=datetime.now().year)
     parser.add_argument("--force", action="store_true", help="Bypass raw-response cache")
     parser.add_argument("--basic", action="store_true", help="Skip advanced stats and CORE ratings")
@@ -67,6 +70,73 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{name}: success ({operation()})")
             except Exception as exc:
                 failures.append(name); print(f"{name}: failed ({exc})")
+        return 1 if failures else 0
+    if args.command == "link-transfer-grades":
+        report = repository.confirm_transfer_pff_links(args.year)
+        print(" ".join(f"{key}={value}" for key, value in report.items()))
+        return 0
+    if args.command == "sync-recruits":
+        print(f"recruits: {repository.replace_recruits(args.year, client.recruits(args.year, args.force))}")
+        return 0
+    if args.command == "sync-venues":
+        print(f"venues: {repository.replace_venues(client.venues(args.force))}")
+        return 0
+    if args.command == "sync-lines":
+        from sports_aggregator.cfb.lines import store_lines
+        count = store_lines(repository, args.year,
+                            client.betting_lines(args.year, args.force))
+        print(f"game_lines: {count} provider quotes for {args.year}")
+        return 0
+    if args.command == "coverage":
+        print(json.dumps(repository.stat_coverage(), indent=2, default=str))
+        return 0
+    if args.command == "sync-promoted":
+        # A team promoted from FCS has no history in any FBS-filtered dataset.
+        # Sacramento State and North Dakota State joined for 2026 and carried no
+        # statistics at all, which made their pages look broken rather than new.
+        # Their prior seasons are fetched from the conference they actually
+        # played in, using the abbreviation CFBD indexes by.
+        first = args.from_year or (args.year - 3)
+        last = args.to_year or (args.year - 1)
+        current = {row["school"] for row in repository.teams(limit=200)}
+        failures = []
+        for year in range(first, last + 1):
+            try:
+                # The FBS-only endpoint cannot see a team that was still FCS,
+                # which is exactly the team this command exists to find.
+                catalog = client.get("/teams", {"year": year},
+                                     cache_ttl_seconds=604800, force=args.force)
+            except Exception as exc:
+                failures.append(f"{year} teams"); print(f"{year} teams: failed ({exc})"); continue
+            prior = {
+                str(item["school"]): item
+                for item in catalog
+                if str(item.get("school")) in current
+                and str(item.get("classification") or "").lower() != "fbs"
+            }
+            if not prior:
+                print(f"{year}: no promoted teams to backfill")
+                continue
+            abbreviations = {
+                item.get("name"): item.get("abbreviation") or item.get("name")
+                for item in client.conferences(year, args.force)
+            }
+            by_conference: dict[str, list[str]] = {}
+            for school, item in prior.items():
+                by_conference.setdefault(str(item.get("conference") or ""), []).append(school)
+            for conference, schools in by_conference.items():
+                api_conference = abbreviations.get(conference, conference)
+                try:
+                    rows = client.player_season_stats(year, api_conference, args.force)
+                except Exception as exc:
+                    failures.append(f"{year} {conference}")
+                    print(f"{year} {conference} [{api_conference}]: failed ({exc})")
+                    continue
+                wanted = [row for row in rows if str(row.get("team")) in schools]
+                count = repository.replace_promoted_stats(year, wanted, schools)
+                print(f"{year} {conference} [{api_conference}]: {count} rows for "
+                      f"{', '.join(sorted(schools))}")
+        print(f"sync-promoted {first}-{last} complete; {len(failures)} failures")
         return 1 if failures else 0
     if args.command == "backfill":
         # Careers span roughly five seasons, so a player who is a senior now was a

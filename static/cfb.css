@@ -59,6 +59,14 @@ img { max-width: 100%; }
 .site-header a { color: #fff; text-decoration: none; font-weight: 800; }
 .site-header .tagline { display: none; color: #d7c8b5; font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; }
 .site-header .nav { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.header-search { flex: 0 0 auto; }
+.header-search input {
+    width: 8.5rem; padding: 6px 9px; font-size: .78rem;
+    border: 1px solid #49423b; background: #241e18; color: #fff;
+}
+.header-search input::placeholder { color: #8c8178; }
+.header-search input:focus { outline: 2px solid var(--team); width: 12rem; }
+@media (min-width: 860px) { .header-search input { width: 12rem; } }
 
 main { padding: 20px var(--pad) 52px; }
 
@@ -207,6 +215,20 @@ table.data.dense thead th, table.data.dense tbody td { padding: 6px 8px; }
 .trend-up { color: var(--green); }
 .trend-down { color: var(--red); }
 
+/* Roster state. Returning production stays neutral so the eye is drawn only to
+   what changed: what arrived, and what has to be replaced. */
+table.data td.state-arrived { border-left: 3px solid var(--green); }
+table.data td.state-departed { border-left: 3px solid var(--red); }
+table.data td.state-returning { border-left: 3px solid transparent; }
+table.data td.state-arrived .sub { color: var(--green); }
+table.data td.state-departed .sub { color: var(--red); }
+.state-key { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 10px; font-size: .7rem; color: var(--muted); }
+.state-key span { display: inline-flex; align-items: center; gap: 5px; }
+.state-key i { width: 10px; height: 10px; display: inline-block; }
+.state-key .is-arrived { background: var(--green); }
+.state-key .is-departed { background: var(--red); }
+.state-key .is-returning { background: var(--line-strong); }
+
 /* ---------- source streams ---------- */
 
 .stream-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); align-items: start; }
@@ -240,6 +262,15 @@ table.data.dense thead th, table.data.dense tbody td { padding: 6px 8px; }
 }
 .stream-team img { width: 13px; height: 13px; object-fit: contain; }
 .stream-source { color: var(--muted); font-size: .62rem; }
+
+/* Situational notes: schedule spots, travel and availability beside a game. */
+.situation { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
+@media (min-width: 780px) { .situation { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); } }
+.situation-card { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--gold); padding: 12px 14px; }
+.situation-card h3 { font: 700 .95rem Georgia, serif; margin: 0 0 6px; }
+.situation-card p { margin: 0; font-size: .78rem; line-height: 1.5; }
+.situation-card .meta { margin-top: 5px; }
+.situation-list { margin: 6px 0 0; padding-left: 16px; font-size: .76rem; line-height: 1.55; }
 
 /* ---------- story lists ---------- */
 

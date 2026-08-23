@@ -41,9 +41,14 @@ The active application factory is `app.create_app`. It exposes:
 - `/api/v1/cfb/developments` — content ranked by relevance rather than recency
 - `/college-football/draft/` — 2027 draft watch: consensus board vs production profile
 - `/api/v1/cfb/draft/board`, `/draft/consensus`, `/draft/reconcile` — draft packets
+- `/college-football/search/` — cross-entity search over teams, players, games, reporting
 - `/college-football/admin/links/` — entity link audit with matched text and rule
 - `/api/v1/cfb/links` — the same audit as JSON
 - `/api/v1/cfb/games/<game_id>/player-matchups` — individual matchups in a game
+- `/api/v1/cfb/games/<game_id>/situation` — schedule spot, travel, availability, market
+- `/api/v1/cfb/games/<game_id>/weather`, `/fpi` — kickoff forecast and FPI packets
+- `/api/v1/cfb/sources/status` — row counts, freshness and failures per source
+- `/api/v1/cfb/search`, `/api/v1/cfb/transfers` — search and portal-impact packets
 - `/api/v1/cfb/pff/summary?season=2025` — historical player and position-group signals
 - `/reds/` and `/bengals/` — existing team dashboards, unchanged
 
@@ -73,6 +78,32 @@ Presentation is its own boundary rather than template logic:
   watchable they are — quality, separation, and mutual strength — and labels
   each one. It consumes a provider-neutral `MatchupSignal`, so compiled season
   statistics and models can feed the same ranking without touching callers.
+- `sports_aggregator/providers/sportsdataverse.py` downloads static SportsDataverse
+  release assets, resolving URLs through the release API and validating that an
+  asset actually carries the expected columns before it is trusted.
+- `sports_aggregator/providers/weather.py` fetches Open-Meteo forecasts per venue
+  and aligns them to kickoff. No API key is required.
+- `sports_aggregator/cfb/external.py` stores secondary sources keyed to canonical
+  CFBD entities, with provenance on every row and `import_runs` recording every
+  attempt. See [docs/SECONDARY_SOURCES.md](docs/SECONDARY_SOURCES.md).
+- `sports_aggregator/bootstrap.py` is the single entry point: `initial`,
+  `refresh`, `status` and `plan`. Each step runs isolated so one unavailable
+  source cannot stop the rest.
+- `sports_aggregator/cfb/roster_production.py` splits prior-season production
+  into returning, arrived and departed, so a preseason page says what is on the
+  roster rather than who led the team last year. Arrived production always names
+  the school it was earned at.
+- `sports_aggregator/cfb/search.py` matches a query against team aliases, person
+  names, matchups and headlines, and returns why each result matched.
+- `sports_aggregator/cfb/lines.py` stores betting lines per provider with opening
+  and current numbers kept apart. Books are never averaged into one number.
+- `sports_aggregator/cfb/situations.py` derives schedule spots, travel and
+  time-zone burden, and availability reporting for a game.
+- `sports_aggregator/cfb/transfers.py` ranks portal entries on prior production
+  first, grade second and recruiting opinion last. A transfer with no record is
+  reported as unproven, which is not the same as low impact.
+- `sports_aggregator/social/team_reddit.py` keeps team subreddits in a registry
+  and activates them by the week's schedule rather than sweeping all 138.
 - `sports_aggregator/cfb/player_matchups.py` pairs graded individuals across the
   line of scrimmage and ranks the pairings. Both sides must grade well; a place
   on the consensus board raises a pairing but cannot create one.
@@ -154,6 +185,19 @@ the active window:
 
 ```powershell
 python -m sports_aggregator.cfb.cli backfill --year 2026 --from-year 2019 --to-year 2024
+```
+
+A team promoted from FCS has no history in any FBS-filtered dataset. `sync-promoted`
+finds those teams and fetches their prior seasons from the conference they actually
+played in; `coverage` reports which conference-seasons are missing:
+
+```powershell
+python -m sports_aggregator.cfb.cli sync-promoted --year 2026 --from-year 2024 --to-year 2025
+python -m sports_aggregator.cfb.cli sync-venues --year 2026
+python -m sports_aggregator.cfb.cli sync-lines --year 2026
+python -m sports_aggregator.cfb.cli sync-recruits --year 2026
+python -m sports_aggregator.cfb.cli link-transfer-grades --year 2026
+python -m sports_aggregator.cfb.cli coverage
 ```
 
 Use `--force` only when intentionally bypassing the raw-response cache. Use
@@ -312,7 +356,7 @@ repository packets in HTML and JSON. The next sequence is:
 python -m unittest discover -s tests -v
 ```
 
-The 131 tests cover normalization, RSS/Reddit/YouTube/podcast adapters, external
+The 217 tests cover normalization, RSS/Reddit/YouTube/podcast adapters, external
 publisher credit, provider failure isolation, source-graph identity, content topics,
 team/player matching, story clusters and source roles, CFBD authentication and caching,
 conference standings/player leaders, roster lifecycle classification, PFF import,
@@ -334,7 +378,11 @@ separation of missing evidence from genuine disagreement.
 descriptions, color contrast and conference palette readability, position
 abbreviations, the separation of team reporting from conference context, and the
 mobile-first stylesheet rules, individual matchup pairing and its draft
-weighting, the link-audit shape, and the unscoped-match guard.
+weighting, the link-audit shape, the unscoped-match guard, initial-collapsing name
+normalization, and statistical coverage-gap reporting. `tests/test_features.py` covers search
+scoring and abbreviated school names, per-provider line storage and movement,
+travel and time-zone derivation, transfer impact evidence, and team-subreddit
+activation.
 
 See [docs/CFB_ARCHITECTURE.md](docs/CFB_ARCHITECTURE.md) for schema ownership,
 cache policy, verified CFBD endpoints, and the next entity-linking boundary.

@@ -14,7 +14,14 @@ from sports_aggregator.cfb.insights import games_to_watch
 from sports_aggregator.cfb.draft import position_targets, prospect_board
 from sports_aggregator.cfb.prospects import (
     board_with_profile, consensus_board, reconcile)
+from sports_aggregator.cfb.external import (
+    fpi_for_game, fpi_team_season, weather_flags_by_game, weather_for_game)
 from sports_aggregator.cfb.identity import conference_color, team_identity
+from sports_aggregator.cfb.lines import game_lines, lines_by_game
+from sports_aggregator.cfb.search import search as search_entities
+from sports_aggregator.cfb.situations import game_situation
+from sports_aggregator.cfb.roster_production import projected_depth, team_production
+from sports_aggregator.cfb.transfers import notable_transfers, rank_transfers
 from sports_aggregator.cfb.matchups import game_matchup_report
 from sports_aggregator.cfb.player_matchups import player_matchups
 from sports_aggregator.cfb.pff import pff_summary
@@ -126,6 +133,7 @@ def _team_packet(team_id: int, season: int) -> dict:
         "movements": repository.roster_movements(team_id, season),
         "leaders": repository.team_player_leaders(team["school"], season),
         "pff": repository.pff_team_context(team_id, 2025),
+        "production": team_production(repository, team_id, season),
         "stories": [{**story, "coverage_label": "Team linked"} for story in team_stories],
         "conference_stories": conference_stories,
     }
@@ -169,6 +177,9 @@ def today():
     movement_stream = repository.recent_movements(season, limit=16)
     brands = repository.team_brands()
     slate = _with_matchup_edges(repository, _label_games(watch_games))
+    market = lines_by_game(repository, season)
+    for game in slate:
+        game['market'] = market.get(game['game_id']) or {}
     return render_template(
         "cfb_today.html",
         season=season,
@@ -216,6 +227,7 @@ def conference_preview(slug: str):
         games_table=views.games_table(games, f"Upcoming games ({len(games)})",
                                       repository.team_brands(),
                                       repository.team_elo(season)),
+        market=lines_by_game(repository, season),
         leaders=leaders,
         leader_groups=views.leader_groups(leaders, season),
         pff_table=views.pff_players_table(
@@ -238,16 +250,21 @@ def _team_tables(packet: dict, season: int) -> dict:
     return {
         "schedule_table": views.schedule_table(
             packet["schedule"], packet["team"]["team_id"], season,
-            _repository().team_brands(), _repository().team_elo(season)
+            _repository().team_brands(), _repository().team_elo(season),
+            lines_by_game(_repository(), season)
         ),
-        "leader_groups": views.leader_groups(packet["leaders"], season, include_team=False),
-        "depth_units": views.depth_chart_tables(packet["depth_chart"], season),
+        "depth_units": views.depth_chart_tables(
+            packet["depth_chart"], season,
+            projected_depth(_repository(), packet["team"]["team_id"], season)),
+        "production_groups": views.production_groups(packet["production"], season),
+        "arrivals_key_table": views.arrivals_table(movements["arrivals"][:20], season),
         "arrivals_table": views.movements_table(movements["arrivals"][:20], season, arrivals=True),
         "departures_table": views.movements_table(
             movements["departures"][:20], season, arrivals=False
         ),
         "quality_table": views.quality_cards_table(packet["quality"]),
         "team_stats_table": views.team_stats_table(packet["metrics"], season),
+        "fpi_season": fpi_team_season(_repository(), season, packet["team"]["team_id"]),
         "pff_players_table": views.pff_players_table(
             [row for row in packet["pff"]["players"]
              if row.get("roster_status") == "RETURNING"],
@@ -262,6 +279,9 @@ def _team_tables(packet: dict, season: int) -> dict:
                            team_id=packet["team"]["team_id"]),
             season, include_team=False, dense=True),
         "identity": team_identity(_repository().brand_for(packet["team"]["team_id"])),
+        "transfers_table": views.transfer_impact_table(
+            rank_transfers(_repository(), season=season,
+                           team_id=packet["team"]["team_id"], limit=15), season),
     }
 
 
@@ -330,6 +350,22 @@ def game_preview(game_id: int):
         "cfb_game.html",
         away_brand=away_identity,
         home_brand=home_identity,
+        situation=game_situation(repository, game, elo),
+        fpi=fpi_for_game(repository, game_id),
+        weather=views.weather_panel(weather_for_game(repository, game_id)),
+        model_table=views.model_comparison_table(
+            game, fpi_for_game(repository, game_id),
+            game_lines(repository, game_id), elo),
+        lines=game_lines(repository, game_id),
+        market_table=views.market_table(game_lines(repository, game_id), game),
+        away_arrivals_table=views.notable_arrivals_table(
+            notable_transfers(repository, season=season,
+                              team_id=game["away_team_id"], limit=6),
+            season, caption=f"{game['away_team']} arrived"),
+        home_arrivals_table=views.notable_arrivals_table(
+            notable_transfers(repository, season=season,
+                              team_id=game["home_team_id"], limit=6),
+            season, caption=f"{game['home_team']} arrived"),
         matchup_report=matchup_report,
         matchup_table=views.matchup_watch_table(matchup_report, brands_by_school),
         player_matchup_table=views.player_matchup_table(
@@ -372,6 +408,71 @@ def game_preview(game_id: int):
         home_leaders=home_leaders, away_leaders=away_leaders,
         home_quality=home_quality, away_quality=away_quality,
     )
+
+
+@cfb_pages.get("/college-football/search/")
+def search_page():
+    season = _season()
+    query = (request.args.get("q") or "").strip()
+    results = (search_entities(_repository(), query, season=season, limit=10)
+               if query else {"query": "", "too_short": False, "teams": [], "players": [],
+                              "games": [], "stories": [], "total": 0, "season": season})
+    return render_template("cfb_search.html", results=results, season=season)
+
+
+@cfb_pages.get("/api/v1/cfb/search")
+def search_api():
+    query = (request.args.get("q") or "").strip()
+    limit = min(max(request.args.get("limit", 10, type=int) or 10, 1), 40)
+    return jsonify(search_entities(_repository(), query, season=_season(), limit=limit))
+
+
+@cfb_pages.get("/api/v1/cfb/transfers")
+def transfers_api():
+    season = _season()
+    team_id = request.args.get("team_id", type=int)
+    direction = "out" if (request.args.get("direction") or "").strip() == "out" else "in"
+    limit = min(max(request.args.get("limit", 40, type=int) or 40, 1), 200)
+    rows = rank_transfers(_repository(), season=season, team_id=team_id,
+                          direction=direction, limit=limit)
+    return jsonify({"season": season, "direction": direction,
+                    "count": len(rows), "transfers": rows})
+
+
+@cfb_pages.get("/api/v1/cfb/sources/status")
+def source_status_api():
+    """Row counts, freshness and failures for every secondary source."""
+    from sports_aggregator.cfb.external import import_status
+    return jsonify(import_status(_repository()))
+
+
+@cfb_pages.get("/api/v1/cfb/games/<int:game_id>/weather")
+def game_weather_api(game_id: int):
+    repository = _repository()
+    if repository.get_game(game_id) is None:
+        abort(404)
+    return jsonify(weather_for_game(repository, game_id))
+
+
+@cfb_pages.get("/api/v1/cfb/games/<int:game_id>/fpi")
+def game_fpi_api(game_id: int):
+    repository = _repository()
+    if repository.get_game(game_id) is None:
+        abort(404)
+    return jsonify(fpi_for_game(repository, game_id))
+
+
+@cfb_pages.get("/api/v1/cfb/games/<int:game_id>/situation")
+def game_situation_api(game_id: int):
+    repository = _repository()
+    game = repository.get_game(game_id)
+    if game is None:
+        abort(404)
+    payload = game_situation(repository, game)
+    payload["lines"] = game_lines(repository, game_id)
+    payload["weather"] = weather_for_game(repository, game_id)
+    payload["fpi"] = fpi_for_game(repository, game_id)
+    return jsonify({"game_id": game_id, **payload})
 
 
 @cfb_pages.get("/college-football/draft/")
@@ -467,8 +568,10 @@ def source_graph_admin():
 
 @cfb_pages.get("/api/v1/cfb/status")
 def status_api():
-    payload = _repository().status(_season())
+    repository = _repository()
+    payload = repository.status(_season())
     payload["cfbd_configured"] = bool(os.getenv("CFBD_API_KEY", "").strip())
+    payload["stat_coverage"] = repository.stat_coverage()
     return jsonify(payload)
 
 

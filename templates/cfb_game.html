@@ -95,6 +95,105 @@
 </section>
 
 <section class="section">
+    <h2>Models &amp; market</h2>
+    <div class="section-note">
+        Independent views of the same game. FPI, Elo and the betting market are kept
+        apart deliberately &mdash; where they disagree is the information.
+    </div>
+    {{ data_table(model_table) }}
+</section>
+
+{% if weather %}
+<section class="section">
+    <h2>Kickoff weather</h2>
+    <div class="section-note">
+        Open-Meteo forecast for the venue at kickoff.
+        {% if weather.snapshots > 1 %}{{ weather.snapshots }} snapshots taken; the
+        change since the first is shown where it moved.{% endif %}
+    </div>
+    <div class="situation">
+        <article class="situation-card">
+            <h3>{% if weather.indoor %}Indoor venue{% else %}{{ weather.condition }}{% endif %}</h3>
+            {% if weather.indoor %}
+            <p>{{ weather.venue }} is enclosed, so conditions are not a factor.</p>
+            {% else %}
+            <p>
+                {{ weather.temperature | cell('int') }}&deg;F ·
+                wind {{ weather.wind | cell('int') }} mph
+                {%- if weather.gusts %}, gusting {{ weather.gusts | cell('int') }}{% endif %} ·
+                {{ weather.precipitation_probability | cell('int') }}% precipitation
+            </p>
+            <div class="meta">
+                {{ weather.venue }}
+                {%- for field, change in weather.movement.items() %}
+                &middot; {{ field | replace('_', ' ') }} {{ change | cell('signed') }}
+                {%- endfor %}
+            </div>
+            {% endif %}
+        </article>
+        {% for flag in weather.flags %}
+        <article class="situation-card">
+            <h3>{{ flag.flag | replace('_', ' ') | title }}</h3>
+            <p>{{ flag.detail }}.</p>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="section">
+    <h2>Situation</h2>
+    <div class="section-note">
+        Schedule, travel and availability context. A trap spot describes the calendar,
+        not a prediction about the result.
+    </div>
+    <div class="situation">
+        {% for spot in situation.schedule_spots %}
+        <article class="situation-card">
+            <h3>{{ spot.headline }}</h3>
+            <p>{{ spot.detail }}.</p>
+            <div class="meta">{{ spot.type | replace('_', ' ') | lower }}</div>
+        </article>
+        {% endfor %}
+        {% if situation.travel and situation.travel.notable %}
+        <article class="situation-card">
+            <h3>Travel{% if situation.travel.altitude %} &amp; altitude{% endif %}</h3>
+            <p>{{ situation.travel.detail }}.</p>
+            <div class="meta">
+                {{ situation.travel.away_zone }} &rarr; {{ situation.travel.home_zone }}
+                {%- if situation.travel.dome %} &middot; indoor venue{% endif %}
+            </div>
+        </article>
+        {% endif %}
+        {% if situation.availability %}
+        <article class="situation-card">
+            <h3>Availability reporting</h3>
+            <ul class="situation-list">
+                {% for item in situation.availability[:4] %}
+                <li>
+                    <a href="{{ item.canonical_url }}" target="_blank" rel="noopener">{{ item.headline }}</a>
+                    <span class="meta">{{ item.school }} &middot; {{ item.published_label }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </article>
+        {% endif %}
+        {% if not situation.notes %}
+        <div class="empty">No schedule, travel or availability signal stands out for this game.</div>
+        {% endif %}
+    </div>
+</section>
+
+<section class="section">
+    <h2>Market</h2>
+    <div class="section-note">
+        Each book is shown separately with its movement since opening. Disagreement
+        between books is information, so quotes are never averaged into one number.
+    </div>
+    {{ data_table(market_table) }}
+</section>
+
+<section class="section">
     <h2>Matchups to watch</h2>
     <div class="section-note">
         Ranked by how watchable each comparison is: whether the better unit is genuinely
@@ -125,16 +224,24 @@
 <section class="section">
     <h2>Players to know</h2>
     <div class="section-note">
-        Split into graded players still on the roster and those who have left, because
-        a departed star is context for last season, not a factor on Saturday.
+        Returning, arrived and departed, in that order. A departed star is context for
+        last season; an arrival brings production earned somewhere else. Every player
+        links through to his own page.
+    </div>
+    <div class="state-key">
+        <span><i class="is-returning"></i> Returning</span>
+        <span><i class="is-arrived"></i> Arrived</span>
+        <span><i class="is-departed"></i> Departed</span>
     </div>
     <div class="split">
         <div>
             {{ data_table(away_returning_table) }}
+            {{ data_table(away_arrivals_table) }}
             {{ data_table(away_departed_table) }}
         </div>
         <div>
             {{ data_table(home_returning_table) }}
+            {{ data_table(home_arrivals_table) }}
             {{ data_table(home_departed_table) }}
         </div>
     </div>

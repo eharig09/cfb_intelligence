@@ -101,7 +101,8 @@ def _record(row: dict[str, Any], wins: str, losses: str, ties: str) -> str:
 
 def schedule_table(schedule: Iterable[dict[str, Any]], team_id: int, season: int,
                    brands: dict[int, dict[str, Any]] | None = None,
-                   elo: dict[int, dict[str, Any]] | None = None) -> Table:
+                   elo: dict[int, dict[str, Any]] | None = None,
+                   market: dict[int, dict[str, Any]] | None = None) -> Table:
     """One team season: opponent, site, broadcast, and result in one line."""
     rows = []
     for game in schedule:
@@ -128,7 +129,15 @@ def schedule_table(schedule: Iterable[dict[str, Any]], team_id: int, season: int
             "preview": "Preview",
             "preview_url": url_for("cfb.game_preview", game_id=game["game_id"]),
         }
+        # The stored spread is from the home side, so it is flipped for a road
+        # game to read from this team's perspective.
+        quote = (market or {}).get(game["game_id"]) or {}
+        spread = quote.get("spread")
+        if spread is not None and not at_home:
+            spread = -spread
         opponent_elo = (elo or {}).get(opponent_id) or {}
+        entry["spread"] = spread
+        entry["total"] = quote.get("total")
         entry["opponent_elo"] = opponent_elo.get("elo")
         entry["opponent_elo_sub"] = (f"#{opponent_elo['elo_rank']}"
                                      if opponent_elo.get("elo_rank") else None)
@@ -142,6 +151,9 @@ def schedule_table(schedule: Iterable[dict[str, Any]], team_id: int, season: int
             Column(key="opponent", label="Opponent", align="left", emphasis=True),
             Column(key="opponent_elo", label="Opp Elo", format="int",
                    title="CFBD pregame Elo for the opponent, with its national rank"),
+            Column(key="spread", label="Line", format="signed",
+                   title="Consensus spread from this team's perspective, where books have posted one"),
+            Column(key="total", label="O/U", format="f1", title="Consensus total"),
             Column(key="television", label="TV", align="left"),
             Column(key="result", label="Result", align="right"),
             Column(key="preview", label="", align="right"),
@@ -201,8 +213,15 @@ def leader_groups(leaders: dict[str, Any], season: int, *,
     groups = []
     for category, group in leaders.get("groups", {}).items():
         table = leader_table(category, group["players"], include_team=include_team, limit=limit)
+        origins = {entry.get("player_id"): entry.get("origin")
+                   for entry in group["players"] if entry.get("arrival")}
         for row in table.rows:
             row["player_url"] = _player_url(row.get("player_id"), season)
+            origin = origins.get(row.get("player_id"))
+            if origin:
+                # Production earned at another school is never shown unlabelled.
+                row["player_sub"] = f"arrived from {origin}"
+                row["player_class"] = "state-arrived"
         note = f"Ranked by {group['stat_type']}"
         if group.get("qualifier"):
             note += f" · {group['qualifier']}"
@@ -291,6 +310,43 @@ def group_label(value: str | None) -> str | None:
     return " ".join(words)
 
 
+def notable_arrivals_table(arrivals, season, *, caption="Arrived"):
+    """Portal additions with production, rendered like the other player tables.
+
+    Arrivals previously sat in a bespoke card list with no links, so a reader
+    could not reach the player from the one section most likely to make them
+    curious. This uses the same table contract as returning and departed
+    players so the three read as one comparison.
+    """
+    rows = []
+    for row in arrivals:
+        rows.append({
+            "player_name": row.get("player_name"),
+            "player_name_url": _player_url(row.get("player_id") or row.get("cfbd_player_id"), season),
+            "player_name_class": "state-arrived",
+            "position": row.get("position"),
+            "origin": row.get("origin"),
+            "impact": row.get("impact_label"),
+            "impact_sub": (row.get("reasons") or [None])[0],
+            "impact_score": row.get("impact_score") if row.get("has_evidence") else None,
+        })
+    return Table(
+        columns=[
+            Column(key="player_name", label="Player", align="left", emphasis=True),
+            Column(key="position", label="Pos", align="left"),
+            Column(key="origin", label="From", align="left"),
+            Column(key="impact", label="Read", align="left"),
+            Column(key="impact_score", label="Impact", format="f1",
+                   title="Prior production first, then grade, then recruiting opinion"),
+        ],
+        rows=rows,
+        caption=caption,
+        note="portal additions with a record",
+        empty="No portal additions with a production record.",
+        dense=True,
+    )
+
+
 def pff_departures_table(players: Sequence[dict[str, Any]], season: int, *,
                          caption: str = "Key departures") -> Table:
     """Graded players who have left, with where each went.
@@ -355,7 +411,8 @@ def pff_position_groups_table(groups: Sequence[dict[str, Any]]) -> Table:
 # Roster construction
 # --------------------------------------------------------------------------
 
-def depth_chart_tables(depth_chart: dict[str, Any], season: int) -> list[dict[str, Any]]:
+def depth_chart_tables(depth_chart: dict[str, Any], season: int,
+                       projection: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Position groups as tables so class, size, and origin line up per player."""
     units = []
     for unit, groups in (depth_chart.get("units") or {}).items():
@@ -369,15 +426,24 @@ def depth_chart_tables(depth_chart: dict[str, Any], season: int) -> list[dict[st
                     origin = "Returner"
                 else:
                     origin = "New"
+                evidence = (projection or {}).get(player.get("player_id")) or {}
                 rows.append({
                     "jersey": player.get("jersey"),
                     "name": player.get("name"),
                     "name_url": _player_url(player.get("player_id"), season),
+                    "name_class": ("state-arrived" if evidence.get("state") == "ARRIVED"
+                                   else None),
                     "class_year": player.get("class_year"),
                     "height": height_label(player.get("height")),
                     "weight": player.get("weight"),
                     "origin": origin,
+                    "production": (evidence.get("summary")
+                                   or (f"{player['recruit_stars']}-star signee"
+                                       if player.get("recruit_stars") else None)),
                     "pff_interest": player.get("pff_interest"),
+                    "pff_interest_sub": (player.get("pff_graded_at")
+                                         if player.get("pff_graded_at")
+                                         and player.get("arrival_type") else None),
                 })
             tables.append({
                 "label": f"{group} ({len(players)})",
@@ -390,8 +456,11 @@ def depth_chart_tables(depth_chart: dict[str, Any], season: int) -> list[dict[st
                         Column(key="height", label="Ht", align="right"),
                         Column(key="weight", label="Wt", format="int", title="Pounds"),
                         Column(key="origin", label="Origin", align="left"),
+                        Column(key="production", label="Prior production", align="left",
+                               title="Last season's headline production, and where it was earned"),
                         Column(key="pff_interest", label="PFF", format="f1",
-                               title="2025 PFF interest score, when linked"),
+                               title="2025 PFF interest score, and the school it "
+                                     "was earned at when that differs"),
                     ],
                     rows=rows,
                     caption=group,
@@ -988,6 +1057,235 @@ def divergence_table(entries: list[dict[str, Any]], season: int, *, caption: str
     return Table(columns=columns, rows=rows, caption=caption, note=note, empty=empty)
 
 
+def production_groups(production, season):
+    """Preseason production split into returning, arrived and departed.
+
+    Each row carries a state class so departed and arrived production are
+    visually distinct from returning production, which stays neutral.
+    """
+    from sports_aggregator.cfb.statlines import category_columns
+    groups = []
+    for group in production.get("groups") or []:
+        rows = []
+        for entry in group["players"]:
+            row = {
+                **entry["stats"],
+                "player": entry["player"],
+                "player_url": _player_url(entry.get("player_id"), season),
+                "player_sub": (f"{entry['state_label']}"
+                               + (f" from {entry['earned_at']}" if entry["earned_at"] else "")
+                               + (f" → {entry['counterpart']}"
+                                  if entry["state"] == "DEPARTED" and entry["counterpart"] else "")),
+                "player_class": f"state-{entry['state'].lower()}",
+                "position": entry.get("position"),
+                "state": entry["state_label"],
+                "state_class": f"state-{entry['state'].lower()}",
+            }
+            rows.append(row)
+        counts = group["counts"]
+        note = (f"{counts['RETURNING']} returning · {counts['ARRIVED']} arrived "
+                f"· {counts['DEPARTED']} departed")
+        groups.append({
+            "label": group["label"],
+            "table": Table(
+                columns=[
+                    Column(key="player", label="Player", align="left", emphasis=True),
+                    Column(key="state", label="Status", align="left"),
+                    Column(key="position", label="Pos", align="left"),
+                    *category_columns(group["category"]),
+                ],
+                rows=rows,
+                caption=group["label"],
+                note=note,
+                empty="No production is stored for this category.",
+            ),
+        })
+    return groups
+
+
+def arrivals_table(arrivals, season):
+    """Key arrivals: transfers with production, signees with a rating."""
+    rows = []
+    for row in arrivals:
+        kind = (row.get("movement_type") or "").replace("_", " ").title()
+        rows.append({
+            "name": row.get("name"),
+            "name_url": _player_url(row.get("player_id"), season),
+            "name_class": "state-arrived",
+            "position": row.get("position"),
+            "kind": kind,
+            "origin": row.get("origin") or "—",
+            "stars": row.get("stars"),
+            "rating": row.get("rating"),
+            "evidence": row.get("evidence"),
+        })
+    return Table(
+        columns=[
+            Column(key="name", label="Player", align="left", emphasis=True),
+            Column(key="position", label="Pos", align="left"),
+            Column(key="kind", label="Type", align="left"),
+            Column(key="origin", label="From", align="left"),
+            Column(key="stars", label="★", format="int", title="Recruiting stars"),
+            Column(key="rating", label="Rating", format="f3",
+                   title="Composite rating: portal rating for transfers, "
+                         "recruiting rating for signees"),
+            Column(key="evidence", label="Source", align="left"),
+        ],
+        rows=rows,
+        caption="Key arrivals",
+        note="transfers first, then the signing class",
+        empty="No arrivals identified for this season.",
+        dense=True,
+    )
+
+
+def transfer_impact_table(transfers, season):
+    """Portal entries ranked by the evidence that they will matter."""
+    rows = [{
+        "player_name": row.get("player_name"),
+        "player_name_url": _player_url(row.get("player_id"), season),
+        "player_name_sub": row.get("impact_label"),
+        "player_name_class": "state-arrived",
+        "position": row.get("position"),
+        "origin": row.get("origin"),
+        "destination": row.get("destination") or "TBD",
+        "rating": row.get("rating"),
+        "impact_score": row.get("impact_score") if row.get("has_evidence") else None,
+    } for row in transfers]
+    return Table(
+        columns=[
+            Column(key="player_name", label="Player", align="left", emphasis=True),
+            Column(key="position", label="Pos", align="left"),
+            Column(key="origin", label="From", align="left"),
+            Column(key="destination", label="To", align="left"),
+            Column(key="rating", label="Rating", format="f2",
+                   title="CFBD portal rating, which is opinion"),
+            Column(key="impact_score", label="Impact", format="f1",
+                   title="Prior production, then grade, then rating; blank when no "
+                         "prior production is on record"),
+        ],
+        rows=rows,
+        caption="Portal impact",
+        note="production first, opinion last",
+        empty="No portal entries are stored for this team and season.",
+        dense=True,
+    )
+
+
+def model_comparison_table(game, fpi, lines, elo):
+    """Independent model and market views of the same game, side by side.
+
+    FPI, Elo and the betting market are kept as separate rows rather than
+    averaged. Where they disagree is the information; a blended number would
+    hide exactly the case worth looking at.
+    """
+    rows = []
+    home_fpi = (fpi.get("teams") or {}).get(game["home_team_id"]) or {}
+    away_fpi = (fpi.get("teams") or {}).get(game["away_team_id"]) or {}
+    if home_fpi or away_fpi:
+        margin = home_fpi.get("pred_point_diff")
+        rows.append({
+            "model": "ESPN FPI",
+            "detail": "per-game projection",
+            "home_value": _signed(margin),
+            "away_value": _signed(away_fpi.get("pred_point_diff")),
+            "note": (f"{home_fpi.get('game_projection'):.0f}% / "
+                     f"{away_fpi.get('game_projection'):.0f}% win probability"
+                     if home_fpi.get("game_projection") is not None
+                     and away_fpi.get("game_projection") is not None else None),
+        })
+    home_elo = (elo or {}).get(game["home_team_id"]) or {}
+    away_elo = (elo or {}).get(game["away_team_id"]) or {}
+    if home_elo.get("elo") and away_elo.get("elo"):
+        rows.append({
+            "model": "CFBD Elo",
+            "detail": "pregame rating",
+            "home_value": str(home_elo["elo"]),
+            "away_value": str(away_elo["elo"]),
+            "note": f"{home_elo['elo'] - away_elo['elo']:+d} rating gap",
+        })
+    spread = lines.get("consensus_spread")
+    if spread is not None:
+        rows.append({
+            "model": "Market",
+            "detail": f"{lines.get('count', 0)} book(s)",
+            "home_value": _signed(-spread),
+            "away_value": _signed(spread),
+            "note": (f"books differ by {lines['spread_range']:.1f}"
+                     if lines.get("spread_range") else "books agree"),
+        })
+    return Table(
+        columns=[
+            Column(key="model", label="Model", align="left", emphasis=True),
+            Column(key="detail", label="Basis", align="left"),
+            Column(key="away_value", label=game["away_team"], align="right"),
+            Column(key="home_value", label=game["home_team"], align="right"),
+            Column(key="note", label="Read", align="left"),
+        ],
+        rows=rows,
+        caption="Model & market comparison",
+        note="kept separate, never averaged",
+        empty="No model or market view is stored for this game.",
+    )
+
+
+def _signed(value):
+    """Render a margin with an explicit sign, or an em dash when absent."""
+    if value is None:
+        return None
+    return f"{value:+.1f}"
+
+
+def weather_panel(weather):
+    """Kickoff weather reduced to what a preview should say."""
+    if not weather.get("available"):
+        return None
+    latest = weather["latest"]
+    return {
+        "indoor": weather.get("indoor"),
+        "condition": latest.get("condition"),
+        "temperature": latest.get("temperature"),
+        "wind": latest.get("sustained_wind"),
+        "gusts": latest.get("wind_gust"),
+        "precipitation_probability": latest.get("precipitation_probability"),
+        "flags": weather.get("flags") or [],
+        "snapshots": weather.get("snapshots"),
+        "movement": weather.get("movement") or {},
+        "venue": latest.get("venue"),
+        "generated_at": latest.get("forecast_generated_at"),
+    }
+
+
+def market_table(lines, game):
+    """Every provider quote for a game, with its movement since opening."""
+    rows = [{
+        "provider": row.get("provider"),
+        "spread": row.get("formatted_spread") or row.get("spread"),
+        "spread_move": row.get("spread_move"),
+        "over_under": row.get("over_under"),
+        "total_move": row.get("total_move"),
+        "home_moneyline": row.get("home_moneyline"),
+        "away_moneyline": row.get("away_moneyline"),
+    } for row in lines.get("providers") or []]
+    return Table(
+        columns=[
+            Column(key="provider", label="Book", align="left", emphasis=True),
+            Column(key="spread", label="Spread", align="right"),
+            Column(key="spread_move", label="Move", format="signed",
+                   title="Change from the opening spread"),
+            Column(key="over_under", label="Total", format="f1"),
+            Column(key="total_move", label="Move", format="signed",
+                   title="Change from the opening total"),
+            Column(key="away_moneyline", label=game["away_team"] + " ML", format="signed"),
+            Column(key="home_moneyline", label=game["home_team"] + " ML", format="signed"),
+        ],
+        rows=rows,
+        caption="Market",
+        note="quotes per book, never averaged into one number",
+        empty="No betting lines are stored for this game.",
+    )
+
+
 def games_to_watch_compact(games: Sequence[dict[str, Any]],
                            brands: dict[int, dict[str, Any]] | None = None) -> Table:
     """The slate with both teams named, sized to fit without sideways scrolling.
@@ -1010,6 +1308,7 @@ def games_to_watch_compact(games: Sequence[dict[str, Any]],
             "home_team_url": url_for("cfb.game_preview", game_id=game["game_id"]),
             "matchup_edge": game.get("matchup_edge_team") or "Even",
             "matchup_edge_sub": game.get("matchup_edge_unit"),
+            "spread": (game.get("market") or {}).get("spread"),
             "attention_score": game.get("attention_score"),
         }
         brand_cell(entry, "away_team", (brands or {}).get(game.get("away_team_id")))
@@ -1022,6 +1321,8 @@ def games_to_watch_compact(games: Sequence[dict[str, Any]],
             Column(key="home_team", label="Home", align="left", emphasis=True),
             Column(key="matchup_edge", label="Edge", align="left",
                    title="Which team holds the biggest graded unit advantage, and where"),
+            Column(key="spread", label="Line", format="f1",
+                   title="Consensus spread across books, from the home side"),
             Column(key="attention_score", label="Att", format="int",
                    title="Provisional attention score out of 100"),
         ],

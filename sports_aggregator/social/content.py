@@ -16,7 +16,8 @@ from sports_aggregator.cfb.identity import readable_accent
 from sports_aggregator.cfb.models import normalize_alias, normalize_person_name
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.models import Article
-from sports_aggregator.social.context import allows_unscoped_match, names_staff
+from sports_aggregator.social.context import (
+    allows_unscoped_match, names_staff, transfer_role)
 from sports_aggregator.social.relevance import score_item
 from sports_aggregator.social.roles import determine_role
 from sports_aggregator.social.unified import UnifiedSourceRegistry
@@ -117,6 +118,25 @@ TOPIC_PATTERNS = {
     "GOVERNANCE": (r"\bncaa\b", r"\bgovernance\b", r"\bcommissioner\b"),
     "NIL": (r"\bnil\b", r"\brevenue sharing\b", r"\bcollective\b"),
     "MEDIA": (r"\bmedia rights\b", r"\btv ratings\b", r"\bbroadcast\b"),
+    # Added after auditing coverage: more than half of stored items matched
+    # no topic at all, which left the relevance model nothing to weigh.
+    "BETTING": (r"\bspread\b", r"\bover/under\b", r"\bmoneyline\b", r"\bodds\b",
+                r"\bwin total", r"\bbest bets?\b", r"\bcover the spread\b"),
+    "SCHEDULE": (r"\bschedule\b", r"\bkickoff time\b", r"\bnon-conference\b",
+                 r"\bbye week\b", r"\bhome-and-home\b", r"\bseason opener\b"),
+    "FACILITIES": (r"\bstadium\b", r"\brenovation\b", r"\bfacility\b",
+                   r"\battendance\b", r"\bcrowd\b"),
+    "OFFSEASON": (r"\bspring (?:game|practice|ball)\b", r"\bfall camp\b",
+                  r"\bpreseason\b", r"\bcamp (?:battle|report|notes|intel)\b",
+                  r"\boffseason\b", r"\bpractice report\b"),
+    "BOWL": (r"\bbowl (?:game|projection|season|eligible)\b", r"\bbowl bid\b",
+             r"\bpostseason\b"),
+    "SEASON_PREVIEW": (r"\bseason preview\b", r"\bwin total", r"\bprojection",
+                       r"\boutlook\b", r"\bwhat to expect\b", r"\bpredictions?\b"),
+    "DISCIPLINE": (r"\bsuspend(?:ed|s|sion)\b", r"\bdismissed?\b",
+                   r"\barrest(?:ed)?\b", r"\bviolation\b", r"\binvestigation\b"),
+    "COMMENTARY": (r"\bopinion\b", r"\btakeaways?\b", r"\bthoughts on\b",
+                   r"\breaction\b", r"\bmailbag\b", r"\bround ?table\b"),
 }
 
 
@@ -364,11 +384,21 @@ class ContentRepository:
             self._short_aliases = dict(short_aliases)
         return self._team_aliases, self._short_aliases
 
+    #: Confidence for a team that a transfer story names only as the origin.
+    ORIGIN_CONFIDENCE = 0.55
+
     def _team_candidates(self, connection: sqlite3.Connection, text: str,
-                         source_entity_id: int | None = None) -> list[tuple[int,float,str]]:
-        """Resolve team mentions, weighted by prominence and demoted in lists."""
+                         source_entity_id: int | None = None,
+                         title: str | None = None) -> list[tuple[int,float,str]]:
+        """Resolve team mentions, weighted by prominence and demoted in lists.
+
+        Three things separate a subject from a mention: whether the team is named
+        in the headline, whether it sits in the lead, and whether a transfer story
+        names it as the destination or merely as where the player came from.
+        """
         normalized = f" {normalize_alias(text)} "
         lead_normalized = f" {normalize_alias(text[:self.LEAD_LENGTH])} "
+        headline_normalized = f" {normalize_alias(title)} " if title else ""
         by_alias, short_by_alias = self._alias_index(connection)
 
         hits = [alias for alias, team_ids in by_alias.items()
@@ -385,10 +415,14 @@ class ContentRepository:
         self._last_evidence = []
         for alias in hits:
             team_id = next(iter(by_alias[alias]))
-            prominent = f" {alias} " in lead_normalized
+            in_headline = bool(headline_normalized) and f" {alias} " in headline_normalized
+            prominent = in_headline or f" {alias} " in lead_normalized
             confidence = 0.95 if " " in alias else 0.88
-            if not prominent:
-                confidence -= 0.1
+            if in_headline:
+                # A team in the headline is what the item is about.
+                confidence = min(0.98, confidence + 0.03)
+            elif not prominent:
+                confidence -= 0.15
             self._last_evidence.append({
                 "kind": "team", "target": str(team_id), "matched_text": alias,
                 "location": "lead" if prominent else "body",
@@ -413,6 +447,19 @@ class ContentRepository:
                 "method": "team_abbreviation", "confidence": confidence})
             if confidence > found.get(team_id, (0, ""))[0]:
                 found[team_id] = (confidence, "team_abbreviation")
+
+        # Transfer stories name two schools; only the destination is the subject.
+        schools = {row["team_id"]: row["school"] for row in connection.execute(
+            "SELECT team_id,school FROM teams")} if len(found) > 1 else {}
+        roles = {team_id: transfer_role(text, schools[team_id])
+                 for team_id in found if team_id in schools}
+        if "destination" in roles.values():
+            for team_id, role in roles.items():
+                if role == "destination":
+                    confidence, _ = found[team_id]
+                    found[team_id] = (min(0.98, confidence + 0.05), "transfer_destination")
+                else:
+                    found[team_id] = (self.ORIGIN_CONFIDENCE, "transfer_origin")
 
         if len(found) > self.LIST_MENTION_THRESHOLD:
             # A ranking or roundup names many programs without being about any of
@@ -499,7 +546,8 @@ class ContentRepository:
         return []
 
     def _link_entities(self, connection: sqlite3.Connection, content_id: int, text: str,
-                       entity_id: int | None, season: int) -> set[int]:
+                       entity_id: int | None, season: int,
+                       title: str | None = None) -> set[int]:
         """Attach topic, team, player, and game candidates to one content row.
 
         Every ingestion path uses this, so a Reddit submission and a Bluesky post
@@ -511,7 +559,7 @@ class ContentRepository:
         connection.executemany("INSERT INTO content_topics VALUES(?,?,?,?)",
                                [(content_id, *item) for item in classify_topics(text)])
         connection.execute("DELETE FROM content_tag_evidence WHERE content_id=?", (content_id,))
-        teams = self._team_candidates(connection, text, entity_id)
+        teams = self._team_candidates(connection, text, entity_id, title=title)
         team_ids = {item[0] for item in teams}
         # Only confidently-resolved teams may drive player and game resolution;
         # a passing mention in a ranking post should not schedule a game link.
@@ -587,7 +635,8 @@ class ContentRepository:
             for row in rows:
                 text = " ".join(filter(None, (row["title"], row["body_text"], row["summary"])))
                 self._link_entities(connection, row["content_id"], text,
-                                    row["source_entity_id"], season)
+                                    row["source_entity_id"], season,
+                                    title=row["title"])
                 counts["items"] += 1
             connection.commit()
             for table, key in (("content_teams", "teams"), ("content_players", "players"),
@@ -781,7 +830,7 @@ class ContentRepository:
                 "SELECT content_id FROM content_items WHERE platform='youtube' AND platform_content_id=?",
                 (video_id,)).fetchone()[0]
             self._link_entities(connection, content_id, f"{title} {description[:1500]}",
-                                endpoint.get("source_entity_id"), season)
+                                endpoint.get("source_entity_id"), season, title=title)
             connection.execute("DELETE FROM content_links WHERE content_id=?", (content_id,))
             connection.execute("INSERT INTO content_links VALUES(?,?,'ORIGINAL')", (content_id, url))
             connection.commit()
@@ -827,7 +876,7 @@ class ContentRepository:
                 "SELECT content_id FROM content_items WHERE platform='podcast' AND platform_content_id=?",
                 (episode_id,)).fetchone()[0]
             self._link_entities(connection, content_id, f"{title} {description[:1500]}",
-                                endpoint.get("source_entity_id"), season)
+                                endpoint.get("source_entity_id"), season, title=title)
             connection.commit()
         return content_id
 
@@ -878,7 +927,7 @@ class ContentRepository:
                 "SELECT content_id FROM content_items WHERE platform='reddit' AND platform_content_id=?",
                 (identifier,)).fetchone()[0]
             self._link_entities(connection, content_id, classification_text,
-                                endpoint["source_entity_id"], season)
+                                endpoint["source_entity_id"], season, title=title)
             connection.execute("DELETE FROM content_links WHERE content_id=?", (content_id,))
             if links_out:
                 connection.execute("INSERT INTO content_links VALUES(?,?,'ORIGINAL')",
@@ -986,7 +1035,8 @@ class ContentRepository:
                                    [(content_id,*item) for item in classify_topics(text)])
             teams = [(team_id, 1.0, "provider_entity") for team_id in article.team_ids]
             if not teams:
-                teams = self._team_candidates(connection, text, entity_id)
+                teams = self._team_candidates(connection, text, entity_id,
+                                              title=article.title)
             team_ids = {item[0] for item in teams}
             connection.executemany("INSERT INTO content_teams VALUES(?,?,?,?)",
                                    [(content_id,*item) for item in teams])

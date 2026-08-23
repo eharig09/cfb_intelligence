@@ -205,7 +205,8 @@ def player_stat_tables(stat_rows: Iterable[Any]) -> list[dict[str, Any]]:
 
     Returns ``{"category", "label", "table"}`` entries so a page renders
     "Passing" and "Rushing" as separate, correctly-headed tables instead of one
-    undifferentiated key/value dump.
+    undifferentiated key/value dump. With prior seasons backfilled these become
+    career lines, one row per season, newest first.
     """
     rows = [record if isinstance(record, dict) else dict(record) for record in stat_rows]
     categories = {row["category"] for row in rows}

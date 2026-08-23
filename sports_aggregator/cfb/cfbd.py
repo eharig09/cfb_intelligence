@@ -235,5 +235,21 @@ class CFBDClient:
             force=force,
         )
 
+    def recruits(self, year: int, force: bool = False) -> list[dict]:
+        """Documented /recruiting/players endpoint for one signing class."""
+        return self.get("/recruiting/players", {"year": year},
+                        cache_ttl_seconds=604800, force=force)
+
+    def venues(self, force: bool = False) -> list[dict]:
+        """Documented /venues endpoint; stadium locations rarely change."""
+        return self.get("/venues", {}, cache_ttl_seconds=2592000, force=force)
+
+    def betting_lines(self, year: int, force: bool = False) -> list[dict]:
+        """Documented /lines endpoint; quotes move, so the cache stays short."""
+        return self.get(
+            "/lines", {"year": year, "seasonType": "both"},
+            cache_ttl_seconds=1800, force=force,
+        )
+
     def core_ratings(self, year: int, force: bool = False) -> list[dict]:
         return self.get("/ratings/core", {"year": year}, cache_ttl_seconds=3600, force=force)

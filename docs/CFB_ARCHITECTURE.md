@@ -156,6 +156,54 @@ Draft eligibility is inferred from class year, the only signal the CFBD roster
 carries. Redshirts and early declarations are invisible to it, so it is labeled
 an estimate wherever it appears.
 
+## Historical depth
+
+Player statistics and rosters are backfilled from 2019, because a career spans
+roughly five seasons and a current senior was a freshman well outside the active
+window. The store now holds seven seasons and 580k stat rows, so a player page
+shows a career line rather than one year: Dillon Gabriel renders six seasons
+across UCF, Oklahoma and Oregon.
+
+`CFBRepository.stat_coverage()` reports which conference-seasons actually have
+rows, and it is exposed on `/api/v1/cfb/status`. The player-stat sync runs one
+request per conference, so a single failure leaves a silent hole -- Notre Dame
+had no statistics for five seasons because the Independents were never
+synchronized and nothing said so. Coverage is now checkable rather than assumed.
+
+## Name normalization
+
+Team aliases use `normalize_alias`, which strips punctuation to spaces. Person
+names use `normalize_person_name`, which additionally merges adjacent
+single-letter tokens: rosters write "CJ Carr" while articles write "C.J. Carr",
+and stripping punctuation alone produced "c j carr", which matched nothing. Team
+aliases keep the original rule, since merging letters there would rewrite
+established entries for no gain.
+
+## Transfer identity
+
+The PFF importer only confirmed a player whose name matched on the *same* team,
+so anyone who transferred stayed at `possible_transfer` with no linked identity:
+1,933 players, including most of the highest-impact additions in the portal.
+
+The portal record closes that gap. CFBD states that this exact player moved from
+school X to school Y, and the PFF row states he played at X, so the two together
+identify him. `confirm_transfer_pff_links` writes the link only when the origin
+school, the destination roster, and a unique name all agree; 1,673 identities were
+confirmed and 23 left ambiguous. Only `cfbd_player_id` is written -- the team
+fields keep naming the school the performance actually happened at.
+
+Three things depend on that link and were wrong without it:
+
+* Portal impact and arrival tables had no player to link to, so no row was
+  clickable.
+* Depth-chart ordering looked up grades by last season's team, which gave every
+  incoming transfer a blank grade and sorted proven starters to the bottom of
+  their position group.
+* Team leaders query by the team a statistic was recorded under, so an arriving
+  starter was invisible on his new team's page. Arrival production is now merged
+  in and labeled with the school it was earned at; a team whose entire production
+  arrived through the portal no longer shows an empty leaderboard.
+
 ## Immediate next increment
 
 1. Persist rosters and player IDs for the active season.

@@ -1,0 +1,119 @@
+{% extends "_layout.html" %}
+
+{% block title %}{% if results.query %}{{ results.query }} &middot; {% endif %}Search | College Football{% endblock %}
+
+{% block head %}
+<style>
+    .search-form { display: flex; gap: 8px; margin: 14px 0 6px; max-width: 46rem; }
+    .search-form input {
+        flex: 1 1 auto; min-width: 0; padding: 11px 13px; font-size: 1rem;
+        border: 2px solid var(--ink); background: var(--paper); color: var(--ink);
+    }
+    .search-form button {
+        padding: 11px 20px; border: 2px solid var(--ink); background: var(--ink);
+        color: #fff; font-weight: 800; cursor: pointer;
+    }
+    .result-group { margin-top: 22px; }
+    .result-group h2 { font: 700 1.3rem Georgia, serif; border-bottom: 2px solid var(--ink); padding-bottom: 6px; margin: 0 0 10px; }
+    .result { display: flex; align-items: center; gap: 11px; background: var(--paper);
+              border: 1px solid var(--line); border-left: 4px solid var(--row-team, var(--line-strong));
+              padding: 10px 12px; margin-bottom: 6px; text-decoration: none; }
+    .result img { width: 26px; height: 26px; object-fit: contain; flex: 0 0 auto; }
+    .result-body { flex: 1 1 auto; min-width: 0; }
+    .result-name { font-weight: 700; font-size: .92rem; }
+    .result-why { color: var(--muted); font-size: .66rem; margin-top: 2px; }
+    .result-aside { color: var(--muted); font-size: .7rem; white-space: nowrap; }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('cfb.today', season=results.season or season) }}">&larr; College Football Today</a>
+<span class="tagline">Search</span>
+{% endblock %}
+
+{% block content %}
+<div class="eyebrow">Find anything</div>
+<h1>Search</h1>
+
+<form class="search-form" action="{{ url_for('cfb.search_page') }}" method="get" role="search">
+    <input type="search" name="q" value="{{ results.query or '' }}"
+           placeholder="Team, player, game or story&hellip;" aria-label="Search" autofocus>
+    <button type="submit">Search</button>
+</form>
+
+{% if results.too_short %}
+<div class="empty">Enter at least two characters.</div>
+{% elif results.query and not results.total %}
+<div class="empty">Nothing matched &ldquo;{{ results.query }}&rdquo;.</div>
+{% endif %}
+
+{% if results.teams %}
+<section class="result-group">
+    <h2>Teams</h2>
+    {% for team in results.teams %}
+    <a class="result" href="{{ url_for('cfb.team_preview', team_id=team.team_id, season=results.season) }}"
+       {% if team.accent %}style="--row-team:{{ team.accent }}"{% endif %}>
+        {% if team.logo %}<img src="{{ team.logo }}" alt="" loading="lazy">{% endif %}
+        <span class="result-body">
+            <span class="result-name">{{ team.school }}</span>
+            <span class="result-why">{{ team.reason }}</span>
+        </span>
+        <span class="result-aside">{{ team.conference or 'Independent' }}</span>
+    </a>
+    {% endfor %}
+</section>
+{% endif %}
+
+{% if results.players %}
+<section class="result-group">
+    <h2>Players</h2>
+    {% for player in results.players %}
+    <a class="result" href="{{ url_for('cfb.player_preview', player_id=player.player_id, season=results.season) }}"
+       {% if player.accent %}style="--row-team:{{ player.accent }}"{% endif %}>
+        {% if player.logo %}<img src="{{ player.logo }}" alt="" loading="lazy">{% endif %}
+        <span class="result-body">
+            <span class="result-name">{{ player.name }}</span>
+            <span class="result-why">
+                {{ player.reason }}
+                {%- if player.mentions %} &middot; {{ player.mentions }} linked mention{{ '' if player.mentions == 1 else 's' }}{% endif %}
+            </span>
+        </span>
+        <span class="result-aside">{{ player.team }}{% if player.position %} &middot; {{ player.position }}{% endif %}</span>
+    </a>
+    {% endfor %}
+</section>
+{% endif %}
+
+{% if results.games %}
+<section class="result-group">
+    <h2>Games</h2>
+    {% for game in results.games %}
+    <a class="result" href="{{ url_for('cfb.game_preview', game_id=game.game_id) }}">
+        <span class="result-body">
+            <span class="result-name">{{ game.away_team }} at {{ game.home_team }}</span>
+            <span class="result-why">{{ game.reason }}</span>
+        </span>
+        <span class="result-aside">Week {{ game.week }}</span>
+    </a>
+    {% endfor %}
+</section>
+{% endif %}
+
+{% if results.stories %}
+<section class="result-group">
+    <h2>Reporting</h2>
+    {% for story in results.stories %}
+    <a class="result" href="{{ story.canonical_url }}" target="_blank" rel="noopener">
+        <span class="result-body">
+            <span class="result-name">{{ story.headline }}</span>
+            <span class="result-why">
+                {{ story.source_name or story.platform }} &middot; {{ story.published_label }}
+                &middot; {{ story.reason }}
+            </span>
+        </span>
+        <span class="result-aside">{{ story.relevance | cell('f1') }}</span>
+    </a>
+    {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

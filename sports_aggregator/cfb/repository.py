@@ -264,6 +264,21 @@ CREATE TABLE IF NOT EXISTS pff_imports (
     unresolved_teams_json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS recruits (
+ season INTEGER NOT NULL, recruit_id TEXT NOT NULL, athlete_id TEXT,
+ name TEXT NOT NULL, normalized_name TEXT NOT NULL, position TEXT,
+ committed_to TEXT, recruit_type TEXT, stars INTEGER, rating REAL,
+ ranking INTEGER, height INTEGER, weight INTEGER, home_city TEXT, home_state TEXT,
+ updated_at TEXT NOT NULL, PRIMARY KEY(season,recruit_id)
+);
+CREATE INDEX IF NOT EXISTS idx_recruits_team ON recruits(season,committed_to);
+CREATE INDEX IF NOT EXISTS idx_recruits_athlete ON recruits(athlete_id);
+CREATE TABLE IF NOT EXISTS venues (
+ venue_id INTEGER PRIMARY KEY, name TEXT NOT NULL, city TEXT, state TEXT,
+ latitude REAL, longitude REAL, timezone TEXT, elevation REAL,
+ dome INTEGER NOT NULL DEFAULT 0, grass INTEGER, capacity INTEGER,
+ updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sync_runs (
     sync_id INTEGER PRIMARY KEY AUTOINCREMENT,
     season INTEGER NOT NULL,
@@ -520,6 +535,167 @@ class CFBRepository:
                   str(item["statType"]),str(item.get("stat") or ""),
                   _numeric(item.get("stat"))) for item in items],
             )
+        return len(items)
+
+    def confirm_transfer_pff_links(self, season: int, pff_season: int | None = None) -> dict[str, Any]:
+        """Confirm PFF identities for players the portal proves have moved.
+
+        The PFF importer would only confirm a player whose name matched on the
+        *same* team, so anyone who transferred stayed at `possible_transfer` with
+        no linked identity -- 1,933 players, including most of the highest-impact
+        additions. The portal record closes that gap: CFBD says this exact player
+        moved from school X to school Y, and the PFF row says he played at X.
+
+        A link is only written when the origin school, the destination roster and
+        a unique name all agree. Anything ambiguous is left alone.
+        """
+        self.initialize()
+        pff_season = pff_season or (season - 1)
+        with self.transaction() as connection:
+            transfers = [dict(row) for row in connection.execute(
+                """SELECT normalized_name,origin,destination FROM player_transfers
+                   WHERE season=? AND origin IS NOT NULL AND destination IS NOT NULL""",
+                (season,))]
+            duplicates = {row["normalized_name"] for row in connection.execute(
+                """SELECT normalized_name FROM player_transfers WHERE season=?
+                   GROUP BY normalized_name HAVING COUNT(*)>1""", (season,))}
+            roster = {}
+            for row in connection.execute(
+                "SELECT player_id,normalized_name,team FROM players WHERE season=?", (season,)
+            ):
+                roster.setdefault((row["normalized_name"], row["team"]), []).append(row["player_id"])
+            candidates = {}
+            for row in connection.execute(
+                """SELECT pff_player_id,normalized_name,cfbd_team FROM pff_players
+                   WHERE season=? AND match_status='possible_transfer'
+                   AND cfbd_player_id IS NULL AND cfbd_team IS NOT NULL""", (pff_season,)
+            ):
+                candidates.setdefault((row["normalized_name"], row["cfbd_team"]), []).append(
+                    row["pff_player_id"])
+
+            confirmed = skipped = 0
+            updates = []
+            for transfer in transfers:
+                name = transfer["normalized_name"]
+                if name in duplicates:
+                    skipped += 1
+                    continue
+                pff_ids = candidates.get((name, transfer["origin"]))
+                roster_ids = roster.get((name, transfer["destination"]))
+                if not pff_ids or not roster_ids:
+                    continue
+                if len(pff_ids) != 1 or len(roster_ids) != 1:
+                    skipped += 1
+                    continue
+                # Only the identity link is written. The team fields keep naming
+                # the school the performance actually happened at.
+                updates.append((roster_ids[0], pff_ids[0], pff_season))
+                confirmed += 1
+            connection.executemany(
+                """UPDATE pff_players SET cfbd_player_id=?,
+                   match_status='portal_confirmed',match_confidence=0.9
+                   WHERE pff_player_id=? AND season=?""", updates)
+        return {"season": season, "pff_season": pff_season,
+                "confirmed": confirmed, "ambiguous": skipped}
+
+    def replace_recruits(self, season: int, recruits: Iterable[dict[str, Any]]) -> int:
+        """Store the signing class so an incoming freshman carries his rating."""
+        items = [row for row in recruits if row.get("id") is not None]
+        now = _now_iso()
+        with self.transaction() as connection:
+            connection.execute("DELETE FROM recruits WHERE season=?", (season,))
+            connection.executemany(
+                """INSERT OR REPLACE INTO recruits VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                [(season, str(row["id"]),
+                  str(row["athleteId"]) if row.get("athleteId") else None,
+                  str(row.get("name") or ""), normalize_alias(str(row.get("name") or "")),
+                  row.get("position"), row.get("committedTo"), row.get("recruitType"),
+                  row.get("stars"), _numeric(row.get("rating")), row.get("ranking"),
+                  row.get("height"), row.get("weight"),
+                  row.get("city"), row.get("stateProvince"), now) for row in items])
+        return len(items)
+
+    def recruit_index(self, season: int) -> dict[str, dict[str, Any]]:
+        """Recruits keyed by athlete id and by normalized name.
+
+        CFBD supplies an athlete id for most recruits, which is an exact link to
+        the roster. The name key is a fallback for the rest and is only trusted
+        when it is unique within the class.
+        """
+        self.initialize()
+        with closing(self._connect()) as connection:
+            rows = [dict(row) for row in connection.execute(
+                "SELECT * FROM recruits WHERE season=?", (season,))]
+        index: dict[str, dict[str, Any]] = {}
+        seen_names: dict[str, int] = {}
+        for row in rows:
+            seen_names[row["normalized_name"]] = seen_names.get(row["normalized_name"], 0) + 1
+        for row in rows:
+            if row["athlete_id"]:
+                index[row["athlete_id"]] = row
+            if seen_names[row["normalized_name"]] == 1:
+                index.setdefault(row["normalized_name"], row)
+        return index
+
+    def replace_venues(self, venues: Iterable[dict[str, Any]]) -> int:
+        """Store venue coordinates so travel and altitude can be described."""
+        items = [row for row in venues if row.get("id") is not None]
+        now = _now_iso()
+        with self.transaction() as connection:
+            connection.executemany(
+                """INSERT INTO venues VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(venue_id) DO UPDATE SET name=excluded.name,city=excluded.city,
+                   state=excluded.state,latitude=excluded.latitude,longitude=excluded.longitude,
+                   timezone=excluded.timezone,elevation=excluded.elevation,dome=excluded.dome,
+                   grass=excluded.grass,capacity=excluded.capacity,updated_at=excluded.updated_at""",
+                [(int(row["id"]), str(row.get("name") or ""), row.get("city"), row.get("state"),
+                  _numeric(row.get("latitude")), _numeric(row.get("longitude")),
+                  row.get("timezone"), _numeric(row.get("elevation")),
+                  int(bool(row.get("dome"))), (int(bool(row["grass"])) if row.get("grass") is not None else None),
+                  row.get("capacity"), now) for row in items])
+        return len(items)
+
+    def team_venues(self) -> dict[int, dict[str, Any]]:
+        """Home venue with coordinates for each team, where CFBD supplies them."""
+        self.initialize()
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """SELECT t.team_id,v.venue_id,v.name venue_name,v.city,v.state,
+                   v.latitude,v.longitude,v.timezone,v.elevation,v.dome
+                   FROM teams t JOIN venues v ON v.venue_id=t.venue_id
+                   WHERE v.latitude IS NOT NULL AND v.longitude IS NOT NULL""").fetchall()
+        return {row["team_id"]: dict(row) for row in rows}
+
+    def replace_promoted_stats(self, season: int, stats: Iterable[dict[str, Any]],
+                               schools: Iterable[str]) -> int:
+        """Store prior-classification statistics for specific schools only.
+
+        `replace_player_stats` clears a whole conference-season, which would wipe
+        an FBS conference when writing an FCS team's history into it. This
+        replaces rows school by school and records the conference the team
+        actually played in, so the provenance stays honest.
+        """
+        names = tuple(schools)
+        if not names:
+            return 0
+        items = [row for row in stats if str(row.get("team")) in set(names)]
+        with self.transaction() as connection:
+            placeholders = ",".join("?" for _ in names)
+            connection.execute(
+                f"DELETE FROM player_season_stats WHERE season=? AND team IN ({placeholders})",
+                (season, *names))
+            connection.executemany(
+                """INSERT OR REPLACE INTO player_season_stats
+                   (season,player_id,player,team,conference,position,category,stat_type,
+                    stat_value,numeric_value)
+                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                [(season, str(row.get("playerId") or row.get("player_id") or ""),
+                  str(row.get("player") or ""), str(row.get("team") or ""),
+                  str(row.get("conference") or ""), row.get("position"),
+                  str(row.get("category") or ""), str(row.get("statType") or ""),
+                  str(row.get("stat") if row.get("stat") is not None else ""),
+                  _numeric(row.get("stat")))
+                 for row in items])
         return len(items)
 
     def replace_transfers(self, season: int, transfers: Iterable[dict[str, Any]]) -> int:
@@ -781,6 +957,39 @@ class CFBRepository:
                                     -item["wins"],item["losses"],item["rank"] or 999,item["school"]))
         return result
 
+    def stat_coverage(self, seasons: Iterable[int] | None = None) -> dict[str, Any]:
+        """Which conference-seasons actually have player statistics stored.
+
+        The player-stat sync runs conference by conference, so one failed request
+        leaves a silent hole: Notre Dame had no statistics for five seasons
+        because the Independents were never synchronized, and nothing in the
+        application said so. This makes the gaps explicit.
+        """
+        self.initialize()
+        with closing(self._connect()) as connection:
+            stored = {(row["season"], row["conference"]): row["rows"]
+                      for row in connection.execute(
+                          """SELECT season,conference,COUNT(*) rows
+                             FROM player_season_stats GROUP BY 1,2""")}
+            conferences = [row["conference"] for row in connection.execute(
+                "SELECT DISTINCT conference FROM teams "
+                "WHERE conference IS NOT NULL ORDER BY conference")]
+            available = sorted({row["season"] for row in connection.execute(
+                "SELECT DISTINCT season FROM player_season_stats")})
+        wanted = sorted(seasons) if seasons else available
+        grid, gaps = [], []
+        for season in wanted:
+            row = {"season": season, "conferences": {}}
+            for conference in conferences:
+                count = stored.get((season, conference), 0)
+                row["conferences"][conference] = count
+                if not count:
+                    gaps.append({"season": season, "conference": conference})
+            row["total"] = sum(row["conferences"].values())
+            grid.append(row)
+        return {"seasons": wanted, "conferences": conferences,
+                "grid": grid, "gaps": gaps, "gap_count": len(gaps)}
+
     def team_elo(self, season: int) -> dict[int, dict[str, Any]]:
         """Current Elo per team, derived from CFBD per-game pregame ratings.
 
@@ -826,6 +1035,31 @@ class CFBRepository:
     LEADER_CATEGORIES = ("passing", "rushing", "receiving", "defensive",
                          "interceptions", "kicking")
 
+    def _arrival_stat_lines(self, connection, season: int, team: str,
+                            categories: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
+        """Prior-season production of players who transferred in.
+
+        Leaders are queried by the team the statistics were recorded under, so an
+        arriving starter is invisible on his new team's page even though he is the
+        most likely player to produce there. His numbers are pulled from his old
+        school and clearly marked as earned elsewhere.
+        """
+        rows = connection.execute(
+            """SELECT s.player_id,s.player,s.position,s.team,s.category,s.stat_type,
+               s.stat_value,s.numeric_value,t.origin
+               FROM player_transfers t
+               JOIN players r ON r.season=? AND r.normalized_name=t.normalized_name
+                 AND r.team=t.destination
+               JOIN player_season_stats s ON s.season=? AND s.player_id=r.player_id
+               WHERE t.season=? AND t.destination=? AND s.numeric_value IS NOT NULL""",
+            (season, season - 1, season, team)).fetchall()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            if row["category"] not in categories:
+                continue
+            grouped.setdefault(row["category"], []).append(dict(row))
+        return grouped
+
     def _stat_leaders(self, *, season: int, conference: str | None=None,
                       team: str | None=None, limit: int=8) -> dict[str,Any]:
         """Leaders per category, each carrying the full stat line.
@@ -840,7 +1074,13 @@ class CFBRepository:
             available=connection.execute(
                 f"SELECT MAX(season) FROM player_season_stats WHERE season<=? AND {scope_column}=?",
                 (season,scope_value)).fetchone()[0]
-            if available is None: return {"season":None,"groups":{}}
+            if available is None:
+                # A team can have no statistics of its own and still have
+                # production on the roster, if it arrived through the portal.
+                groups: dict[str, Any] = {}
+                if team:
+                    self._merge_arrivals(connection, groups, season, team, limit)
+                return {"season": season - 1 if groups else None, "groups": groups}
             groups={}
             for category in self.LEADER_CATEGORIES:
                 stat_type=sort_stat(category)
@@ -880,9 +1120,41 @@ class CFBRepository:
                     "label":category_label(category),
                     "stat_type":stat_type,
                     "qualifier":(f"min {threshold[1]:g} {threshold[0]}" if threshold else None),
-                    "players":[{**dict(row),"stats":line.get(row["player_id"],{})} for row in rows],
+                    "players":[{**dict(row),"stats":line.get(row["player_id"],{}),
+                                "arrival":False} for row in rows],
                 }
+            if team:
+                self._merge_arrivals(connection, groups, season, team, limit)
         return {"season":available,"groups":groups}
+
+    def _merge_arrivals(self, connection, groups: dict[str, Any], season: int,
+                        team: str, limit: int) -> None:
+        """Fold transferred-in production into the team's leader groups."""
+        arrivals = self._arrival_stat_lines(
+            connection, season, team, tuple(self.LEADER_CATEGORIES))
+        for category, rows in arrivals.items():
+            statistic = sort_stat(category)
+            lines: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                entry = lines.setdefault(row["player_id"], {
+                    "player_id": row["player_id"], "player": row["player"],
+                    "position": row["position"], "team": row["team"],
+                    "origin": row["origin"], "arrival": True, "stats": {},
+                })
+                value = row["numeric_value"]
+                entry["stats"][row["stat_type"]] = (
+                    value if value is not None else row["stat_value"])
+            qualifying = [entry for entry in lines.values()
+                          if float(entry["stats"].get(statistic) or 0) > 0]
+            if not qualifying:
+                continue
+            group = groups.setdefault(category, {
+                "label": category_label(category), "stat_type": statistic,
+                "qualifier": None, "players": [],
+            })
+            merged = group["players"] + qualifying
+            merged.sort(key=lambda entry: -float(entry["stats"].get(statistic) or 0))
+            group["players"] = merged[:limit]
 
     def conference_player_leaders(self, conference: str, season: int, limit: int=8) -> dict[str,Any]:
         return self._stat_leaders(season=season,conference=conference,limit=limit)
@@ -1001,6 +1273,7 @@ class CFBRepository:
                 """SELECT normalized_name,interest_score FROM pff_players
                    WHERE season=? AND cfbd_team_id=?""", (previous_season, team_id)
             )]
+        recruits = self.recruit_index(season)
         current_names = {normalize_alias(f"{row['first_name']} {row['last_name']}") for row in current}
         current_ids = {row["player_id"] for row in current}
         previous_names = {normalize_alias(f"{row['first_name']} {row['last_name']}") for row in previous}
@@ -1016,12 +1289,23 @@ class CFBRepository:
             if row["player_id"] in previous_ids or name in previous_names:
                 continue
             portal = transfer_in.get(name)
+            # A newcomer who is not a transfer is a signee, and his recruiting
+            # rating is the only prior evidence that exists for him.
+            recruit = None if portal else (recruits.get(row["player_id"]) or recruits.get(name))
+            if portal:
+                movement_type, evidence = "TRANSFER_IN", "CFBD transfer portal"
+            elif recruit:
+                movement_type, evidence = "SIGNEE", "CFBD recruiting class"
+            else:
+                movement_type, evidence = "NEWCOMER", "Roster comparison"
             arrivals.append({
                 **row, "name": f"{row['first_name']} {row['last_name']}",
-                "movement_type": "TRANSFER_IN" if portal else "NEWCOMER",
-                "origin": portal["origin"] if portal else None,
-                "rating": portal["rating"] if portal else None,
-                "evidence": "CFBD transfer portal" if portal else "Roster comparison",
+                "movement_type": movement_type,
+                "origin": portal["origin"] if portal else (recruit["home_state"] if recruit else None),
+                "rating": portal["rating"] if portal else (recruit["rating"] if recruit else None),
+                "stars": portal["stars"] if portal else (recruit["stars"] if recruit else None),
+                "recruit_ranking": recruit["ranking"] if recruit else None,
+                "evidence": evidence,
             })
         departures = []
         for row in previous:
@@ -1045,7 +1329,9 @@ class CFBRepository:
                 "draft_pick": drafted["overall_pick"] if drafted else None,
                 "interest_score": interest.get(name), "evidence": evidence,
             })
-        arrivals.sort(key=lambda row: (row["movement_type"] != "TRANSFER_IN", -(row["rating"] or 0), row["name"]))
+        arrivals.sort(key=lambda row: (
+            {"TRANSFER_IN": 0, "SIGNEE": 1}.get(row["movement_type"], 2),
+            -(row["rating"] or 0), row["name"]))
         departures.sort(key=lambda row: (
             {"DRAFTED": 0, "TRANSFER_OUT": 1, "ELIGIBILITY_DEPARTURE": 2}.get(row["movement_type"], 3),
             -(row["interest_score"] or 0), row["name"],
@@ -1068,13 +1354,22 @@ class CFBRepository:
             previous_ids = {row[0] for row in connection.execute(
                 "SELECT player_id FROM players WHERE season=? AND team=?", (season - 1, team["school"])
             )}
+            # Grades are looked up by player identity, not by last season's team.
+            # Filtering on cfbd_team_id gave every incoming transfer a blank grade
+            # and sorted proven starters to the bottom of their position group.
+            roster_ids = [row["player_id"] for row in roster]
+            placeholders = ",".join("?" for _ in roster_ids) or "NULL"
             pff_rows = connection.execute(
-                """SELECT cfbd_player_id,normalized_name,interest_score FROM pff_players
-                   WHERE season=? AND cfbd_team_id=? AND interest_score IS NOT NULL""",
-                (season - 1, team_id),
+                f"""SELECT cfbd_player_id,normalized_name,interest_score,cfbd_team
+                    FROM pff_players
+                    WHERE season=? AND interest_score IS NOT NULL
+                    AND (cfbd_team_id=? OR cfbd_player_id IN ({placeholders}))""",
+                (season - 1, team_id, *roster_ids),
             ).fetchall()
         pff_by_id = {row["cfbd_player_id"]: row["interest_score"] for row in pff_rows if row["cfbd_player_id"]}
         pff_by_name = {row["normalized_name"]: row["interest_score"] for row in pff_rows}
+        graded_at = {row["cfbd_player_id"]: row["cfbd_team"] for row in pff_rows
+                     if row["cfbd_player_id"]}
         unit_rows: dict[str, dict[str, list[dict[str, Any]]]] = {}
         returning = upperclassmen = 0
         for row in roster:
@@ -1086,6 +1381,9 @@ class CFBRepository:
                     "is_returner": is_returner,
                     "arrival_type": arrival["movement_type"] if arrival else None,
                     "origin": arrival.get("origin") if arrival else None,
+                    "recruit_rating": arrival.get("rating") if arrival else None,
+                    "recruit_stars": arrival.get("stars") if arrival else None,
+                    "pff_graded_at": graded_at.get(row["player_id"]),
                     "pff_interest": pff_by_id.get(row["player_id"], pff_by_name.get(name))}
             unit, group, order = self._position_group(row.get("position"))
             item["group_order"] = order

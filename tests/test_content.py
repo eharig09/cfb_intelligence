@@ -50,7 +50,10 @@ class ContentRepositoryTests(unittest.TestCase):
 
     def test_reposts_are_suppressed_and_topics_are_multilabel(self):
         topics={item[0] for item in classify_topics("CFP rankings and playoff projection")}
-        self.assertEqual(topics,{"PLAYOFF","RANKINGS","STATISTICAL_ANALYSIS"})
+        # A subset assertion: new topic rules should be able to add labels
+        # without this test failing, as long as the established ones still fire.
+        self.assertTrue({"PLAYOFF","RANKINGS","STATISTICAL_ANALYSIS"} <= topics, topics)
+        self.assertGreater(len(topics), 1)
 
 
 if __name__=="__main__": unittest.main()

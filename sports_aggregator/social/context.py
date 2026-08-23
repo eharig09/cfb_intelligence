@@ -87,3 +87,43 @@ def allows_unscoped_match(text: str, *, has_resolved_team: bool) -> bool:
     if is_pro_context(window):
         return False
     return has_resolved_team or is_college_context(window)
+
+
+#: Verbs that name a destination. In a transfer story both schools appear, but
+#: only one is the subject: the team the player is joining. Boundaries are
+#: assembled below rather than typed, for the same reason as _boundary_pattern.
+_B = chr(92) + "b"
+_S = chr(92) + "s"
+
+DESTINATION_TEMPLATES = (
+    f"transferr?(?:ed|ing)?{_S}+to{_S}+{{name}}",
+    f"(?:commits?|committed|commitment){_S}+to{_S}+{{name}}",
+    f"(?:lands?|landed|headed|heads|moving|moves){_S}+(?:at|to){_S}+{{name}}",
+    f"(?:joins?|joined|signs?|signed){_S}+(?:with{_S}+)?{{name}}",
+    f"new{_S}+{{name}}{_S}+(?:quarterback|qb|starter|addition|transfer)",
+    f"{{name}}{_S}+(?:lands?|landed|adds?|added|gets?|got|picks?{_S}+up){_B}",
+)
+
+#: Phrasing that names an origin, which is provenance rather than subject.
+ORIGIN_TEMPLATES = (
+    f"(?:from|out{_S}+of|leaves?|left|departs?|departed){_S}+{{name}}",
+    f"(?:former|ex-){_S}*{{name}}",
+    f"at{_S}+{{name}}{_S}+last{_S}+(?:season|year)",
+    f"{{name}}{_S}+transfer{_B}",
+)
+
+
+def transfer_role(text: str, name: str) -> str | None:
+    """Whether a school is named as a transfer destination or as an origin.
+
+    A transfer story names both schools. Treating them identically makes the
+    player's former team look as central as the one he now plays for.
+    """
+    escaped = re.escape(name)
+    for template in DESTINATION_TEMPLATES:
+        if re.search(template.format(name=escaped), text, re.I):
+            return "destination"
+    for template in ORIGIN_TEMPLATES:
+        if re.search(template.format(name=escaped), text, re.I):
+            return "origin"
+    return None

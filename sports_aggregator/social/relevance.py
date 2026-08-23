@@ -42,6 +42,15 @@ TOPIC_PROFILE: dict[str, tuple[float, float]] = {
     "NIL": (0.56, 10.0),
     "CONFERENCE": (0.54, 10.0),
     "MEDIA": (0.50, 10.0),
+    # Topics added once coverage auditing showed half of content unclassified.
+    "DISCIPLINE": (0.86, 5.0),
+    "SCHEDULE": (0.60, 14.0),
+    "OFFSEASON": (0.58, 7.0),
+    "SEASON_PREVIEW": (0.56, 10.0),
+    "BOWL": (0.55, 14.0),
+    "BETTING": (0.52, 3.0),
+    "COMMENTARY": (0.42, 5.0),
+    "FACILITIES": (0.35, 21.0),
 }
 
 #: Fallback for content that matched no topic rule.
@@ -70,6 +79,14 @@ TOPIC_EXPERTISE: dict[str, str] = {
     "COACHING": "reporting_score",
     "GAME_PREVIEW": "national_score",
     "GAME_RECAP": "reporting_score",
+    "DISCIPLINE": "team_access_score",
+    "SCHEDULE": "reporting_score",
+    "OFFSEASON": "team_access_score",
+    "SEASON_PREVIEW": "national_score",
+    "BOWL": "national_score",
+    "BETTING": "analytics_score",
+    "COMMENTARY": "national_score",
+    "FACILITIES": "reporting_score",
 }
 
 DEFAULT_EXPERTISE = "reporting_score"

@@ -62,21 +62,41 @@
         <section class="section">
             <h2>Player production</h2>
             <div class="section-note">
-                {% if leaders.season %}{{ leaders.season }} CFBD statistics &middot; full stat line per category
-                {% else %}Awaiting the player-stat stream{% endif %}
+                {{ production.stat_season }} production split by what is here and what is not.
+                Arrived production was earned at another school and says so; returning
+                production is shown neutral.
+                {% if production.retained_share is not none %}
+                <strong>{{ production.retained_share }}%</strong> of listed production is on the
+                {{ season }} roster.{% endif %}
             </div>
-            {% if leader_groups %}
-                {{ tabbed_tables(leader_groups, 'team-leaders') }}
+            <div class="state-key">
+                <span><i class="is-returning"></i> Returning</span>
+                <span><i class="is-arrived"></i> Arrived</span>
+                <span><i class="is-departed"></i> Departed</span>
+            </div>
+            {% if production_groups %}
+                {{ tabbed_tables(production_groups, 'production') }}
             {% else %}
-                <div class="empty">Player production will stream here when CFBD publishes it.</div>
+                <div class="empty">No prior-season production is stored for this roster.</div>
             {% endif %}
+        </section>
+
+        <section class="section">
+            <h2>Key arrivals</h2>
+            <div class="section-note">
+                Transfers and signees joining for {{ season }}. Ratings are portal ratings for
+                transfers and recruiting ratings for signees; both are opinion, not production.
+            </div>
+            {{ data_table(arrivals_key_table) }}
         </section>
 
         <section class="section">
             <h2>Experience-first depth board</h2>
             <div class="section-note">
-                Roster architecture, not an official depth chart. Ordering favors returning
-                production signals, continuity, and class experience.
+                Roster architecture, not an official depth chart. Ordering favors production
+                signals, continuity, and class experience. An arriving player carries the
+                production he earned elsewhere, so a proven transfer is not buried behind a
+                returning reserve.
             </div>
             {% for unit in depth_units %}
             <div class="depth-unit">
@@ -86,6 +106,16 @@
             {% else %}
             <div class="empty">Roster data is not yet available.</div>
             {% endfor %}
+        </section>
+
+        <section class="section">
+            <h2>Portal impact</h2>
+            <div class="section-note">
+                Ranked by prior production first, grade second, and recruiting opinion
+                last. A blank impact score means no prior production is on record, which
+                is not the same as low impact.
+            </div>
+            {{ data_table(transfers_table) }}
         </section>
 
         <section class="section">

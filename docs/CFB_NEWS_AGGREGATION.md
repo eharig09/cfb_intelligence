@@ -242,6 +242,38 @@ immediately after team resolution, before player resolution had run, so no playe
 link ever recorded its evidence. Evidence is now written once, after every
 resolver has contributed.
 
+## Article matching, third pass
+
+Auditing the stored links surfaced three weaknesses beyond the earlier fixes:
+
+1. **Transfer stories credited both schools equally.** "Ole Miss files suit
+   against two players who transferred to LSU" linked both at the same strength.
+   Destination phrasing now raises the school a player is joining and demotes the
+   one he left to 0.55 as `transfer_origin`.
+2. **Headline mentions were not distinguished from body mentions.** A team named
+   in the headline is what an item is about; one named deep in the body often is
+   not. Headline matches now score up to 0.98 and body-only matches drop by 0.15,
+   which spread confidence from a three-value cluster across 0.30 to 0.98.
+3. **Topic coverage was 46%.** More than half of stored content matched no topic,
+   which left the relevance model nothing to weigh. Nine topics were added
+   (betting, schedule, offseason, bowl, season preview, discipline, facilities,
+   commentary, media), each with its own weight, half-life and expertise
+   dimension. Coverage is now 54%; the remainder are short posts with no subject.
+
+## Team subreddits
+
+46 power-conference subreddits are verified and always-on. Discovery generates
+candidates from the school, mascot and abbreviation, then verifies each live and
+requires the description to read as football. Two guards proved necessary: a bare
+mascot shared with a professional team (r/Eagles is Philadelphia, not Boston
+College) and a description that reads as professional football (r/PittsburghPanthers).
+Four candidates were dropped on those rules.
+
+Outside the always-on tier, a team is polled when it plays an activated game,
+when it sits inside the Elo top 25, or when its Elo has moved 40 points or more
+this season. The last rule is the one that reaches G5 teams becoming interesting
+before they are obvious, without polling all 138.
+
 ## Next implementation sequence
 
 The next increments should be:
