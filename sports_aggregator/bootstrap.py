@@ -3,13 +3,15 @@ from __future__ import annotations
 
 Phases:
 * initial  -- full first-time build, including history and static sources.
-* refresh  -- current-season data that changes regularly.
-* history  -- historical player-stat backfill, isolated one season per process.
+* refresh  -- current-season data that changes regularly; never historical stats.
+* history  -- historical player-stat backfill, isolated one season per process
+              and one conference per child process.
 * status   -- compact freshness/coverage report.
 * plan     -- show the steps without running them.
 
-Each step runs in its own subprocess.  That is especially important for history:
-a slow or failed season cannot consume the timeout budget for every other year.
+Routine refresh is intentionally insulated from historical player-stat work. A
+slow CFBD historical endpoint must never block betting lines, models, current
+games, weather, or reporting updates.
 """
 
 import argparse
@@ -52,9 +54,12 @@ def steps(season: int) -> list[Step]:
         Step("cfbd-roster-context", "Prior roster, portal, draft and returning production",
              ["sports_aggregator.cfb.cli", "sync-roster-context", "--year", year],
              ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
+        # Historical/completed-season player stats deliberately do NOT belong to
+        # refresh. They are expensive and occasionally hang upstream. Use the
+        # history phase instead so current-data refreshes stay responsive.
         Step("cfbd-player-stats", "Most recent completed-season player statistics",
-             ["sports_aggregator.cfb.cli", "sync-player-stats", "--year", str(season - 1)],
-             ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
+             ["sports_aggregator.cfb.history_cli", "--year", str(season - 1)],
+             ("initial", "history"), requires_env=("CFBD_API_KEY",)),
         Step("cfbd-promoted", "Prior-classification history for promoted teams",
              ["sports_aggregator.cfb.cli", "sync-promoted", "--year", year],
              ("initial",), requires_env=("CFBD_API_KEY",)),
@@ -105,14 +110,14 @@ def steps(season: int) -> list[Step]:
              ["sports_aggregator.social.content_cli", "score"], ("refresh",), optional=True),
     ]
 
-    # Historical player statistics are deliberately one process per year.  A
-    # timeout affects only that season and the command is naturally resumable.
+    # Older seasons also get their own parent subprocess. history_cli then
+    # splits that season into one subprocess per conference with a short hard
+    # timeout, so a stuck endpoint is killed and the next conference continues.
     for historical_year in range(season - 7, season - 1):
         plan.append(Step(
             f"history-{historical_year}",
             f"Player statistics and roster history for {historical_year}",
-            ["sports_aggregator.cfb.cli", "backfill", "--year", year,
-             "--from-year", str(historical_year), "--to-year", str(historical_year)],
+            ["sports_aggregator.cfb.history_cli", "--year", str(historical_year)],
             ("initial", "history"), requires_env=("CFBD_API_KEY",),
         ))
     return plan
@@ -194,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--only", nargs="*", default=None,
                         help="Run only named steps, e.g. history-2021 history-2022")
     parser.add_argument("--timeout", type=int, default=1800,
-                        help="Per-step timeout in seconds (history gets this budget per year)")
+                        help="Per-step timeout in seconds; history also enforces a shorter timeout per conference")
     args = parser.parse_args(argv)
 
     if args.command == "status":
