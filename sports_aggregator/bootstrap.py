@@ -55,7 +55,6 @@ def steps(season: int) -> list[Step]:
         Step("cfbd-roster-context", "Prior roster, portal, draft and returning production",
              ["sports_aggregator.cfb.cli", "sync-roster-context", "--year", year],
              ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
-        # Completed/past-season player stats are intentionally history-only.
         Step("cfbd-player-stats", "Most recent completed-season player statistics",
              ["sports_aggregator.cfb.history_cli", "--year", str(season - 1)],
              ("history",), requires_env=("CFBD_API_KEY",)),
@@ -84,6 +83,13 @@ def steps(season: int) -> list[Step]:
              ["sports_aggregator.social.cli", "seed"], ("initial",), optional=True),
         Step("social-prepare", "Prepare curated social sources",
              ["sports_aggregator.social.cli", "prepare"], ("initial",), optional=True),
+        Step("reddit-validate", "Validate configured subreddit endpoints",
+             ["sports_aggregator.social.cli", "validate-reddit"],
+             ("initial", "refresh"), optional=True,
+             requires_env=("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET")),
+        Step("media-validate", "Validate/promote YouTube and podcast endpoints",
+             ["sports_aggregator.social.media_cli", "validate-all"],
+             ("initial", "refresh"), optional=True),
         Step("bluesky", "Curated Bluesky author feeds",
              ["sports_aggregator.social.content_cli", "ingest", "--season", year],
              ("initial", "refresh"), optional=True),
@@ -93,7 +99,8 @@ def steps(season: int) -> list[Step]:
              requires_env=("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET")),
         Step("youtube", "Verified channel uploads",
              ["sports_aggregator.social.content_cli", "ingest-youtube", "--season", year],
-             ("initial", "refresh"), optional=True, requires_env=("YOUTUBE_API_KEY", "YOUTUBE_API")),
+             ("initial", "refresh"), optional=True,
+             requires_env=("YOUTUBE_API_KEY", "YOUTUBE_API")),
         Step("podcasts", "Verified podcast feeds",
              ["sports_aggregator.social.content_cli", "ingest-podcasts", "--season", year],
              ("initial", "refresh"), optional=True),
@@ -111,7 +118,6 @@ def steps(season: int) -> list[Step]:
              ("initial", "refresh"), optional=True),
     ]
 
-    # Historical seasons are available only through the explicit history phase.
     for historical_year in range(season - 7, season - 1):
         plan.append(Step(
             f"history-{historical_year}",
