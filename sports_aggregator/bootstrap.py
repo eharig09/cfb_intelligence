@@ -2,8 +2,9 @@ from __future__ import annotations
 """One entry point for building, refreshing, and repairing the CFB data store.
 
 Phases:
-* initial  -- full current/static build; never historical player-stat backfills.
-* refresh  -- current-season data that changes regularly; never historical stats.
+* initial  -- complete normal app update: structured data, live ingestion and
+              downstream processing; never historical player-stat backfills.
+* refresh  -- current-season/live update; never historical stats.
 * history  -- historical player-stat backfill, isolated one season per process
               and one conference per child process.
 * status   -- compact freshness/coverage report.
@@ -55,8 +56,6 @@ def steps(season: int) -> list[Step]:
              ["sports_aggregator.cfb.cli", "sync-roster-context", "--year", year],
              ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
         # Completed/past-season player stats are intentionally history-only.
-        # They are expensive and occasionally hang upstream, so neither normal
-        # update phase is allowed to depend on them.
         Step("cfbd-player-stats", "Most recent completed-season player statistics",
              ["sports_aggregator.cfb.history_cli", "--year", str(season - 1)],
              ("history",), requires_env=("CFBD_API_KEY",)),
@@ -80,39 +79,39 @@ def steps(season: int) -> list[Step]:
              ("initial",), optional=True),
         Step("weather", "Kickoff weather forecasts from Open-Meteo",
              ["sports_aggregator.cfb.external_cli", "weather", "--season", year],
-             ("refresh",), optional=True),
+             ("initial", "refresh"), optional=True),
         Step("social-seed", "Seed curated reporting/source registry",
              ["sports_aggregator.social.cli", "seed"], ("initial",), optional=True),
         Step("social-prepare", "Prepare curated social sources",
              ["sports_aggregator.social.cli", "prepare"], ("initial",), optional=True),
         Step("bluesky", "Curated Bluesky author feeds",
              ["sports_aggregator.social.content_cli", "ingest", "--season", year],
-             ("refresh",), optional=True),
+             ("initial", "refresh"), optional=True),
         Step("reddit", "Curated subreddit submissions",
              ["sports_aggregator.social.content_cli", "ingest-reddit", "--season", year],
-             ("refresh",), optional=True,
+             ("initial", "refresh"), optional=True,
              requires_env=("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET")),
         Step("youtube", "Verified channel uploads",
              ["sports_aggregator.social.content_cli", "ingest-youtube", "--season", year],
-             ("refresh",), optional=True, requires_env=("YOUTUBE_API_KEY", "YOUTUBE_API")),
+             ("initial", "refresh"), optional=True, requires_env=("YOUTUBE_API_KEY", "YOUTUBE_API")),
         Step("podcasts", "Verified podcast feeds",
              ["sports_aggregator.social.content_cli", "ingest-podcasts", "--season", year],
-             ("refresh",), optional=True),
+             ("initial", "refresh"), optional=True),
         Step("articles", "RSS reporting",
              ["sports_aggregator.social.content_cli", "ingest-reporting", "--season", year],
-             ("refresh",), optional=True),
+             ("initial", "refresh"), optional=True),
         Step("retag", "Re-resolve content against current teams/players/games",
              ["sports_aggregator.social.content_cli", "retag", "--season", year],
-             ("refresh",), optional=True),
+             ("initial", "refresh"), optional=True),
         Step("cluster", "Cross-source story clustering",
-             ["sports_aggregator.social.content_cli", "cluster"], ("refresh",), optional=True),
+             ["sports_aggregator.social.content_cli", "cluster"],
+             ("initial", "refresh"), optional=True),
         Step("score", "Relevance scoring",
-             ["sports_aggregator.social.content_cli", "score"], ("refresh",), optional=True),
+             ["sports_aggregator.social.content_cli", "score"],
+             ("initial", "refresh"), optional=True),
     ]
 
-    # Older seasons get their own parent subprocess. history_cli then splits
-    # that season into one subprocess per conference with a short hard timeout,
-    # so a stuck endpoint is killed and the next conference continues.
+    # Historical seasons are available only through the explicit history phase.
     for historical_year in range(season - 7, season - 1):
         plan.append(Step(
             f"history-{historical_year}",
