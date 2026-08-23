@@ -1,0 +1,216 @@
+{#
+  One renderer for every statistical table in the application.
+
+  A view describes a table once with sports_aggregator.tables.Table; this macro
+  decides markup, alignment, number formatting, and empty states. Views add
+  optional per-cell decoration through key conventions on the row dict:
+
+    "<key>_url"   render the cell as a link. An absolute URL is treated as
+                  external and opens in a new tab; a relative path is in-app
+                  navigation and replaces the current page as usual.
+    "<key>_sub"   render a small secondary line under the value
+    "<key>_class" add a state class such as win / loss / pending
+    "<key>_logo"  render the team logo before the value
+    "<key>_color" paint a team-colored rule beside the value
+#}
+
+{#
+  Only links that leave the application open a new tab. In-app navigation should
+  behave like navigation, so a relative path replaces the current page.
+#}
+{% macro external(href) %}
+{%- if href and (href.startswith('http://') or href.startswith('https://')) %} target="_blank" rel="noopener"{% endif %}
+{%- endmacro %}
+
+{% macro data_table(table, extra_class='') %}
+    {%- if table.rows %}
+    <div class="table-wrap">
+        {%- if table.caption or table.note %}
+        <div class="table-caption">
+            <strong>{{ table.caption or '' }}</strong>
+            {%- if table.note %}<span>{{ table.note }}</span>{% endif %}
+        </div>
+        {%- endif %}
+        <table class="data{{ ' dense' if table.dense }}{{ ' ' ~ extra_class if extra_class }}">
+            <thead>
+                <tr>
+                    {%- for column in table.columns %}
+                    <th scope="col"
+                        class="col-{{ column.align }}{{ ' col-rank' if column.format == 'rank' }}"
+                        {%- if column.title %} title="{{ column.title }}"{% endif %}>{{ column.label }}</th>
+                    {%- endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {%- for row in table.rows %}
+                <tr>
+                    {%- for column in table.columns %}
+                    {%- set text = row.get(column.key) | cell(column.format) %}
+                    {%- set href = row.get(column.key ~ '_url') %}
+                    {%- set sub = row.get(column.key ~ '_sub') %}
+                    <td class="col-{{ column.align }}
+                        {{- ' num' if column.numeric }}
+                        {{- ' emphasis' if column.emphasis }}
+                        {{- ' is-empty' if text == '—' }}
+                        {{- ' ' ~ row.get(column.key ~ '_class') if row.get(column.key ~ '_class') }}">
+                        {%- set logo = row.get(column.key ~ '_logo') %}
+                        {%- set color = row.get(column.key ~ '_color') %}
+                        {%- if logo or color %}<span class="team-cell"{% if color %} style="--row-team:{{ color }}"{% endif %}>
+                            {%- if color %}<i class="team-rule" aria-hidden="true"></i>{% endif %}
+                            {%- if logo %}<img class="team-logo" src="{{ logo }}" alt="" loading="lazy">{% endif %}
+                            {%- if href %}<a href="{{ href }}"{{ external(href) }}>{{ text }}</a>{% else %}<span>{{ text }}</span>{% endif %}
+                        </span>
+                        {%- elif href %}<a href="{{ href }}"{{ external(href) }}>{{ text }}</a>{% else %}{{ text }}{% endif %}
+                        {%- if sub %}<span class="sub">{{ sub }}</span>{% endif %}
+                    </td>
+                    {%- endfor %}
+                </tr>
+                {%- endfor %}
+            </tbody>
+            {%- if table.total_row %}
+            <tfoot>
+                <tr>
+                    {%- for column in table.columns %}
+                    <td class="col-{{ column.align }}{{ ' num' if column.numeric }}">
+                        {{- table.total_row.get(column.key) | cell(column.format) -}}
+                    </td>
+                    {%- endfor %}
+                </tr>
+            </tfoot>
+            {%- endif %}
+        </table>
+    </div>
+    {%- else %}
+    <div class="empty">{{ table.empty }}</div>
+    {%- endif %}
+{% endmacro %}
+
+
+{#
+  Category tabs over several tables. Without JavaScript every panel stays
+  visible, so the statistics are still readable; the script only collapses the
+  set into tabs once it runs.
+#}
+{% macro tabbed_tables(groups, group_id, note=None) %}
+    {%- if groups %}
+    <div class="tabset" data-tabset="{{ group_id }}">
+        <div class="tabs" role="tablist">
+            {%- for group in groups %}
+            <button type="button" role="tab" id="{{ group_id }}-tab-{{ loop.index }}"
+                    aria-controls="{{ group_id }}-panel-{{ loop.index }}"
+                    aria-selected="{{ 'true' if loop.first else 'false' }}">{{ group.label }}</button>
+            {%- endfor %}
+        </div>
+        {%- if note %}<div class="table-note">{{ note }}</div>{% endif %}
+        {%- for group in groups %}
+        <div class="tabpanel" role="tabpanel" id="{{ group_id }}-panel-{{ loop.index }}"
+             aria-labelledby="{{ group_id }}-tab-{{ loop.index }}">
+            {{ data_table(group.table) }}
+        </div>
+        {%- endfor %}
+    </div>
+    {%- endif %}
+{% endmacro %}
+
+
+{% macro tabs_script() %}
+<script>
+// Progressive enhancement: panels render expanded, then collapse into tabs.
+document.querySelectorAll('.tabset').forEach(function (tabset) {
+    var tabs = Array.prototype.slice.call(tabset.querySelectorAll('[role="tab"]'));
+    var panels = Array.prototype.slice.call(tabset.querySelectorAll('.tabpanel'));
+    function select(index) {
+        tabs.forEach(function (tab, position) {
+            tab.setAttribute('aria-selected', position === index ? 'true' : 'false');
+        });
+        panels.forEach(function (panel, position) {
+            panel.hidden = position !== index;
+        });
+    }
+    tabs.forEach(function (tab, index) {
+        tab.addEventListener('click', function () { select(index); });
+    });
+    if (tabs.length) { select(0); }
+});
+</script>
+{% endmacro %}
+
+{#
+  One column per source type. Each stream is ranked by relevance inside itself,
+  so a reader can ask "what is the video layer saying" without that question
+  being answered by whichever platform happened to post most recently.
+#}
+{% macro source_streams(streams) %}
+<div class="stream-columns">
+    {%- for stream in streams %}
+    <section class="stream-column">
+        <header class="stream-column-head">
+            <strong>{{ stream.label }}</strong>
+            <span>{{ stream.total }}</span>
+        </header>
+        <p class="stream-column-note">{{ stream.description }}</p>
+        {%- for item in stream["items"] %}
+        <article class="stream-entry">
+            <div class="stream-entry-top">
+                <span class="stream-type">{{ item.content_type | replace('_', ' ') | lower }}</span>
+                <span class="stream-score">{{ item.score | cell('f1') }}</span>
+            </div>
+            <a href="{{ item.canonical_url }}" target="_blank" rel="noopener">
+                {{- (item.title or item.body_text or 'Untitled') | truncate(110, true, '…') -}}
+            </a>
+            <div class="stream-entry-meta">
+                {%- if item.teams %}
+                <span class="stream-teams">
+                    {%- for team in item.teams %}
+                    <span class="stream-team" {% if team.color %}style="--row-team:{{ team.color }}"{% endif %}>
+                        {%- if team.logo %}<img src="{{ team.logo }}" alt="" loading="lazy">{% endif %}
+                        {{- team.school -}}
+                    </span>
+                    {%- endfor %}
+                </span>
+                {%- endif %}
+                <span class="stream-source">{{ item.source_entity_name or item.publisher_name }}</span>
+            </div>
+        </article>
+        {%- else %}
+        <div class="empty">Nothing ingested in this window.</div>
+        {%- endfor %}
+    </section>
+    {%- endfor %}
+</div>
+{% endmacro %}
+
+
+{#
+  A story list. `context` marks a stream as background rather than reporting
+  about the page's subject, so conference-wire items can never read as team
+  reporting; each carries the team it is actually about.
+#}
+{% macro story_list(stories, empty, context=false) %}
+    {%- if stories %}
+    <div class="story-list{{ ' is-context' if context }}">
+        {%- for story in stories %}
+        <article class="story-entry{{ ' has-team' if story.accent }}"
+                 {% if story.accent %}style="--story-team:{{ story.accent }}"{% endif %}>
+            <div class="story-entry-top">
+                <span class="story-type">{{ story.story_type | replace('_', ' ') | lower }}</span>
+                <span class="story-source">{{ story.source_name }}</span>
+            </div>
+            <a href="{{ story.url }}" target="_blank" rel="noopener">{{ story.title }}</a>
+            <div class="story-entry-meta">
+                {%- for team in story.teams[:3] %}
+                <a class="story-team" href="{{ url_for('cfb.team_preview', team_id=team.team_id) }}"
+                   {% if team.accent %}style="--row-team:{{ team.accent }}"{% endif %}>
+                    {%- if team.logo %}<img src="{{ team.logo }}" alt="" loading="lazy">{% endif %}
+                    {{- team.school -}}
+                </a>
+                {%- endfor %}
+                <span>{{ story.sources | length }} source{{ '' if story.sources | length == 1 else 's' }}</span>
+            </div>
+        </article>
+        {%- endfor %}
+    </div>
+    {%- else %}
+    <div class="empty">{{ empty }}</div>
+    {%- endif %}
+{% endmacro %}

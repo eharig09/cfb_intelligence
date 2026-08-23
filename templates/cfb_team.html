@@ -1,0 +1,161 @@
+{% extends "_layout.html" %}
+{% from "_tables.html" import data_table, story_list, tabbed_tables, tabs_script %}
+
+{% block title %}{{ team.school }} | {{ season }} Team Intelligence{% endblock %}
+
+{% block head %}
+<style>
+    .hero { display: flex; align-items: center; gap: 16px; border-left: 8px solid var(--team); padding: 8px 0 12px 16px; }
+    .hero > div { flex: 1 1 auto; min-width: 0; }
+    .logo { width: 64px; height: 64px; object-fit: contain; flex: 0 0 auto; }
+    @media (min-width: 860px) { .logo { width: 92px; height: 92px; } }
+    .depth-unit { margin: 20px 0; }
+    .depth-unit > h3 { font: 700 1.4rem Georgia, serif; margin: 0 0 10px; }
+    .stories { display: grid; gap: 9px; }
+    .stories a { text-decoration: none; }
+    .stream-label { display: flex; justify-content: space-between; gap: 8px; }
+    .source { color: var(--muted); font-size: .66rem; }
+    .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+
+</style>
+{% endblock %}
+
+{% block body_attrs %} style="--team:{{ identity.accent }};--team-fill:{{ identity.fill }};--team-on-fill:{{ identity.on_fill }};--conference:{{ identity.conference_color }}"{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('cfb.conference_preview', slug=team.conference | lower | replace(' ', '-'), season=season) if team.conference else url_for('cfb.today', season=season) }}">&larr; {{ team.conference or 'College Football Today' }}</a>
+<span class="tagline">{{ season }} team intelligence</span>
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div>
+        <div class="eyebrow">{{ season }} team intelligence</div>
+        <h1>{% if rank %}<span style="color:var(--rust)">#{{ rank }}</span> {% endif %}{{ team.school }}</h1>
+        <div class="meta">
+            {% if team.conference %}<a class="conference-tag" href="{{ url_for('cfb.conference_preview', slug=team.conference | lower | replace(' ', '-'), season=season) }}">{{ team.conference }}</a>{% endif %}
+            {{ team.mascot or '' }} &middot; {{ team.venue_name or 'Venue TBD' }}
+        </div>
+    </div>
+    {% if team.logos %}<img class="logo" src="{{ team.logos[0] }}" alt="{{ team.school }} logo">{% endif %}
+</section>
+
+{% set record = metrics.record %}{% set summary = depth_chart.summary %}
+<div class="facts">
+    <div class="fact"><b>{% if record %}{{ record.wins }}&ndash;{{ record.losses }}{% else %}0&ndash;0{% endif %}</b><span>Overall</span></div>
+    <div class="fact"><b>{% if record %}{{ record.conference_wins }}&ndash;{{ record.conference_losses }}{% else %}0&ndash;0{% endif %}</b><span>Conference</span></div>
+    <div class="fact"><b>{{ rank or '—' }}</b><span>{{ ranking_poll or 'National rank' }}</span></div>
+    <div class="fact"><b>{{ summary.continuity_pct | cell('pct') }}</b><span>Roster continuity</span></div>
+    <div class="fact"><b>{{ movements.counts.get('TRANSFER_IN', 0) }}</b><span>Transfer arrivals</span></div>
+    <div class="fact"><b>{{ movements.counts.get('DRAFTED', 0) }}</b><span>Drafted departures</span></div>
+</div>
+
+<div class="layout">
+    <div>
+        <section class="section">
+            <h2>{{ season }} schedule</h2>
+            <div class="section-note">Results are shown from this team's perspective.</div>
+            {{ data_table(schedule_table) }}
+        </section>
+
+        <section class="section">
+            <h2>Player production</h2>
+            <div class="section-note">
+                {% if leaders.season %}{{ leaders.season }} CFBD statistics &middot; full stat line per category
+                {% else %}Awaiting the player-stat stream{% endif %}
+            </div>
+            {% if leader_groups %}
+                {{ tabbed_tables(leader_groups, 'team-leaders') }}
+            {% else %}
+                <div class="empty">Player production will stream here when CFBD publishes it.</div>
+            {% endif %}
+        </section>
+
+        <section class="section">
+            <h2>Experience-first depth board</h2>
+            <div class="section-note">
+                Roster architecture, not an official depth chart. Ordering favors returning
+                production signals, continuity, and class experience.
+            </div>
+            {% for unit in depth_units %}
+            <div class="depth-unit">
+                <h3>{{ unit.unit }}</h3>
+                {{ tabbed_tables(unit.groups, 'depth-' ~ loop.index) }}
+            </div>
+            {% else %}
+            <div class="empty">Roster data is not yet available.</div>
+            {% endfor %}
+        </section>
+
+        <section class="section">
+            <h2>Roster movement</h2>
+            <div class="section-note">
+                Portal and draft labels are sourced; graduation and eligibility labels are
+                roster-comparison inferences and are marked as such in the evidence column.
+            </div>
+            <div class="split">
+                <div>{{ data_table(arrivals_table) }}</div>
+                <div>{{ data_table(departures_table) }}</div>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>Team quality</h2>
+            <div class="section-note">
+                {% if quality.state == 'PRESEASON' %}
+                Preseason context signals. Live {{ season }} efficiency replaces them after games are played.
+                {% else %}Live {{ season }} CFBD team metrics.{% endif %}
+            </div>
+            {% if quality.state == 'PRESEASON' %}{{ data_table(quality_table) }}{% endif %}
+            {{ data_table(team_stats_table) }}
+        </section>
+    </div>
+
+    <aside>
+        <section class="section">
+            <h2>Team reporting</h2>
+            <div class="section-note">Stories that resolved to {{ team.school }} specifically.</div>
+            {{ story_list(stories, 'No story has resolved to this team yet.') }}
+        </section>
+
+        <section class="section">
+            <h2>Around the {{ team.conference or 'conference' }}</h2>
+            <div class="section-note">
+                Conference-wide reporting about other programmes. These are not about
+                {{ team.school }} and each shows the team it concerns.
+            </div>
+            {{ story_list(conference_stories, 'No other conference reporting is available.', context=true) }}
+        </section>
+
+        <section class="section">
+            <h2>Key returning production</h2>
+            <div class="section-note">Graded 2025 players still on the {{ season }} roster.</div>
+            {{ data_table(pff_players_table) }}
+        </section>
+
+        <section class="section">
+            <h2>Key departures</h2>
+            <div class="section-note">Graded 2025 players who left, and where they went.</div>
+            {{ data_table(pff_departed_table) }}
+        </section>
+
+        <section class="section">
+            <h2>{{ board_year | default(2027) }} draft watch</h2>
+            <div class="section-note">
+                Class-year eligibility estimate, ranked against players actually drafted
+                at each position.
+            </div>
+            {{ data_table(draft_table) }}
+        </section>
+
+        <section class="section">
+            <h2>Position philosophy</h2>
+            <div class="section-note">2025 PFF usage-weighted strengths.</div>
+            {{ data_table(pff_groups_table) }}
+        </section>
+    </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}{{ tabs_script() }}{% endblock %}

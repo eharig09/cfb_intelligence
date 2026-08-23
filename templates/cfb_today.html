@@ -1,0 +1,188 @@
+{% extends "_layout.html" %}
+{% from "_tables.html" import data_table, source_streams, tabbed_tables, tabs_script %}
+
+{% block title %}College Football Today | Sports News Aggregator{% endblock %}
+
+{% block head %}
+<style>
+    .hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; border-bottom: 3px solid var(--ink); padding-bottom: 14px; }
+    .hero h1 { font-size: clamp(2rem, 4.5vw, 3.2rem); margin: 4px 0 6px; }
+    .hero .dek { font-size: .92rem; max-width: 640px; }
+    .season { font-family: Georgia, serif; font-size: 1.6rem; color: var(--rust); }
+    .notice { padding: 12px 15px; background: #fff7d6; border-left: 5px solid var(--gold); margin: 14px 0 0; font-size: .85rem; line-height: 1.5; }
+
+    /* Three panels across on a wide screen: the slate, what happened, and who
+       to watch. They collapse to two and then one as width runs out. */
+    .briefing { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 18px; }
+    @media (min-width: 900px) { .briefing { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+    @media (min-width: 1300px) { .briefing { grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.14fr) minmax(0, .92fr); } }
+    .panel { background: var(--paper); border: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; }
+    .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 12px; background: var(--ink); color: #fff; }
+    .panel-head strong { font: 700 1.02rem Georgia, serif; }
+    .panel-head span { color: #d7c8b5; font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; }
+    .panel-body { overflow-y: auto; max-height: 31rem; }
+    .panel .table-wrap { border: 0; margin: 0; }
+
+    /* Compact development entries with their provenance one click away. */
+    .dev { padding: 9px 12px; border-bottom: 1px solid var(--line); border-left: 4px solid transparent; }
+    .dev.has-team { border-left-color: var(--story-team); }
+    .dev:last-child { border-bottom: 0; }
+    .dev-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .dev-role { color: var(--rust); font-size: .59rem; font-weight: 900; text-transform: uppercase; letter-spacing: .07em; }
+    .dev-score { color: var(--muted); font-size: .65rem; font-variant-numeric: tabular-nums; }
+    .dev > a { display: block; font-size: .84rem; line-height: 1.35; font-weight: 700; text-decoration: none; margin: 3px 0 4px; }
+    .dev > a:hover { text-decoration: underline; }
+    .dev-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; color: var(--muted); font-size: .64rem; }
+    .dev details { margin-top: 5px; }
+    .dev summary { cursor: pointer; color: var(--muted); font-size: .63rem; list-style: none; }
+    .dev summary::-webkit-details-marker { display: none; }
+    .dev summary:before { content: "\25B8  "; }
+    .dev details[open] summary:before { content: "\25BE  "; }
+    .dev summary:hover { color: var(--rust); }
+    .why { margin: 6px 0 0; padding: 8px 10px; background: var(--zebra); border-left: 3px solid var(--line-strong); font-size: .66rem; line-height: 1.55; }
+    .why dt { color: var(--rust); font-weight: 900; text-transform: uppercase; font-size: .57rem; letter-spacing: .06em; margin-top: 6px; }
+    .why dt:first-child { margin-top: 0; }
+    .why dd { margin: 2px 0 0; color: var(--ink); }
+    .why code { background: #eee5d8; padding: 0 3px; }
+
+    .conference-strip { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+    .conference-chip { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--rust); padding: 5px 9px; font-size: .72rem; font-weight: 700; text-decoration: none; }
+    .conference-chip span { color: var(--muted); font-weight: 400; }
+    .reference .table-wrap { max-height: 27rem; overflow-y: auto; }
+
+    @media (max-width: 600px) { .season { display: none; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div>
+        <div class="eyebrow">What matters today</div>
+        <h1>College Football Today</h1>
+        <p class="dek">The slate worth watching, what credible sources actually reported, and where every item came from.</p>
+    </div>
+    <div class="season">{{ season }}</div>
+</section>
+
+<div class="facts">
+    <div class="fact"><b>{{ status.counts.teams }}</b><span>FBS teams</span></div>
+    <div class="fact"><b>{{ status.counts.games }}</b><span>Games</span></div>
+    <div class="fact"><b>{{ content_summary.total }}</b><span>Source items</span></div>
+    <div class="fact"><b>{{ content_summary.platforms }}</b><span>Platforms</span></div>
+    <div class="fact"><b>{{ content_summary.team_links }}</b><span>Team links</span></div>
+    <div class="fact"><b>{{ status.counts.rankings }}</b><span>Poll rows</span></div>
+</div>
+
+{% if status.counts.games == 0 %}
+<div class="notice">
+    <strong>Structured {{ season }} data has not been synchronized yet.</strong>
+    {% if cfbd_configured %}Run <code>python -m sports_aggregator.cfb.cli sync --year {{ season }}</code>.
+    {% else %}Add <code>CFBD_API_KEY</code> to <code>.env</code>, then run the sync command.{% endif %}
+</div>
+{% endif %}
+
+<div class="conference-strip">
+    {% for conference in conferences %}
+    <a class="conference-chip" href="{{ url_for('cfb.conference_preview', slug=conference.slug, season=season) }}">
+        {{ conference.conference }} <span>{{ conference.team_count }}</span>
+    </a>
+    {% endfor %}
+</div>
+
+<div class="briefing">
+    <section class="panel">
+        <div class="panel-head"><strong>Games to Watch</strong><span>Attention &amp; matchup edge</span></div>
+        <div class="panel-body">{{ data_table(games_table) }}</div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-head"><strong>Ranked Developments</strong><span>Relevance, not recency</span></div>
+        <div class="panel-body">
+            {% for item in developments %}
+            <article class="dev{{ ' has-team' if item.teams and item.teams[0].accent }}"
+                     {% if item.teams and item.teams[0].accent %}style="--story-team:{{ item.teams[0].accent }}"{% endif %}>
+                <div class="dev-top">
+                    <span class="dev-role">{{ item.role_label }}{% if item.topic %} &middot; {{ item.topic | replace('_', ' ') | lower }}{% endif %}</span>
+                    <span class="dev-score">{{ item.score | cell('f1') }}</span>
+                </div>
+                <a href="{{ item.canonical_url }}" target="_blank" rel="noopener">
+                    {{- (item.title or item.body_text or 'Untitled') | truncate(120, true, '…') -}}
+                </a>
+                <div class="dev-meta">
+                    {%- for team in item.teams[:3] %}
+                    <span class="stream-team" {% if team.accent %}style="--row-team:{{ team.accent }}"{% endif %}>{{ team.school }}</span>
+                    {%- endfor %}
+                    <span>{{ item.source_entity_name or item.publisher_name }} &middot; {{ item.platform }}</span>
+                </div>
+                <details>
+                    <summary>Why this ranks &amp; what it references</summary>
+                    <dl class="why">
+                        <dt>Role</dt>
+                        <dd>{{ item.role_label }} &mdash; {{ item.role_evidence | join('; ') or 'no role signal' }}</dd>
+                        <dt>Ranking factors</dt>
+                        <dd>{{ item.factors | join(' · ') }}</dd>
+                        {% if item.tag_evidence %}
+                        <dt>Why it links where it does</dt>
+                        <dd>
+                            {%- for evidence in item.tag_evidence[:6] %}
+                            matched <code>{{ evidence.matched_text }}</code> in the {{ evidence.location }} &rarr;
+                            <strong>{{ evidence.label }}</strong>
+                            <em>({{ evidence.method | replace('_', ' ') }}, {{ evidence.confidence }})</em>{% if not loop.last %}<br>{% endif %}
+                            {%- endfor %}
+                        </dd>
+                        {% endif %}
+                        {% if item.players %}
+                        <dt>Players referenced</dt>
+                        <dd>
+                            {%- for player in item.players %}
+                            {{ player.name or player.player_id }}{% if player.team %} ({{ player.team }}){% endif %}
+                            <em>({{ player.method | replace('_', ' ') }})</em>{% if not loop.last %}, {% endif %}
+                            {%- endfor %}
+                        </dd>
+                        {% endif %}
+                        {% if item.games %}
+                        <dt>Game referenced</dt>
+                        <dd>
+                            {%- for game in item.games %}
+                            {{ game.away_team }} at {{ game.home_team }} (week {{ game.week }})
+                            <em>({{ game.method | replace('_', ' ') }})</em>{% if not loop.last %}, {% endif %}
+                            {%- endfor %}
+                        </dd>
+                        {% endif %}
+                        {% if item.conferences %}
+                        <dt>Conferences</dt><dd>{{ item.conferences | join(', ') }}</dd>
+                        {% endif %}
+                    </dl>
+                </details>
+            </article>
+            {% else %}
+            <div class="empty">Run the ingestion and scoring jobs to populate developments.</div>
+            {% endfor %}
+        </div>
+    </section>
+
+
+    <section class="panel">
+        <div class="panel-head"><strong>2027 Draft Watch</strong><span>vs drafted profiles</span></div>
+        <div class="panel-body">{{ data_table(draft_table) }}</div>
+    </section>
+</div>
+
+<section class="section">
+    <div class="section-title">
+        <h2>Source Streams</h2>
+        <span>One column per source type &middot; each ranked by relevance</span>
+    </div>
+    {{ source_streams(streams) }}
+</section>
+
+<section class="section reference">
+    <div class="section-title">
+        <h2>Reference</h2>
+        <span>Rankings, draft watch, and personnel movement</span>
+    </div>
+    {{ tabbed_tables(reference_tables, 'reference') }}
+</section>
+{% endblock %}
+
+{% block scripts %}{{ tabs_script() }}{% endblock %}

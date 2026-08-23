@@ -1,0 +1,33 @@
+# Secrets and local configuration
+.env
+praw.ini
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+sna-env/
+instance/
+
+# User-provided licensed data snapshots
+PFF/
+
+# Generated analytics images
+static/break_chart.png
+static/heatmap_*.png
+static/pitch_mix.png
+static/velo_spin.png
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

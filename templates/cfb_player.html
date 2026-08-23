@@ -1,0 +1,125 @@
+{% extends "_layout.html" %}
+{% from "_tables.html" import data_table, story_list, tabbed_tables, tabs_script %}
+
+{% block title %}{{ player.name }} | College Football Player{% endblock %}
+
+{% block head %}
+<style>
+    .hero { border-left: 9px solid var(--team); padding: 8px 0 14px 22px; display: grid; grid-template-columns: 1fr auto; }
+    .logo { width: 86px; height: 86px; object-fit: contain; }
+    .facts { grid-template-columns: repeat(5, 1fr); }
+    .timeline { border-left: 3px solid var(--line); padding-left: 15px; }
+    .event { position: relative; margin-bottom: 9px; }
+    .event:before { content: ""; position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--rust); left: -21px; top: 17px; }
+    .story { margin-bottom: 9px; }
+    .story a { text-decoration: none; }
+    .story-head { display: flex; justify-content: space-between; gap: 10px; }
+    @media (max-width: 760px) { .logo { display: none; } }
+</style>
+{% endblock %}
+
+{% block body_attrs %} style="--team:{{ identity.accent }};--team-fill:{{ identity.fill }};--team-on-fill:{{ identity.on_fill }};--conference:{{ identity.conference_color }}"{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('cfb.team_preview', team_id=player.team_id, season=season) if player.team_id else url_for('cfb.today', season=season) }}">&larr; {{ player.team }}</a>
+<span class="tagline">Player intelligence</span>
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div>
+        <div class="eyebrow">Player intelligence &middot; latest roster {{ player.season }}</div>
+        <h1>{{ player.name }}</h1>
+        <div class="meta">{{ player.position or 'Position TBD' }} &middot; {{ player.team }} &middot; #{{ player.jersey or '—' }}</div>
+    </div>
+    {% if player.logos %}<img class="logo" src="{{ player.logos[0] }}" alt="{{ player.team }} logo">{% endif %}
+</section>
+
+<div class="facts">
+    <div class="fact"><b>{{ player.position or '—' }}</b><span>Position</span></div>
+    <div class="fact"><b>#{{ player.jersey or '—' }}</b><span>Jersey</span></div>
+    <div class="fact"><b>{{ player.class_year or '—' }}</b><span>Class year</span></div>
+    <div class="fact"><b>{{ player.height | height or '—' }}</b><span>Height</span></div>
+    <div class="fact"><b>{{ player.weight or '—' }}</b><span>Weight (lb)</span></div>
+</div>
+
+<div class="layout">
+    <div>
+        <section class="section">
+            <h2>Season statistics</h2>
+            <div class="section-note">
+                Each category is a conventional stat line pivoted from the long-form CFBD
+                statistics store. Blank columns mean CFBD published no value.
+            </div>
+            {% if stat_groups %}
+                {{ tabbed_tables(stat_groups, 'player-stats') }}
+            {% else %}
+                <div class="empty">No seasonal CFBD production is stored for this player yet.</div>
+            {% endif %}
+        </section>
+
+        <section class="section">
+            <h2>PFF performance</h2>
+            <div class="section-note">Licensed historical snapshot; grades are shown with dataset and usage context.</div>
+            {{ data_table(pff_table) }}
+        </section>
+
+        <section class="section">
+            <h2>Reporting on {{ player.name }}</h2>
+            <div class="section-note">Stories in which this player was resolved by exact name.</div>
+            {{ story_list(stories, 'No story has resolved to this player yet.') }}
+        </section>
+
+        <section class="section">
+            <h2>{{ player.team }} team reporting</h2>
+            <div class="section-note">
+                Context about the team. These stories do not mention {{ player.name }}.
+            </div>
+            {{ story_list(team_stories, 'No recent team reporting is available.', context=true) }}
+        </section>
+    </div>
+
+    <aside>
+        <section class="section">
+            <h2>Career path</h2>
+            <div class="timeline">
+                {% for stint in player.stints %}
+                <article class="card event">
+                    <span class="label">{{ stint.season }}</span>
+                    <strong>{{ stint.team }}</strong>
+                    <div class="meta">{{ stint.position or '—' }} &middot; class {{ stint.class_year or '—' }}</div>
+                </article>
+                {% endfor %}
+                {% for transfer in player.transfers %}
+                <article class="card event">
+                    <span class="label">{{ transfer.season }} transfer</span>
+                    <strong>{{ transfer.origin }} &rarr; {{ transfer.destination or 'Destination TBD' }}</strong>
+                    <div class="meta">{{ transfer.eligibility or '' }}{% if transfer.rating %} &middot; rating {{ transfer.rating | cell('f2') }}{% endif %}</div>
+                </article>
+                {% endfor %}
+                {% for pick in player.draft %}
+                <article class="card event">
+                    <span class="label">{{ pick.draft_year }} NFL Draft</span>
+                    <strong>{{ pick.nfl_team }}</strong>
+                    <div class="meta">Round {{ pick.round }} &middot; overall pick {{ pick.overall_pick }}</div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>Data status</h2>
+            <article class="card">
+                <div class="label">Identity</div>
+                <strong>CFBD {{ player.player_id }}</strong>
+                <div class="meta">
+                    Stories require exact full-name resolution. Team-context items are never
+                    presented as player-specific facts.
+                </div>
+            </article>
+        </section>
+    </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}{{ tabs_script() }}{% endblock %}

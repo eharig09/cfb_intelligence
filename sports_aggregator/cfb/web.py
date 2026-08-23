@@ -1,0 +1,675 @@
+"""College Football Today dashboard, preview pages, and structured APIs."""
+
+from __future__ import annotations
+
+from datetime import datetime
+import os
+from zoneinfo import ZoneInfo
+
+from flask import Blueprint, abort, current_app, jsonify, render_template, request
+
+from sports_aggregator.catalog import get_league
+from sports_aggregator.social.roles import role_label
+from sports_aggregator.cfb.insights import games_to_watch
+from sports_aggregator.cfb.draft import position_targets, prospect_board
+from sports_aggregator.cfb.prospects import (
+    board_with_profile, consensus_board, reconcile)
+from sports_aggregator.cfb.identity import conference_color, team_identity
+from sports_aggregator.cfb.matchups import game_matchup_report
+from sports_aggregator.cfb.player_matchups import player_matchups
+from sports_aggregator.cfb.pff import pff_summary
+from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb import views
+
+
+cfb_pages = Blueprint("cfb", __name__)
+
+
+def _repository() -> CFBRepository:
+    return current_app.extensions["cfb_repository"]
+
+
+def _season() -> int:
+    configured = current_app.config.get("CFB_DEFAULT_SEASON")
+    requested = request.args.get("season", type=int)
+    year = requested or configured or datetime.now().year
+    if year < 1869 or year > datetime.now().year + 2:
+        abort(400)
+    return year
+
+
+def _reporting():
+    return current_app.extensions["league_aggregation_service"].aggregate(
+        get_league("college-football")
+    )
+
+
+def _source_registry():
+    return current_app.extensions["source_registry"]
+
+
+def _unified_source_registry():
+    return current_app.extensions["unified_source_registry"]
+
+
+def _content_repository():
+    return current_app.extensions["content_repository"]
+
+
+def _story_repository():
+    return current_app.extensions["story_repository"]
+
+
+def _local_start(value: str) -> datetime:
+    timezone_name = current_app.config.get("CFB_DISPLAY_TIMEZONE", "America/New_York")
+    return datetime.fromisoformat(value).astimezone(ZoneInfo(timezone_name))
+
+
+def _start_label(value: str) -> str:
+    return _local_start(value).strftime("%a, %b %d · %I:%M %p %Z")
+
+
+def _label_games(games: list[dict]) -> list[dict]:
+    """Attach display labels once; tables split date and time across two lines."""
+    for game in games:
+        local = _local_start(game["start_date"])
+        game["start_label"] = local.strftime("%a, %b %d · %I:%M %p %Z")
+        game["date_label"] = local.strftime("%a, %b %-d") if os.name != "nt" else local.strftime("%a, %b %d")
+        game["time_label"] = local.strftime("%I:%M %p %Z").lstrip("0")
+    return games
+
+
+def _merge_stories(*groups: tuple[str, list[dict]], limit: int = 20) -> list[dict]:
+    merged: list[dict] = []; seen: set[int] = set()
+    for relevance, stories in groups:
+        for story in stories:
+            if story["story_id"] in seen:
+                continue
+            item = {**story, "coverage_label": relevance}
+            merged.append(item); seen.add(story["story_id"])
+            if len(merged) >= limit:
+                return merged
+    return merged
+
+
+def _team_packet(team_id: int, season: int) -> dict:
+    repository = _repository()
+    team = repository.get_team(team_id)
+    if team is None:
+        abort(404)
+    rankings = repository.latest_rankings(season)
+    rank = next(
+        (row["rank"] for row in rankings["teams"] if row["school"] == team["school"]),
+        None,
+    )
+    team_stories = _story_repository().list_stories(team_id=team_id, limit=20)
+    # The conference wire is a separate stream, not weaker team reporting. Stories
+    # already linked to this team are removed so the wire is genuinely "elsewhere
+    # in the conference", and each item keeps the team it is actually about.
+    linked_ids = {story["story_id"] for story in team_stories}
+    conference_stories = [
+        story for story in _story_repository().list_stories(
+            conference=team["conference"], limit=24)
+        if story["story_id"] not in linked_ids
+        and team_id not in {item["team_id"] for item in story.get("teams") or []}
+    ][:10] if team.get("conference") else []
+    return {
+        "season": season,
+        "team": team,
+        "rank": rank,
+        "ranking_poll": rankings["poll"],
+        "metrics": repository.team_metrics(team["school"], season),
+        "quality": repository.team_quality_snapshot(team_id, season),
+        "schedule": _label_games(repository.team_schedule(team_id, season)),
+        "roster": repository.team_roster(team["school"], season),
+        "depth_chart": repository.team_depth_chart(team_id, season),
+        "movements": repository.roster_movements(team_id, season),
+        "leaders": repository.team_player_leaders(team["school"], season),
+        "pff": repository.pff_team_context(team_id, 2025),
+        "stories": [{**story, "coverage_label": "Team linked"} for story in team_stories],
+        "conference_stories": conference_stories,
+    }
+
+
+def _labelled_developments(items: list[dict]) -> list[dict]:
+    """Attach the reader-facing role name without losing the stored code."""
+    for item in items:
+        item["role_label"] = role_label(item.get("source_role"))
+    return items
+
+
+def _with_matchup_edges(repository: CFBRepository, games: list[dict]) -> list[dict]:
+    """Attach the best graded unit matchup to each game on the slate.
+
+    A high attention score says a game matters. The matchup edge says what to
+    actually watch inside it, which is the question the dashboard could not
+    answer before.
+    """
+    for game in games:
+        report = game_matchup_report(
+            repository.pff_matchups(game["home_team_id"], game["away_team_id"], 2025),
+            game["away_team"], game["home_team"], limit=1,
+        )
+        top = (report["matchups"] or [None])[0]
+        game["matchup_edge"] = top["interest"] if top else None
+        # Name the team that holds the advantage: an interest score alone told a
+        # reader that a matchup mattered without saying who it favours.
+        game["matchup_edge_team"] = (top.get("advantage") or "Even") if top else None
+        game["matchup_edge_unit"] = top["label"] if top else None
+        game["matchup_edge_label"] = f"{top['label']}: {top['headline']}" if top else None
+    return games
+
+
+@cfb_pages.get("/college-football/")
+def today():
+    season = _season()
+    repository = _repository()
+    watch_games = games_to_watch(repository.upcoming_games(season, limit=80))
+    rankings = repository.latest_rankings(season)
+    movement_stream = repository.recent_movements(season, limit=16)
+    brands = repository.team_brands()
+    slate = _with_matchup_edges(repository, _label_games(watch_games))
+    return render_template(
+        "cfb_today.html",
+        season=season,
+        status=repository.status(season),
+        rankings=rankings,
+        games_table=views.games_to_watch_compact(slate, brands),
+        conferences=repository.conferences(),
+        national_stories=_story_repository().list_stories(limit=16),
+        streams=_content_repository().source_streams(limit=8),
+        content_summary=_content_repository().summary(),
+        developments=_labelled_developments(_content_repository().top_developments(limit=16)),
+        draft_table=views.draft_panel_table(
+            board_with_profile(
+                repository, prospect_board(repository, roster_season=season, limit=500),
+                limit=18),
+            season),
+        reference_tables=[
+            {"label": "Rankings", "table": views.rankings_table(rankings, season, brands)},
+            {"label": "Personnel movement",
+             "table": views.movement_stream_table(movement_stream)},
+        ],
+        reporting=_reporting(),
+        cfbd_configured=bool(os.getenv("CFBD_API_KEY", "").strip()),
+    )
+
+
+@cfb_pages.get("/college-football/conferences/<slug>/")
+def conference_preview(slug: str):
+    season = _season()
+    repository = _repository()
+    conference = repository.conference_by_slug(slug)
+    if conference is None:
+        abort(404)
+    name = conference["conference"]
+    leaders = repository.conference_player_leaders(name, season)
+    games = _label_games(repository.conference_games(name, season, limit=24))
+    return render_template(
+        "cfb_conference.html",
+        season=season,
+        conference=conference,
+        conference_color=conference_color(name),
+        standings_table=views.standings_table(
+            repository.conference_standings(name, season), season
+        ),
+        games_table=views.games_table(games, f"Upcoming games ({len(games)})",
+                                      repository.team_brands(),
+                                      repository.team_elo(season)),
+        leaders=leaders,
+        leader_groups=views.leader_groups(leaders, season),
+        pff_table=views.pff_players_table(
+            repository.conference_pff_players(name, 2025, limit=20), season, dense=True
+        ),
+        stories=_story_repository().list_stories(conference=name, limit=24),
+    )
+
+
+@cfb_pages.get("/college-football/teams/<int:team_id>/")
+def team_preview(team_id: int):
+    season = _season()
+    packet = _team_packet(team_id, season)
+    return render_template("cfb_team.html", **packet, **_team_tables(packet, season))
+
+
+def _team_tables(packet: dict, season: int) -> dict:
+    """Rendered tables for the team page, derived from the JSON packet."""
+    movements = packet["movements"]
+    return {
+        "schedule_table": views.schedule_table(
+            packet["schedule"], packet["team"]["team_id"], season,
+            _repository().team_brands(), _repository().team_elo(season)
+        ),
+        "leader_groups": views.leader_groups(packet["leaders"], season, include_team=False),
+        "depth_units": views.depth_chart_tables(packet["depth_chart"], season),
+        "arrivals_table": views.movements_table(movements["arrivals"][:20], season, arrivals=True),
+        "departures_table": views.movements_table(
+            movements["departures"][:20], season, arrivals=False
+        ),
+        "quality_table": views.quality_cards_table(packet["quality"]),
+        "team_stats_table": views.team_stats_table(packet["metrics"], season),
+        "pff_players_table": views.pff_players_table(
+            [row for row in packet["pff"]["players"]
+             if row.get("roster_status") == "RETURNING"],
+            season, caption="Key returning production", dense=True),
+        "pff_departed_table": views.pff_departures_table(
+            [row for row in packet["pff"]["players"]
+             if row.get("roster_status") not in (None, "RETURNING")],
+            season, caption="Key departures"),
+        "pff_groups_table": views.pff_position_groups_table(packet["pff"]["position_groups"]),
+        "draft_table": views.prospect_table(
+            prospect_board(_repository(), roster_season=season, limit=10,
+                           team_id=packet["team"]["team_id"]),
+            season, include_team=False, dense=True),
+        "identity": team_identity(_repository().brand_for(packet["team"]["team_id"])),
+    }
+
+
+@cfb_pages.get("/college-football/players/<player_id>/")
+def player_preview(player_id: str):
+    season = _season(); repository = _repository()
+    player = repository.get_player(player_id, season)
+    if player is None:
+        abort(404)
+    direct = _story_repository().list_stories(
+        player_id=player_id, player_season=player["season"], limit=20
+    )
+    # Team reporting is context for a player, not reporting about him, so it is
+    # shown in its own section rather than padding the player's stream.
+    linked_ids = {story["story_id"] for story in direct}
+    team_context = [
+        story for story in _story_repository().list_stories(
+            team_id=player["team_id"], limit=16)
+        if story["story_id"] not in linked_ids
+    ][:10] if player.get("team_id") else []
+    return render_template(
+        "cfb_player.html", season=season, player=player,
+        identity=team_identity(_repository().brand_for(player.get("team_id"))),
+        stat_groups=views.player_stat_groups(player),
+        pff_table=views.pff_grades_table(player.get("pff") or []),
+        stories=[{**story, "coverage_label": "Player linked"} for story in direct],
+        team_stories=team_context,
+    )
+
+
+@cfb_pages.get("/college-football/games/<int:game_id>/")
+def game_preview(game_id: int):
+    repository = _repository()
+    game = repository.get_game(game_id)
+    if game is None:
+        abort(404)
+    game["start_label"] = _start_label(game["start_date"])
+    direct_stories = _story_repository().list_stories(game_id=game_id, limit=20)
+    away_stories = _story_repository().list_stories(team_id=game["away_team_id"], limit=10)
+    home_stories = _story_repository().list_stories(team_id=game["home_team_id"], limit=10)
+    away_conference_stories = _story_repository().list_stories(
+        conference=game["away_conference"], limit=6
+    ) if game.get("away_conference") else []
+    home_conference_stories = _story_repository().list_stories(
+        conference=game["home_conference"], limit=6
+    ) if game.get("home_conference") else []
+    season = game["season"]
+    home_quality = repository.team_quality_snapshot(game["home_team_id"], season)
+    away_quality = repository.team_quality_snapshot(game["away_team_id"], season)
+    home_leaders = repository.team_player_leaders(game["home_team"], season, 5)
+    away_leaders = repository.team_player_leaders(game["away_team"], season, 5)
+    home_pff = repository.pff_team_context(game["home_team_id"], 2025, 8)
+    away_pff = repository.pff_team_context(game["away_team_id"], 2025, 8)
+    pff_matchups = repository.pff_matchups(game["home_team_id"], game["away_team_id"], 2025)
+    matchup_report = game_matchup_report(pff_matchups, game["away_team"], game["home_team"])
+    brands_by_school = {
+        game["away_team"]: repository.brand_for(game["away_team_id"]),
+        game["home_team"]: repository.brand_for(game["home_team_id"]),
+    }
+    away_identity = team_identity(brands_by_school[game["away_team"]])
+    home_identity = team_identity(brands_by_school[game["home_team"]])
+    elo = repository.team_elo(season)
+    away_identity["elo"] = elo.get(game["away_team_id"]) or {}
+    home_identity["elo"] = elo.get(game["home_team_id"]) or {}
+    return render_template(
+        "cfb_game.html",
+        away_brand=away_identity,
+        home_brand=home_identity,
+        matchup_report=matchup_report,
+        matchup_table=views.matchup_watch_table(matchup_report, brands_by_school),
+        player_matchup_table=views.player_matchup_table(
+            player_matchups(repository, game["home_team_id"], game["away_team_id"]),
+            season),
+        pff_units_table=views.pff_units_table(
+            repository.pff_game_units(game["home_team_id"], game["away_team_id"], 2025),
+            game["away_team"], game["home_team"],
+        ),
+        game=game,
+        metrics_table=views.matchup_metrics_table(game),
+        preseason_table=views.preseason_context_table(
+            game["away_team"], away_quality, game["home_team"], home_quality
+        ),
+        away_returning_table=views.pff_players_table(
+            [row for row in away_pff["players"] if row.get("roster_status") == "RETURNING"],
+            season, caption=f"{game['away_team']} returning", dense=True),
+        away_departed_table=views.pff_departures_table(
+            [row for row in away_pff["players"] if row.get("roster_status") not in
+             (None, "RETURNING")], season, caption=f"{game['away_team']} departed"),
+        home_returning_table=views.pff_players_table(
+            [row for row in home_pff["players"] if row.get("roster_status") == "RETURNING"],
+            season, caption=f"{game['home_team']} returning", dense=True),
+        home_departed_table=views.pff_departures_table(
+            [row for row in home_pff["players"] if row.get("roster_status") not in
+             (None, "RETURNING")], season, caption=f"{game['home_team']} departed"),
+        away_leader_groups=views.leader_groups(away_leaders, season, include_team=False, limit=3),
+        home_leader_groups=views.leader_groups(home_leaders, season, include_team=False, limit=3),
+        content_layers=_content_repository().for_game(
+            game_id, (game["home_team_id"], game["away_team_id"])
+        ),
+        story_clusters=_merge_stories(
+            ("Game linked", direct_stories), ("Away-team context", away_stories),
+            ("Home-team context", home_stories),
+            ("Away-conference context", away_conference_stories),
+            ("Home-conference context", home_conference_stories), limit=20,
+        ),
+        pff_matchups=pff_matchups,
+        home_pff=home_pff, away_pff=away_pff,
+        home_leaders=home_leaders, away_leaders=away_leaders,
+        home_quality=home_quality, away_quality=away_quality,
+    )
+
+
+@cfb_pages.get("/college-football/draft/")
+def draft_watch():
+    season = _season()
+    repository = _repository()
+    conference = (request.args.get("conference") or "").strip() or None
+    board = prospect_board(repository, roster_season=season, limit=80, conference=conference)
+    full_board = prospect_board(repository, roster_season=season, limit=500)
+    comparison = reconcile(repository, full_board, draft_year=2027)
+    return render_template(
+        "cfb_draft.html",
+        season=season,
+        board=board,
+        comparison=comparison,
+        conference=conference,
+        conferences=repository.conferences(),
+        prospect_table=views.prospect_table(board, season, dense=True),
+        draft_watch_table=views.draft_watch_table(
+            board_with_profile(repository, full_board, limit=100), season,
+            caption="2027 consensus board"),
+        consensus_table=views.consensus_table(
+            consensus_board(repository, draft_year=2027, limit=100), season),
+        agree_table=views.divergence_table(
+            comparison["agree"], season, caption="Board and production agree",
+            note="ranked highly and grades out",
+            empty="No consensus prospect also clears the drafted-profile bar."),
+        board_ahead_table=views.divergence_table(
+            comparison["board_ahead"], season, caption="Board ahead of the profile",
+            note="the case rests on traits this system cannot see",
+            empty="No divergence of this kind."),
+        profile_ahead_table=views.divergence_table(
+            comparison["profile_ahead"], season, ranked=False,
+            caption="Profile ahead of the board",
+            note="matches drafted profiles but is unranked",
+            empty="No unranked player clears the drafted-profile bar."),
+        position_groups=position_targets(board),
+    )
+
+
+@cfb_pages.get("/api/v1/cfb/draft/consensus")
+def draft_consensus_api():
+    draft_year = min(max(request.args.get("draft_year", 2027, type=int) or 2027, 2020), 2035)
+    limit = min(max(request.args.get("limit", 100, type=int) or 100, 1), 300)
+    board = consensus_board(_repository(), draft_year=draft_year, limit=limit)
+    return jsonify({"draft_year": draft_year, "count": len(board), "prospects": board})
+
+
+@cfb_pages.get("/api/v1/cfb/draft/reconcile")
+def draft_reconcile_api():
+    season = _season()
+    repository = _repository()
+    board = prospect_board(repository, roster_season=season, limit=500)
+    return jsonify(reconcile(repository, board, draft_year=2027))
+
+
+@cfb_pages.get("/api/v1/cfb/draft/board")
+def draft_board_api():
+    season = _season()
+    limit = min(max(request.args.get("limit", 50, type=int) or 50, 1), 200)
+    conference = (request.args.get("conference") or "").strip() or None
+    team_id = request.args.get("team_id", type=int)
+    return jsonify(prospect_board(_repository(), roster_season=season, limit=limit,
+                                  conference=conference, team_id=team_id))
+
+
+@cfb_pages.get("/college-football/admin/links/")
+def link_audit():
+    kind = "team" if (request.args.get("kind") or "").strip() == "team" else "player"
+    method = (request.args.get("method") or "").strip() or None
+    limit = min(max(request.args.get("limit", 120, type=int) or 120, 1), 400)
+    return render_template("cfb_links.html", audit=_content_repository().link_audit(
+        kind=kind, method=method, limit=limit))
+
+
+@cfb_pages.get("/api/v1/cfb/links")
+def link_audit_api():
+    kind = "team" if (request.args.get("kind") or "").strip() == "team" else "player"
+    method = (request.args.get("method") or "").strip() or None
+    limit = min(max(request.args.get("limit", 100, type=int) or 100, 1), 400)
+    return jsonify(_content_repository().link_audit(kind=kind, method=method, limit=limit))
+
+
+@cfb_pages.get("/college-football/admin/sources/")
+def source_admin():
+    return render_template("cfb_sources.html", **_source_registry().status())
+
+
+@cfb_pages.get("/college-football/admin/source-graph/")
+def source_graph_admin():
+    return render_template("cfb_source_graph.html", **_unified_source_registry().status())
+
+
+@cfb_pages.get("/api/v1/cfb/status")
+def status_api():
+    payload = _repository().status(_season())
+    payload["cfbd_configured"] = bool(os.getenv("CFBD_API_KEY", "").strip())
+    return jsonify(payload)
+
+
+@cfb_pages.get("/api/v1/cfb/sources")
+def sources_api():
+    return jsonify(_source_registry().status())
+
+
+@cfb_pages.get("/api/v1/cfb/source-entities")
+def source_entities_api():
+    return jsonify(_unified_source_registry().status())
+
+
+@cfb_pages.get("/api/v1/cfb/content")
+def content_api():
+    limit = min(max(request.args.get("limit", 50, type=int) or 50, 1), 100)
+    items = _content_repository().recent(limit)
+    return jsonify({"count": len(items), "items": items})
+
+
+@cfb_pages.get("/api/v1/cfb/stories")
+def stories_api():
+    limit = min(max(request.args.get("limit", 30, type=int) or 30, 1), 100)
+    stories = _story_repository().list_stories(limit=limit)
+    return jsonify({"count": len(stories), "stories": stories})
+
+
+@cfb_pages.get("/api/v1/cfb/developments")
+def developments_api():
+    limit = min(max(request.args.get("limit", 25, type=int) or 25, 1), 100)
+    days = min(max(request.args.get("days", 7, type=int) or 7, 1), 60)
+    items = _content_repository().top_developments(limit=limit, days=days)
+    return jsonify({"count": len(items), "days": days, "developments": items})
+
+
+@cfb_pages.get("/api/v1/cfb/games/<int:game_id>/player-matchups")
+def game_player_matchups_api(game_id: int):
+    repository = _repository()
+    game = repository.get_game(game_id)
+    if game is None:
+        abort(404)
+    matchups = player_matchups(repository, game["home_team_id"], game["away_team_id"])
+    return jsonify({"game_id": game_id, "count": len(matchups), "matchups": matchups})
+
+
+@cfb_pages.get("/api/v1/cfb/games/<int:game_id>/matchups")
+def game_matchups_api(game_id: int):
+    repository = _repository()
+    game = repository.get_game(game_id)
+    if game is None:
+        abort(404)
+    report = game_matchup_report(
+        repository.pff_matchups(game["home_team_id"], game["away_team_id"], 2025),
+        game["away_team"], game["home_team"],
+    )
+    return jsonify({"game_id": game_id, "pff_season": 2025, **report})
+
+
+@cfb_pages.get("/api/v1/cfb/pff/summary")
+def pff_summary_api():
+    season = request.args.get("season", 2025, type=int) or 2025
+    if season < 1869 or season > datetime.now().year:
+        abort(400)
+    return jsonify(pff_summary(_repository(), season))
+
+
+@cfb_pages.get("/api/v1/cfb/games")
+def games_api():
+    season = _season()
+    limit = min(max(request.args.get("limit", 25, type=int) or 25, 1), 100)
+    games = _repository().upcoming_games(season, limit=limit)
+    return jsonify({"season": season, "count": len(games), "games": games})
+
+
+@cfb_pages.get("/api/v1/cfb/games-to-watch")
+def games_to_watch_api():
+    season = _season()
+    limit = min(max(request.args.get("limit", 10, type=int) or 10, 1), 50)
+    games = games_to_watch(_repository().upcoming_games(season, limit=100), limit=limit)
+    return jsonify({"season": season, "count": len(games), "games": games})
+
+
+@cfb_pages.get("/api/v1/cfb/teams")
+def teams_api():
+    limit = min(max(request.args.get("limit", 150, type=int) or 150, 1), 200)
+    conference = (request.args.get("conference") or "").strip() or None
+    teams = _repository().teams(conference=conference, limit=limit)
+    return jsonify({"count": len(teams), "conference": conference, "teams": teams})
+
+
+@cfb_pages.get("/api/v1/cfb/teams/<int:team_id>")
+def team_api(team_id: int):
+    return jsonify(_team_packet(team_id, _season()))
+
+
+@cfb_pages.get("/api/v1/cfb/players/<player_id>")
+def player_api(player_id: str):
+    season = _season(); player = _repository().get_player(player_id, season)
+    if player is None:
+        abort(404)
+    player["stories"] = _story_repository().list_stories(
+        player_id=player_id, player_season=player["season"], limit=20
+    )
+    return jsonify(player)
+
+
+@cfb_pages.get("/api/v1/cfb/conferences")
+def conferences_api():
+    conferences = _repository().conferences()
+    return jsonify({"count": len(conferences), "conferences": conferences})
+
+
+@cfb_pages.get("/api/v1/cfb/conferences/<slug>")
+def conference_api(slug: str):
+    season = _season()
+    repository = _repository()
+    conference = repository.conference_by_slug(slug)
+    if conference is None:
+        abort(404)
+    name = conference["conference"]
+    return jsonify({
+        "season": season,
+        "conference": conference,
+        "standings": repository.conference_standings(name, season),
+        "games": repository.conference_games(name, season),
+        "player_leaders": repository.conference_player_leaders(name, season),
+        "pff_players": repository.conference_pff_players(name, 2025, limit=20),
+        "stories": _story_repository().list_stories(conference=name, limit=24),
+    })
+
+
+@cfb_pages.get("/api/v1/cfb/rankings")
+def rankings_api():
+    season = _season()
+    payload = _repository().latest_rankings(season)
+    payload["season"] = season
+    payload["count"] = len(payload["teams"])
+    return jsonify(payload)
+
+
+@cfb_pages.get("/api/v1/cfb/games/<int:game_id>")
+def game_api(game_id: int):
+    game = _repository().get_game(game_id)
+    if game is None:
+        abort(404)
+    return jsonify(game)
+
+
+@cfb_pages.get("/api/v1/cfb/games/<int:game_id>/preview")
+def game_preview_api(game_id: int):
+    repository = _repository()
+    game = repository.get_game(game_id)
+    if game is None:
+        abort(404)
+    direct_stories = _story_repository().list_stories(game_id=game_id, limit=20)
+    away_stories = _story_repository().list_stories(team_id=game["away_team_id"], limit=10)
+    home_stories = _story_repository().list_stories(team_id=game["home_team_id"], limit=10)
+    away_conference_stories = _story_repository().list_stories(
+        conference=game["away_conference"], limit=6
+    ) if game.get("away_conference") else []
+    home_conference_stories = _story_repository().list_stories(
+        conference=game["home_conference"], limit=6
+    ) if game.get("home_conference") else []
+    return jsonify({
+        "game": game,
+        "pff_season": 2025,
+        "pff_units": repository.pff_game_units(
+            game["home_team_id"], game["away_team_id"], 2025
+        ),
+        "pff_matchups": repository.pff_matchups(
+            game["home_team_id"], game["away_team_id"], 2025
+        ),
+        "home_pff": repository.pff_team_context(game["home_team_id"], 2025, 8),
+        "away_pff": repository.pff_team_context(game["away_team_id"], 2025, 8),
+        "home_leaders": repository.team_player_leaders(game["home_team"], game["season"], 5),
+        "away_leaders": repository.team_player_leaders(game["away_team"], game["season"], 5),
+        "home_quality": repository.team_quality_snapshot(game["home_team_id"], game["season"]),
+        "away_quality": repository.team_quality_snapshot(game["away_team_id"], game["season"]),
+        "stories": _merge_stories(
+            ("Game linked", direct_stories), ("Away-team context", away_stories),
+            ("Home-team context", home_stories),
+            ("Away-conference context", away_conference_stories),
+            ("Home-conference context", home_conference_stories), limit=20,
+        ),
+    })
+
+
+@cfb_pages.get("/api/v1/cfb/games/<int:game_id>/content")
+def game_content_api(game_id: int):
+    game = _repository().get_game(game_id)
+    if game is None:
+        abort(404)
+    return jsonify(_content_repository().for_game(
+        game_id, (game["home_team_id"], game["away_team_id"])
+    ))
+
+
+@cfb_pages.get("/api/v1/cfb/teams/resolve")
+def resolve_team_api():
+    query = (request.args.get("q") or "").strip()
+    if len(query) < 2:
+        return jsonify({"error": "q must contain at least two characters"}), 400
+    matches = _repository().resolve_team_alias(query)
+    return jsonify({"query": query, "count": len(matches), "matches": matches})

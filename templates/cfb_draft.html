@@ -1,0 +1,123 @@
+{% extends "_layout.html" %}
+{% from "_tables.html" import data_table, tabbed_tables, tabs_script %}
+
+{% block title %}{{ board.draft_year }} Draft Watch | College Football{% endblock %}
+
+{% block head %}
+<style>
+    .hero { border-bottom: 3px solid var(--ink); padding-bottom: 14px; }
+    .hero h1 { font-size: clamp(2rem, 4.5vw, 3.4rem); margin: 4px 0 8px; }
+    .method { background: var(--paper); border-left: 5px solid var(--gold); padding: 13px 16px; margin: 16px 0 4px; font-size: .82rem; line-height: 1.6; }
+    .method strong { display: block; margin-bottom: 4px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 5px; margin: 14px 0 4px; }
+    .filters a { background: var(--paper); border: 1px solid var(--line); padding: 5px 9px; font-size: .72rem; font-weight: 700; text-decoration: none; }
+    .filters a.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .position-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(216px, 1fr)); gap: var(--gap); }
+    .draft-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; margin-top: 26px; }
+    @media (min-width: 1180px) { .draft-split { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); } }
+    .split-head { font: 700 1.4rem Georgia, serif; margin: 0 0 8px; border-bottom: 2px solid var(--ink); padding-bottom: 7px; }
+    .draft-split .table-wrap { max-height: 34rem; overflow-y: auto; }
+    .position-card { background: var(--paper); border: 1px solid var(--line); padding: 12px 14px; }
+    .position-card h3 { font: 700 1.02rem Georgia, serif; margin: 0 0 7px; border-bottom: 1px solid var(--line); padding-bottom: 5px; }
+    .prospect { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; font-size: .78rem; }
+    .prospect a { text-decoration: none; font-weight: 700; }
+    .prospect b { color: var(--rust); font-variant-numeric: tabular-nums; }
+    .prospect small { display: block; color: var(--muted); font-size: .66rem; }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('cfb.today', season=season) }}">&larr; College Football Today</a>
+<span class="tagline">{{ board.draft_year }} draft watch</span>
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="eyebrow">Prospect targets &middot; {{ board.draft_year }} NFL Draft</div>
+    <h1>Draft Watch</h1>
+    <p class="dek">
+        Draft-eligible returners on {{ board.roster_season }} rosters, placed against the
+        profiles of players who were actually drafted a year earlier.
+    </p>
+</section>
+
+<div class="facts">
+    <div class="fact"><b>{{ board.eligible_pool }}</b><span>Eligible pool</span></div>
+    <div class="fact"><b>{{ board.prospects | length }}</b><span>Shown</span></div>
+    <div class="fact"><b>{{ board.calibration.matched_picks }}</b><span>Calibration picks</span></div>
+    <div class="fact"><b>{{ board.calibration.draft_year }}</b><span>Calibrated on</span></div>
+    <div class="fact"><b>{{ board.pff_season }}</b><span>PFF season</span></div>
+    <div class="fact"><b>{{ position_groups | length }}</b><span>Positions</span></div>
+</div>
+
+<div class="method">
+    <strong>How this board is built</strong>
+    {{ board.calibration.matched_picks }} of the {{ board.calibration.draft_year }} draft's picks
+    were matched by name and school to their prior-season PFF profile, giving a real
+    distribution of what a drafted player at each position looked like the year before.
+    Each returner is placed against that distribution for his position. A percentile
+    describes the comparison only &mdash; it is not a projected selection, and it is not a
+    scouting grade. Draft eligibility is inferred from class year, which cannot see
+    redshirts or early declarations, so treat it as an estimate.
+</div>
+
+<div class="filters">
+    <a href="{{ url_for('cfb.draft_watch', season=season) }}" class="{{ 'active' if not conference }}">All FBS</a>
+    {% for item in conferences %}
+    <a href="{{ url_for('cfb.draft_watch', season=season, conference=item.conference) }}"
+       class="{{ 'active' if conference == item.conference }}">{{ item.conference }}</a>
+    {% endfor %}
+</div>
+
+<section class="section">
+    <h2>{{ board.draft_year }} consensus big board</h2>
+    <div class="section-note">
+        The imported board in its own order, with our production profile added beside
+        each name. The <em>Read</em> column says how the two compare.
+    </div>
+    {{ data_table(draft_watch_table) }}
+</section>
+
+<div class="draft-split">
+    <section>
+        <h2 class="split-head">Where they diverge</h2>
+        {{ tabbed_tables([
+            {'label': 'Board ahead (' ~ comparison.board_ahead | length ~ ')', 'table': board_ahead_table},
+            {'label': 'Unranked risers (' ~ comparison.profile_ahead | length ~ ')', 'table': profile_ahead_table},
+            {'label': 'Agree (' ~ comparison.agree | length ~ ')', 'table': agree_table},
+        ], 'divergence') }}
+    </section>
+    <section>
+        <h2 class="split-head">Production board</h2>
+        <div class="section-note">Draft-eligible returners ranked on profile alone.</div>
+        {{ data_table(prospect_table) }}
+    </section>
+</div>
+
+<section class="section">
+    <h2>Targets by position</h2>
+    <div class="section-note">The strongest returning profile at each position group.</div>
+    <div class="position-grid">
+        {% for group in position_groups %}
+        <article class="position-card">
+            <h3>{{ group.position }} <span class="meta">({{ group.count }})</span></h3>
+            {% for prospect in group.prospects %}
+            <div class="prospect">
+                <span>
+                    {% if prospect.cfbd_player_id %}
+                    <a href="{{ url_for('cfb.player_preview', player_id=prospect.cfbd_player_id, season=season) }}">{{ prospect.player_name }}</a>
+                    {% else %}{{ prospect.player_name }}{% endif %}
+                    <small>{{ prospect.school }} &middot; class {{ prospect.class_year }}</small>
+                </span>
+                <b>{{ (prospect.percentile * 100) | cell('pct') }}</b>
+            </div>
+            {% endfor %}
+        </article>
+        {% else %}
+        <div class="empty">No eligible prospects for this filter.</div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}{{ tabs_script() }}{% endblock %}

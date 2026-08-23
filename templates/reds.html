@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cincinnati Reds — Dashboard</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+    <style>
+        /* ── Variables ── */
+        :root {
+            --red:       #C6011F;
+            --red-dark:  #8B0015;
+            --red-muted: #e8001f22;
+            --black:     #0D0D0D;
+            --off-white: #F5F2EE;
+            --gray-100:  #EDEBE8;
+            --gray-200:  #D6D2CC;
+            --gray-400:  #9A948C;
+            --gray-600:  #5C5650;
+            --card-bg:   #FFFFFF;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
+            --shadow-md: 0 4px 16px rgba(0,0,0,.10);
+            --radius:    6px;
+            --mono:      'IBM Plex Mono', monospace;
+        }
+
+        /* ── Reset ── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Barlow', sans-serif;
+            font-size: 15px;
+            line-height: 1.6;
+            background-color: var(--off-white);
+            color: var(--black);
+        }
+
+        a { color: var(--red); text-decoration: none; }
+        a:hover { text-decoration: underline; opacity: .85; }
+
+        /* ── Page shell ── */
+        .page-header {
+            background: var(--black);
+            border-bottom: 4px solid var(--red);
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .page-header-inner {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            height: 62px;
+        }
+        .logo-badge {
+            background: var(--red);
+            color: #fff;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 900;
+            font-size: 22px;
+            letter-spacing: .04em;
+            padding: 5px 14px 5px 12px;
+            border-radius: 3px;
+            white-space: nowrap;
+        }
+        .page-title {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 700;
+            font-size: 20px;
+            color: var(--gray-200);
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+        .header-timestamp {
+            margin-left: auto;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--gray-400);
+        }
+
+        /* ── Nav tabs ── */
+        .nav-tabs-bar {
+            background: var(--black);
+            border-bottom: 1px solid #1e1e1e;
+            padding: 0 32px;
+        }
+        .nav-tabs-inner {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: flex;
+            gap: 2px;
+        }
+        .nav-tab {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 700;
+            font-size: 13px;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--gray-400);
+            padding: 10px 16px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: color .15s, border-color .15s;
+            user-select: none;
+        }
+        .nav-tab:hover { color: var(--off-white); }
+        .nav-tab.active { color: var(--red); border-bottom-color: var(--red); }
+
+        /* ── Layout container ── */
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 28px 32px 60px;
+        }
+
+        /* ── Section panels ── */
+        .panel {
+            display: none;
+        }
+        .panel.active { display: block; }
+
+        /* ── Section headings ── */
+        .section-heading {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 800;
+            font-size: 13px;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--gray-400);
+            border-bottom: 1px solid var(--gray-200);
+            padding-bottom: 8px;
+            margin-bottom: 16px;
+            margin-top: 28px;
+        }
+        .section-heading:first-child { margin-top: 0; }
+
+        /* ── Card ── */
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--gray-100);
+            padding: 20px 24px;
+            margin-bottom: 16px;
+        }
+        .card-title {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 800;
+            font-size: 18px;
+            letter-spacing: .02em;
+            margin-bottom: 14px;
+            text-transform: uppercase;
+        }
+
+        /* ── Empty state ── */
+        .empty-state {
+            background: var(--gray-100);
+            border-left: 4px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            color: var(--gray-600);
+            font-size: 13px;
+        }
+        .empty-state strong { color: var(--black); display: block; margin-bottom: 3px; }
+
+        /* ── Boxscore ── */
+        .boxscore-pre {
+            font-family: var(--mono);
+            font-size: 12px;
+            line-height: 1.7;
+            overflow-x: auto;
+            background: var(--gray-100);
+            border-radius: var(--radius);
+            padding: 16px;
+            color: var(--black);
+            white-space: pre;
+        }
+        .game-meta-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+        .game-meta-chip {
+            background: var(--red-muted);
+            border: 1px solid var(--red);
+            border-radius: 3px;
+            padding: 3px 10px;
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--red-dark);
+            font-weight: 500;
+        }
+
+        /* ── Pitch arsenal table ── */
+        .pitch-table-wrap { overflow-x: auto; margin-top: 10px; }
+        table.pitch-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .pitch-table th {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--gray-600);
+            background: var(--gray-100);
+            padding: 8px 10px;
+            text-align: left;
+            border-bottom: 2px solid var(--gray-200);
+            white-space: nowrap;
+        }
+        .pitch-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--gray-100);
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--black);
+        }
+        .pitch-table tbody tr:hover { background: var(--gray-100); }
+        .pitch-type-pill {
+            display: inline-block;
+            background: var(--red);
+            color: #fff;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: .06em;
+            padding: 2px 8px;
+            border-radius: 3px;
+        }
+        .stuff-plus {
+            font-weight: 500;
+            color: var(--red-dark);
+        }
+        .stuff-plus.good { color: #1a7a3a; }
+        .stuff-plus.bad  { color: #b04000; }
+
+        /* ── Chart grid ── */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+        .chart-card {
+            background: var(--card-bg);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+        }
+        .chart-card-label {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 700;
+            font-size: 12px;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--gray-600);
+            padding: 10px 14px 6px;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .chart-card img {
+            width: 100%;
+            display: block;
+        }
+
+        /* ── Leaderboards ── */
+        .lb-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px;
+            margin-top: 4px;
+        }
+        .lb-card {
+            background: var(--card-bg);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+        }
+        .lb-card-header {
+            background: var(--black);
+            color: #fff;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 800;
+            font-size: 14px;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            padding: 8px 14px;
+        }
+        .lb-table { width: 100%; border-collapse: collapse; }
+        .lb-table td {
+            padding: 7px 12px;
+            font-size: 12.5px;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .lb-table tr:last-child td { border-bottom: none; }
+        .lb-table .name { font-weight: 500; color: var(--black); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lb-table .val  { font-family: var(--mono); font-size: 12px; color: var(--gray-600); text-align: right; }
+        .lb-table .pct  { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--red); text-align: right; }
+
+        /* ── Hot/cold ── */
+        .hot-cold-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+            margin-top: 4px;
+        }
+        .trend-card {
+            background: var(--card-bg);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        .trend-card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 800;
+            font-size: 14px;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+        .trend-card-header.hot  { background: #fff5f5; color: #b00010; border-bottom: 2px solid #f5c0c0; }
+        .trend-card-header.cold { background: #f0f5ff; color: #003399; border-bottom: 2px solid #b0c8f5; }
+        .trend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .trend-dot.hot  { background: var(--red); }
+        .trend-dot.cold { background: #3366cc; }
+
+        /* ── Four-column feed layout ── */
+        .feed-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-top: 4px;
+        }
+        @media (max-width: 1100px) {
+            .feed-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 620px) {
+            .feed-grid { grid-template-columns: 1fr; }
+        }
+
+        .feed-col {
+            background: var(--card-bg);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            flex-direction: column;
+            max-height: 780px;
+            overflow: hidden;
+        }
+        .feed-col-header {
+            background: var(--black);
+            color: #fff;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 800;
+            font-size: 15px;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            padding: 12px 16px;
+            flex-shrink: 0;
+        }
+        .feed-col-body {
+            overflow-y: auto;
+            flex: 1;
+            padding: 0;
+        }
+        .feed-col-body::-webkit-scrollbar { width: 4px; }
+        .feed-col-body::-webkit-scrollbar-thumb { background: var(--gray-200); border-radius: 4px; }
+
+        /* ── Feed items ── */
+        .feed-item {
+            padding: 13px 16px;
+            border-bottom: 1px solid var(--gray-100);
+            transition: background .1s;
+        }
+        .feed-item:hover { background: #fafaf9; }
+        .feed-item:last-child { border-bottom: none; }
+
+        .feed-item-title {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 700;
+            font-size: 15px;
+            line-height: 1.3;
+            color: var(--black);
+            margin-bottom: 5px;
+        }
+        .feed-item-title a { color: inherit; }
+        .feed-item-title a:hover { color: var(--red); text-decoration: none; }
+
+        .feed-meta {
+            font-size: 11px;
+            color: var(--gray-400);
+            font-family: var(--mono);
+            margin-top: 3px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+        .feed-source-badge {
+            display: inline-block;
+            background: var(--gray-100);
+            color: var(--gray-600);
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 700;
+            font-size: 10px;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            padding: 1px 6px;
+            border-radius: 2px;
+        }
+        .feed-readmore {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--red);
+            margin-top: 5px;
+            display: inline-block;
+        }
+
+        /* ── Bluesky / Social ── */
+        .bsky-author {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .bsky-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+            border: 2px solid var(--gray-200);
+        }
+        .bsky-avatar-placeholder {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: var(--gray-200);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: var(--gray-600);
+            flex-shrink: 0;
+        }
+        .bsky-display-name {
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--black);
+            line-height: 1.2;
+        }
+        .bsky-handle {
+            font-size: 11px;
+            color: var(--gray-400);
+            font-family: var(--mono);
+        }
+        .bsky-body { font-size: 13.5px; line-height: 1.55; color: var(--black); }
+        .bsky-img { max-width: 100%; border-radius: 6px; border: 1px solid var(--gray-200); margin-top: 8px; display: block; }
+        .bsky-link-card {
+            margin-top: 8px;
+            border: 1px solid var(--gray-200);
+            border-radius: 6px;
+            overflow: hidden;
+            font-size: 12px;
+        }
+        .bsky-link-card img { width: 100%; display: block; max-height: 120px; object-fit: cover; }
+        .bsky-link-card-body { padding: 8px 10px; }
+        .bsky-link-card-body strong { font-size: 12.5px; display: block; margin-bottom: 2px; color: var(--black); }
+        .bsky-link-card-body .desc { color: var(--gray-600); font-size: 11.5px; margin-bottom: 4px; }
+
+        .bsky-replies {
+            margin-top: 8px;
+            padding-left: 12px;
+            border-left: 3px solid var(--gray-200);
+        }
+        .bsky-reply { padding: 6px 0; border-bottom: 1px solid var(--gray-100); }
+        .bsky-reply:last-child { border-bottom: none; }
+
+        /* ── Reddit ── */
+        .reddit-score {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            background: var(--gray-100);
+            border-radius: 3px;
+            padding: 2px 7px;
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--gray-600);
+        }
+
+        /* ── Schedule ── */
+        .schedule-item {
+            display: grid;
+            grid-template-columns: 90px 1fr;
+            gap: 8px 16px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--gray-100);
+            align-items: start;
+        }
+        .schedule-item:last-child { border-bottom: none; }
+        .schedule-status-badge {
+            display: inline-block;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 700;
+            font-size: 10px;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 3px;
+        }
+        .schedule-status-badge.completed { background: #e8f5e9; color: #2e7d32; }
+        .schedule-status-badge.scheduled  { background: #e3f2fd; color: #1565c0; }
+        .schedule-date-col {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--gray-600);
+            line-height: 1.5;
+        }
+        .schedule-opponent {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 700;
+            font-size: 15px;
+            color: var(--black);
+            line-height: 1.2;
+        }
+        .schedule-detail { font-size: 12px; color: var(--gray-600); margin-top: 2px; }
+
+        /* ── DataTables override ── */
+        table.dataTable thead th { background: var(--gray-100) !important; font-family: 'Barlow Condensed', sans-serif !important; font-size: 11px !important; letter-spacing: .08em !important; text-transform: uppercase !important; color: var(--gray-600) !important; }
+        .dataTables_wrapper .dataTables_filter input { border: 1px solid var(--gray-200); border-radius: 4px; padding: 4px 8px; font-size: 13px; }
+        .dataTables_wrapper .dataTables_length select { border: 1px solid var(--gray-200); border-radius: 4px; padding: 3px 6px; }
+
+        /* ── Upcoming game banner ── */
+        .upcoming-banner {
+            background: var(--black);
+            color: #fff;
+            border-radius: var(--radius);
+            padding: 18px 24px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .upcoming-banner .label {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--red);
+        }
+        .upcoming-banner .game-info {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: .02em;
+        }
+        .upcoming-banner .pitcher-info {
+            font-size: 13px;
+            color: var(--gray-400);
+            font-family: var(--mono);
+        }
+        .latest-result-chip {
+            margin-left: auto;
+            text-align: right;
+        }
+        .latest-result-chip .score {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 800;
+            font-size: 22px;
+            color: #fff;
+        }
+        .latest-result-chip .details {
+            font-size: 11px;
+            color: var(--gray-400);
+            font-family: var(--mono);
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- ── Header ── -->
+<header class="page-header">
+    <div class="page-header-inner">
+        <div class="logo-badge">CIN</div>
+        <div class="page-title">Cincinnati Reds — Dashboard</div>
+        <div class="header-timestamp" id="live-clock"></div>
+    </div>
+</header>
+
+<!-- ── Nav tabs ── -->
+<nav class="nav-tabs-bar">
+    <div class="nav-tabs-inner">
+        <div class="nav-tab active" data-panel="overview">Overview</div>
+        <div class="nav-tab" data-panel="pitching">Pitching</div>
+        <div class="nav-tab" data-panel="leaderboards">Leaderboards</div>
+        <div class="nav-tab" data-panel="feed">Feed</div>
+        <div class="nav-tab" data-panel="schedule">Schedule</div>
+    </div>
+</nav>
+
+<div class="container">
+
+    <!-- ════════════════════════════════════════
+         PANEL: OVERVIEW
+    ════════════════════════════════════════ -->
+    <div class="panel active" id="panel-overview">
+
+        <!-- Upcoming / latest game banner -->
+        <div class="upcoming-banner">
+            <div>
+                <div class="label">Next Game</div>
+                <div class="game-info">{{ upcoming_game_summary or "Schedule TBD" }}</div>
+                <div class="pitcher-info">{{ upcoming_game_pitchers or "" }}</div>
+            </div>
+            {% if latest_game_summary %}
+            <div class="latest-result-chip">
+                <div class="label">Latest Result</div>
+                <div class="score">{{ latest_game_summary }}</div>
+                <div class="details">{{ latest_game_details or "" }}</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Boxscore -->
+        <div class="section-heading">Box Score</div>
+        <div class="card">
+            {% if boxscore %}
+                <pre class="boxscore-pre">{{ boxscore }}</pre>
+            {% else %}
+                <div class="empty-state">
+                    <strong>No boxscore available.</strong>
+                    Offseason or StatsAPI returned no data.
+                </div>
+            {% endif %}
+            {% if game_link %}
+                <p style="margin-top:12px; font-size:13px;">
+                    <a href="{{ game_link }}" target="_blank" rel="noopener noreferrer">↗ View full box score on MLB.com</a>
+                </p>
+            {% endif %}
+        </div>
+
+        <!-- Hot / cold performers summary -->
+        <div class="section-heading">Trending Performers</div>
+        <div class="hot-cold-grid">
+
+            <div class="trend-card">
+                <div class="trend-card-header hot"><span class="trend-dot hot"></span>Hot Batters</div>
+                {% if hot_batters and hot_batters|length > 0 %}
+                    <table class="lb-table">
+                        <thead><tr>
+                            <td style="padding:6px 12px; font-size:10px; font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--gray-400); border-bottom:1px solid var(--gray-100);">Player</td>
+                            <td class="val" style="padding:6px 12px; font-size:10px; font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--gray-400); border-bottom:1px solid var(--gray-100);">xwOBA</td>
+                            <td class="val" style="padding:6px 12px; font-size:10px; font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--gray-400); border-bottom:1px solid var(--gray-100);">wOBA</td>
+                            <td class="val" style="padding:6px 12px; font-size:10px; font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--gray-400); border-bottom:1px solid var(--gray-100);">EV</td>
+                        </tr></thead>
+                        <tbody>{% for row in hot_batters %}<tr>
+                            <td class="name">{{ row.Player_Name }}</td>
+                            <td class="val">{{ row.xwOBA }}</td>
+                            <td class="val">{{ row.wOBA }}</td>
+                            <td class="val">{{ row.EV }}</td>
+                        </tr>{% endfor %}</tbody>
+                    </table>
+                {% else %}
+                    <div class="empty-state" style="margin:12px;">
+                        <strong>No data.</strong> Offseason or Statcast returned 0 rows.
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="trend-card">
+                <div class="trend-card-header cold"><span class="trend-dot cold"></span>Cold Batters</div>
+                {% if cold_batters and cold_batters|length > 0 %}
+                    <table class="lb-table">
+                        <tbody>{% for row in cold_batters %}<tr>
+                            <td class="name">{{ row.Player_Name }}</td>
+                            <td class="val">{{ row.xwOBA }}</td>
+                            <td class="val">{{ row.wOBA }}</td>
+                            <td class="val">{{ row.EV }}</td>
+                        </tr>{% endfor %}</tbody>
+                    </table>
+                {% else %}
+                    <div class="empty-state" style="margin:12px;"><strong>No data.</strong></div>
+                {% endif %}
+            </div>
+
+            <div class="trend-card">
+                <div class="trend-card-header hot"><span class="trend-dot hot"></span>Hot Pitchers</div>
+                {% if hot_pitchers and hot_pitchers|length > 0 %}
+                    <table class="lb-table">
+                        <tbody>{% for row in hot_pitchers %}<tr>
+                            <td class="name">{{ row.player_name }}</td>
+                            <td class="val">{{ row.xwOBA }}</td>
+                        </tr>{% endfor %}</tbody>
+                    </table>
+                {% else %}
+                    <div class="empty-state" style="margin:12px;"><strong>No data.</strong></div>
+                {% endif %}
+            </div>
+
+            <div class="trend-card">
+                <div class="trend-card-header cold"><span class="trend-dot cold"></span>Cold Pitchers</div>
+                {% if cold_pitchers and cold_pitchers|length > 0 %}
+                    <table class="lb-table">
+                        <tbody>{% for row in cold_pitchers %}<tr>
+                            <td class="name">{{ row.player_name }}</td>
+                            <td class="val">{{ row.xwOBA }}</td>
+                        </tr>{% endfor %}</tbody>
+                    </table>
+                {% else %}
+                    <div class="empty-state" style="margin:12px;"><strong>No data.</strong></div>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         PANEL: PITCHING
+    ════════════════════════════════════════ -->
+    <div class="panel" id="panel-pitching">
+
+        {% if statcast_available %}
+
+            <div class="section-heading">Pitch Arsenal — {{ starter }} vs {{ opponent }} ({{ game_date }})</div>
+
+            <div class="card">
+                <div class="card-title" style="font-size:14px; margin-bottom:12px;">Arsenal Summary</div>
+                {% if pitch_summary and pitch_summary|length > 0 %}
+                    <div class="pitch-table-wrap">
+                        <table id="pitchTable" class="pitch-table">
+                            <thead>
+                                <tr>
+                                    <th>Pitch</th>
+                                    <th>Usage %</th>
+                                    <th>Stuff+</th>
+                                    <th>Velo</th>
+                                    <th>Spin</th>
+                                    <th>Whiff %</th>
+                                    <th>CSW %</th>
+                                    <th>Zone %</th>
+                                    <th>H-Break</th>
+                                    <th>V-Break</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in pitch_summary %}
+                                <tr>
+                                    <td><span class="pitch-type-pill">{{ row["Pitch Type"] }}</span></td>
+                                    <td>{{ row["Usage %"] }}</td>
+                                    <td class="stuff-plus {% if row['Stuff+'] > 110 %}good{% elif row['Stuff+'] < 90 %}bad{% endif %}">{{ row["Stuff+"] }}</td>
+                                    <td>{{ row["Avg Velocity"] }}</td>
+                                    <td>{{ row["Avg Spin Rate"] }}</td>
+                                    <td>{{ row["Whiff %"] }}</td>
+                                    <td>{{ row["CSW %"] }}</td>
+                                    <td>{{ row["Zone %"] }}</td>
+                                    <td>{{ row.get("Horizontal Break (in)", "") }}</td>
+                                    <td>{{ row.get("Vertical Break (in)", "") }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="empty-state"><strong>No pitch data available.</strong></div>
+                {% endif %}
+            </div>
+
+            <div class="section-heading">Charts</div>
+            <div class="chart-grid">
+                <div class="chart-card">
+                    <div class="chart-card-label">Pitch Mix</div>
+                    <img src="{{ url_for('static', filename='pitch_mix.png') }}" alt="Pitch mix">
+                </div>
+                <div class="chart-card">
+                    <div class="chart-card-label">Velo vs Spin Rate</div>
+                    <img src="{{ url_for('static', filename='velo_spin.png') }}" alt="Velo vs spin">
+                </div>
+                <div class="chart-card">
+                    <div class="chart-card-label">Pitch Movement</div>
+                    <img src="{{ url_for('static', filename='break_chart.png') }}" alt="Break chart">
+                </div>
+            </div>
+
+            <div class="section-heading" style="margin-top:24px;">Location Heatmaps</div>
+            <div class="chart-grid">
+                <div class="chart-card">
+                    <div class="chart-card-label">All Pitches</div>
+                    <img src="{{ url_for('static', filename='heatmap_all.png') }}" alt="All pitches heatmap">
+                </div>
+                <div class="chart-card">
+                    <div class="chart-card-label">Whiffs</div>
+                    <img src="{{ url_for('static', filename='heatmap_whiffs.png') }}" alt="Whiffs heatmap">
+                </div>
+                <div class="chart-card">
+                    <div class="chart-card-label">Called Strikes</div>
+                    <img src="{{ url_for('static', filename='heatmap_called_strikes.png') }}" alt="Called strikes heatmap">
+                </div>
+            </div>
+
+        {% else %}
+            <div class="section-heading">Pitch Data</div>
+            <div class="empty-state" style="margin-top:8px;">
+                <strong>Statcast data not available.</strong>
+                This happens during the offseason / spring training, or when Statcast returns no rows for the most recent game.
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- ════════════════════════════════════════
+         PANEL: LEADERBOARDS
+    ════════════════════════════════════════ -->
+    <div class="panel" id="panel-leaderboards">
+
+        <div class="section-heading">Batting Leaders</div>
+        <div class="lb-grid">
+            {% set batting_stat_list = ['AVG','OBP','SLG','OPS','HR','RBI','wRC+','WAR','xBA','xSLG','xwOBA','HardHit%','maxEV','L-WAR'] %}
+            {% for stat in batting_stat_list %}
+                <div class="lb-card">
+                    <div class="lb-card-header">{{ stat }}</div>
+                    {% set rows = reds_batting_leaderboards.get(stat, []) if reds_batting_leaderboards else [] %}
+                    {% if rows and rows|length > 0 %}
+                        <table class="lb-table">
+                            <tbody>
+                                {% for player in rows %}
+                                <tr>
+                                    <td class="name">{{ player.Name }}</td>
+                                    <td class="val">{{ player.Value }}</td>
+                                    <td class="pct">{{ player.Percentile }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div class="empty-state" style="margin:10px; font-size:12px;">
+                            <strong>No data.</strong>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="section-heading" style="margin-top:28px;">Pitching Leaders</div>
+        <div class="lb-grid">
+            {% set pitching_stat_list = ['ERA','FIP','xFIP','K/9','BB/9','WAR'] %}
+            {% for stat in pitching_stat_list %}
+                <div class="lb-card">
+                    <div class="lb-card-header">{{ stat }}</div>
+                    {% set rows = reds_pitching_leaderboards.get(stat, []) if reds_pitching_leaderboards else [] %}
+                    {% if rows and rows|length > 0 %}
+                        <table class="lb-table">
+                            <tbody>
+                                {% for player in rows %}
+                                <tr>
+                                    <td class="name">{{ player.Name }}</td>
+                                    <td class="val">{{ player.Value }}</td>
+                                    <td class="pct">{{ player.Percentile }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div class="empty-state" style="margin:10px; font-size:12px;">
+                            <strong>No data.</strong>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+
+    </div>
+
+    <!-- ════════════════════════════════════════
+         PANEL: FEED
+    ════════════════════════════════════════ -->
+    <div class="panel" id="panel-feed">
+        <div class="feed-grid">
+
+            <!-- News -->
+            <div class="feed-col">
+                <div class="feed-col-header">Latest News</div>
+                <div class="feed-col-body">
+                    {% if news and news|length > 0 %}
+                        {% for article in news %}
+                        <div class="feed-item">
+                            <div class="feed-item-title">
+                                <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer">{{ article.title }}</a>
+                            </div>
+                            <div class="feed-meta">
+                                <span class="feed-source-badge">{{ article.source }}</span>
+                                <span>{{ article.date }}</span>
+                            </div>
+                            <div style="font-size:11px; color:var(--gray-400); margin-top:2px;">{{ article.author }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state" style="margin:16px;">
+                            <strong>No news found.</strong> Sources may be rate-limited.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Bluesky posts -->
+            <div class="feed-col">
+                <div class="feed-col-header">Bluesky Posts</div>
+                <div class="feed-col-body">
+                    {% if skeets and skeets|length > 0 %}
+                        {% for post in skeets %}
+                        <div class="feed-item">
+                            <div class="bsky-author">
+                                {% if post.avatar_url %}
+                                    <img class="bsky-avatar" src="{{ post.avatar_url }}" alt="{{ post.display_name }}">
+                                {% else %}
+                                    <div class="bsky-avatar-placeholder">{{ post.display_name[0] if post.display_name else "?" }}</div>
+                                {% endif %}
+                                <div>
+                                    <div class="bsky-display-name">{{ post.display_name }}</div>
+                                    <div class="bsky-handle">@{{ post.author }}</div>
+                                </div>
+                            </div>
+
+                            <div class="bsky-body">{{ post.html_text|safe }}</div>
+
+                            {% if post.media and post.media|length > 0 %}
+                                {% for m in post.media %}
+                                    {% if m.type == "image" %}
+                                        <a href="{{ m.full }}" target="_blank" rel="noopener noreferrer">
+                                            <img class="bsky-img" src="{{ m.thumb }}" alt="{{ m.alt }}">
+                                        </a>
+                                    {% elif m.type == "external" %}
+                                        <div class="bsky-link-card">
+                                            {% if m.thumb %}<img src="{{ m.thumb }}" alt="">{% endif %}
+                                            <div class="bsky-link-card-body">
+                                                {% if m.title %}<strong>{{ m.title }}</strong>{% endif %}
+                                                {% if m.description %}<div class="desc">{{ m.description }}</div>{% endif %}
+                                                {% if m.uri %}<a href="{{ m.uri }}" target="_blank" rel="noopener noreferrer" style="font-size:11px;">↗ Open link</a>{% endif %}
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
+                            {% endif %}
+
+                            <div class="feed-meta" style="margin-top:6px;">
+                                <span>{{ post.time_ago if post.time_ago else post.timestamp }}</span>
+                                {% if post.url %}<a href="{{ post.url }}" target="_blank" rel="noopener noreferrer" style="font-size:11px;">View post</a>{% endif %}
+                            </div>
+
+                            {% if post.replies and post.replies|length > 0 %}
+                                <div class="bsky-replies">
+                                    {% for reply in post.replies %}
+                                    <div class="bsky-reply">
+                                        <div style="font-size:12px; font-weight:600; color:var(--black);">{{ reply.display_name }} <span style="color:var(--gray-400); font-weight:400; font-family:var(--mono);">@{{ reply.author }}</span></div>
+                                        <div style="font-size:12.5px; margin-top:3px;">{{ reply.text|safe }}</div>
+                                        <div style="font-size:10px; color:var(--gray-400); font-family:var(--mono); margin-top:3px;">{{ reply.time_ago if reply.time_ago else reply.timestamp }}</div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state" style="margin:16px;">
+                            <strong>No posts available.</strong> Check Bluesky credentials.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Reddit -->
+            <div class="feed-col">
+                <div class="feed-col-header">Reddit</div>
+                <div class="feed-col-body">
+                    {% if reddit_posts and reddit_posts|length > 0 %}
+                        {% for post in reddit_posts %}
+                        <div class="feed-item">
+                            <div class="feed-item-title">
+                                <a href="{{ post.link }}" target="_blank" rel="noopener noreferrer">{{ post.title }}</a>
+                            </div>
+                            <div class="feed-meta" style="margin-top:5px; gap:8px;">
+                                <span class="feed-source-badge">r/{{ post.subreddit }}</span>
+                                <span class="reddit-score">▲ {{ post.score }}</span>
+                                <span>💬 {{ post.comments }}</span>
+                                <span>by {{ post.author }}</span>
+                            </div>
+                            <div style="font-size:10px; color:var(--gray-400); font-family:var(--mono); margin-top:3px;">{{ post.timestamp }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state" style="margin:16px;">
+                            <strong>No Reddit posts.</strong> Check API credentials.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Schedule preview in feed -->
+            <div class="feed-col">
+                <div class="feed-col-header">Schedule</div>
+                <div class="feed-col-body">
+                    {% if schedule and schedule|length > 0 %}
+                        {% for game in schedule %}
+                        <div class="schedule-item">
+                            <div class="schedule-date-col">
+                                {{ game.date }}
+                                <br>
+                                <span class="schedule-status-badge {{ 'completed' if game.status == 'Completed' else 'scheduled' }}">{{ game.status }}</span>
+                            </div>
+                            <div>
+                                <div class="schedule-opponent">vs {{ game.opponent }}</div>
+                                <div class="schedule-detail">{{ game.venue }}</div>
+                                {% if game.score and game.score != "N/A" %}
+                                    <div class="schedule-detail" style="font-weight:600; margin-top:2px;">{{ game.score }}</div>
+                                {% endif %}
+                                <div class="schedule-detail" style="margin-top:2px;">{{ game.pitcher_summary }}</div>
+                                <a href="{{ game.game_link }}" target="_blank" rel="noopener noreferrer" style="font-size:11px; display:inline-block; margin-top:4px;">↗ Game details</a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-state" style="margin:16px;">
+                            <strong>No schedule data.</strong>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════
+         PANEL: SCHEDULE (full)
+    ════════════════════════════════════════ -->
+    <div class="panel" id="panel-schedule">
+        <div class="section-heading">Reds Game Schedule</div>
+        <div class="card" style="padding:0; overflow:hidden;">
+            {% if schedule and schedule|length > 0 %}
+                {% for game in schedule %}
+                <div class="schedule-item" style="grid-template-columns: 160px 1fr;">
+                    <div class="schedule-date-col">
+                        {{ game.date }}<br>
+                        <span class="schedule-status-badge {{ 'completed' if game.status == 'Completed' else 'scheduled' }}">{{ game.status }}</span>
+                    </div>
+                    <div>
+                        <div class="schedule-opponent">vs {{ game.opponent }}</div>
+                        <div class="schedule-detail">{{ game.venue }}</div>
+                        {% if game.score and game.score != "N/A" %}
+                            <div class="schedule-detail" style="font-weight:600; margin-top:3px;">Score: {{ game.score }}</div>
+                        {% endif %}
+                        <div class="schedule-detail" style="margin-top:2px;">{{ game.pitcher_summary }}</div>
+                        <a href="{{ game.game_link }}" target="_blank" rel="noopener noreferrer" style="font-size:12px; margin-top:5px; display:inline-block;">↗ View on MLB.com</a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state" style="margin:20px;">
+                    <strong>No schedule data available.</strong>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div><!-- /container -->
+
+<script>
+    // ── Tab switching ──
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById('panel-' + tab.dataset.panel).classList.add('active');
+        });
+    });
+
+    // ── Live clock ──
+    function updateClock() {
+        const now = new Date();
+        document.getElementById('live-clock').textContent =
+            now.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })
+            + '  ' +
+            now.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+    }
+    updateClock();
+    setInterval(updateClock, 30000);
+
+    // ── DataTables ──
+    $(document).ready(function () {
+        if ($('#pitchTable').length) {
+            $('#pitchTable').DataTable({ paging: false, order: [[1, 'desc']], info: false, searching: false });
+        }
+    });
+</script>
+
+</body>
+</html>

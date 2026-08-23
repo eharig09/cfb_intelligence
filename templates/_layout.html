@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}College Football{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='cfb.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body{% block body_attrs %}{% endblock %}>
+<header class="site-header">
+    <div class="nav">
+        {% block breadcrumb %}
+        <a href="{{ url_for('index') }}">Sports News Aggregator</a>
+        <span class="tagline">Teams &rarr; Players &rarr; Games &rarr; Reporting</span>
+        {% endblock %}
+    </div>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

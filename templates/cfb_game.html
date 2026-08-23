@@ -1,0 +1,211 @@
+{% extends "_layout.html" %}
+{% from "_tables.html" import data_table, story_list, tabbed_tables, tabs_script %}
+
+{% block title %}{{ game.away_team }} at {{ game.home_team }} | Game Preview{% endblock %}
+
+{% block head %}
+<style>
+    h1 b { color: var(--rust); }
+    .scoreboard { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 22px 0 6px; }
+    .scoreboard .team { background: var(--paper); border-left: 6px solid var(--team); padding: 13px 16px; }
+    .split { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
+    @media (min-width: 780px) { .split { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .matchup-summary { display: flex; gap: 18px; flex-wrap: wrap; margin: 0 0 13px; font-size: .8rem; color: var(--muted); }
+    .matchup-summary b { font: 700 1.15rem Georgia, serif; color: var(--rust); margin-right: 4px; }
+    .content-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); align-items: start; }
+    @media (min-width: 780px) { .content-grid { grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); } }
+    .content-layer { background: var(--paper); border: 1px solid var(--line); min-width: 0; }
+    .content-layer h3 {
+        display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+        font: 700 .95rem Georgia, serif; margin: 0; padding: 8px 12px;
+        background: var(--ink); color: #fff;
+    }
+    .content-layer h3 span { color: #d7c8b5; font-size: .66rem; font-variant-numeric: tabular-nums; }
+    .content-item { border-top: 1px solid var(--line); padding: 9px 12px; }
+    .content-item:first-of-type { border-top: 0; }
+    .content-item-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 3px; }
+    .content-kind { color: var(--rust); font-size: .57rem; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
+    .content-when { color: var(--muted); font-size: .62rem; }
+    .content-item > a { display: block; font-size: .81rem; line-height: 1.35; font-weight: 700; text-decoration: none; }
+    .content-item > a:hover { text-decoration: underline; }
+    .content-meta { color: var(--muted); font-size: .66rem; margin-top: 4px; }
+    .scoreboard { grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 640px) { .scoreboard { grid-template-columns: 1fr 1fr; } }
+</style>
+{% endblock %}
+
+{% block body_attrs %} style="--team:{{ home_brand.accent }};--conference:{{ home_brand.conference_color }}"{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('cfb.today', season=game.season) }}">&larr; College Football Today</a>
+<span class="tagline">Week {{ game.week }} preview</span>
+{% endblock %}
+
+{% block content %}
+<div class="eyebrow">Week {{ game.week }} &middot; Full preview</div>
+<h1>
+    {% if game.rankings.get(game.away_team) %}<b>#{{ game.rankings.get(game.away_team) }}</b> {% endif %}{{ game.away_team }}
+    at
+    {% if game.rankings.get(game.home_team) %}<b>#{{ game.rankings.get(game.home_team) }}</b> {% endif %}{{ game.home_team }}
+</h1>
+<p class="meta">
+    {{ game.start_label }} &middot; {{ game.television or 'TV TBD' }} &middot; {{ game.venue or 'Venue TBD' }}
+    {%- if game.neutral_site %} &middot; Neutral site{% endif %}
+</p>
+
+<div class="scoreboard">
+    {% for team_name, team_id, brand in [
+        (game.away_team, game.away_team_id, away_brand),
+        (game.home_team, game.home_team_id, home_brand)] %}
+    {% set record = game.records.get(team_name) %}
+    <section class="team" style="--team:{{ brand.accent }};--conference:{{ brand.conference_color }}">
+        <div class="label">{{ 'Away' if loop.first else 'Home' }}</div>
+        <div class="team-head">
+            {% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ team_name }} logo">{% endif %}
+            <div>
+                <div class="team-name"><a href="{{ url_for('cfb.team_preview', team_id=team_id, season=game.season) }}">{{ team_name }} &rarr;</a></div>
+                <div class="meta">
+                    {% if brand.conference %}<span class="conference-tag">{{ brand.conference }}</span>{% endif %}
+                    {%- if record %} {{ record.wins }}&ndash;{{ record.losses }} &middot; {{ record.conference_wins }}&ndash;{{ record.conference_losses }} conf
+                    {%- else %} preseason record unavailable{% endif %}
+                    {%- if brand.elo and brand.elo.elo %} &middot; <strong>Elo {{ brand.elo.elo }}</strong>
+                    (#{{ brand.elo.elo_rank }} FBS){% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+    {% endfor %}
+</div>
+
+<section class="section">
+    <h2>{{ game.season }} team quality</h2>
+    <div class="section-note">
+        Current-season CFBD advanced metrics, each formatted to its own scale. Preseason
+        context signals appear until plays are recorded.
+    </div>
+    {% if game.advanced_metrics %}
+        {{ data_table(metrics_table) }}
+    {% else %}
+        {{ data_table(preseason_table) }}
+        <div class="table-note">
+            These are context placeholders, not a predictive composite. Live efficiency
+            replaces them after games are played.
+        </div>
+    {% endif %}
+</section>
+
+<section class="section">
+    <h2>Matchups to watch</h2>
+    <div class="section-note">
+        Ranked by how watchable each comparison is: whether the better unit is genuinely
+        good, how far apart the two are, and whether both are strong. 2025 PFF grades are
+        historical context, not a projected {{ game.season }} grade.
+    </div>
+    {% if matchup_report.matchups %}
+    <div class="matchup-summary">
+        <span><b>{{ matchup_report.marquee_count }}</b> strength-on-strength</span>
+        <span><b>{{ matchup_report.mismatch_count }}</b> clear edge{{ '' if matchup_report.mismatch_count == 1 else 's' }}</span>
+        <span><b>{{ matchup_report.top_interest | cell('f1') }}</b> top watch score</span>
+    </div>
+    {% endif %}
+    {{ data_table(matchup_table) }}
+    {{ data_table(pff_units_table) }}
+</section>
+
+<section class="section">
+    <h2>Individuals to watch</h2>
+    <div class="section-note">
+        Graded players paired against the position that has to handle them. Both sides
+        must grade well to appear; a place on the 2027 consensus board raises a pairing
+        but cannot create one.
+    </div>
+    {{ data_table(player_matchup_table) }}
+</section>
+
+<section class="section">
+    <h2>Players to know</h2>
+    <div class="section-note">
+        Split into graded players still on the roster and those who have left, because
+        a departed star is context for last season, not a factor on Saturday.
+    </div>
+    <div class="split">
+        <div>
+            {{ data_table(away_returning_table) }}
+            {{ data_table(away_departed_table) }}
+        </div>
+        <div>
+            {{ data_table(home_returning_table) }}
+            {{ data_table(home_departed_table) }}
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <h2>Current production leaders</h2>
+    <div class="section-note">
+        {% if away_leaders.season or home_leaders.season %}Latest available CFBD season-stat snapshot
+        {% else %}Awaiting the player-stat stream{% endif %}
+    </div>
+    <div class="split">
+        <div>
+            <h3 class="label">{{ game.away_team }}</h3>
+            {% if away_leader_groups %}{{ tabbed_tables(away_leader_groups, 'away-leaders') }}
+            {% else %}<div class="empty">No synchronized player leaders.</div>{% endif %}
+        </div>
+        <div>
+            <h3 class="label">{{ game.home_team }}</h3>
+            {% if home_leader_groups %}{{ tabbed_tables(home_leader_groups, 'home-leaders') }}
+            {% else %}<div class="empty">No synchronized player leaders.</div>{% endif %}
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <h2>Story clusters</h2>
+    <div class="section-note">
+        Cross-source groupings preserve attribution; "original report candidate" is an
+        inference, not an authorship claim.
+    </div>
+    {{ story_list(story_clusters, 'No story cluster has resolved directly to this game yet.') }}
+</section>
+
+<section class="section">
+    <h2>Reporting &amp; analysis</h2>
+    <div class="section-note">
+        Grouped by what each item is. Video and podcast entries show their title, not
+        the promotional description that accompanies them.
+    </div>
+    {% set labels = {'reported': 'Latest reporting', 'official': 'Official information',
+                     'analyzed': 'Analysis', 'scouted': 'Players / Draft',
+                     'watched': 'Watch / Listen', 'discussed': 'Community'} %}
+    {% set populated = namespace(value=false) %}
+    {% for key in labels %}{% if content_layers[key] %}{% set populated.value = true %}{% endif %}{% endfor %}
+    {% if populated.value %}
+    <div class="content-grid">
+        {% for key, label in labels.items() %}{% if content_layers[key] %}
+        <section class="content-layer">
+            <h3>{{ label }} <span>{{ content_layers[key] | length }}</span></h3>
+            {% for item in content_layers[key][:6] %}
+            <article class="content-item">
+                <div class="content-item-top">
+                    <span class="content-kind">{{ item.content_type | replace('_', ' ') | lower }}</span>
+                    <span class="content-when">{{ item.published_label }}</span>
+                </div>
+                <a href="{{ item.canonical_url }}" target="_blank" rel="noopener">{{ item.headline }}</a>
+                <div class="content-meta">
+                    <strong>{{ item.source_entity_name or item.publisher_name }}</strong>
+                    &middot; {{ item.relevance_label }}
+                </div>
+                {% for topic in item.topics[:3] %}<span class="chip">{{ topic | replace('_', ' ') | lower }}</span>{% endfor %}
+            </article>
+            {% endfor %}
+        </section>
+        {% endif %}{% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">No recent verified-source reporting has resolved to these teams yet.</div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}{{ tabs_script() }}{% endblock %}

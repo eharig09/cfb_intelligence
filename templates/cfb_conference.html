@@ -1,0 +1,94 @@
+{% extends "_layout.html" %}
+{% from "_tables.html" import data_table, tabbed_tables, tabs_script %}
+
+{% block title %}{{ conference.conference }} | College Football{% endblock %}
+
+{% block head %}
+<style>
+    .fact-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 24px 0 6px; }
+    .fact-row .fact { background: var(--ink); color: #fff; border-right: 0; border-bottom: 0; padding: 12px 17px; }
+    .stories { display: grid; gap: 10px; }
+    .stories a { text-decoration: none; }
+</style>
+{% endblock %}
+
+{% block body_attrs %} style="--team:{{ conference_color }};--conference:{{ conference_color }}"{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('cfb.today', season=season) }}">&larr; College Football Today</a>
+<span class="tagline">Conference intelligence</span>
+{% endblock %}
+
+{% block content %}
+<div class="eyebrow">Conference intelligence &middot; {{ season }}</div>
+<h1 class="team-bar">{{ conference.conference }}</h1>
+<p class="dek">
+    Standings, upcoming games, verified-source story clusters, current player production,
+    and the prior-season PFF context that feeds matchup previews.
+</p>
+
+<div class="fact-row">
+    <div class="fact"><b>{{ conference.team_count }}</b><span>Teams</span></div>
+    <div class="fact"><b>{{ stories | length }}</b><span>Top stories</span></div>
+    <div class="fact"><b>{{ games_table | length }}</b><span>Upcoming games</span></div>
+</div>
+
+<div class="layout">
+    <div>
+        <section class="section">
+            <h2>{{ season }} standings</h2>
+            <div class="section-note">
+                Ordered by conference record. Conference and overall records update from CFBD;
+                preseason zeros are intentional.
+            </div>
+            {{ data_table(standings_table) }}
+        </section>
+
+        <section class="section">
+            <h2>Conference player leaders</h2>
+            <div class="section-note">
+                {% if leaders.season %}{{ leaders.season }} CFBD production &middot; each leaderboard shows the
+                full category stat line, not only the statistic it is ranked by.
+                {% else %}No player-stat snapshot has been synchronized yet.{% endif %}
+            </div>
+            {% if leader_groups %}
+                {{ tabbed_tables(leader_groups, 'conference-leaders') }}
+            {% else %}
+                <div class="empty">Player leader tables populate after the conference-stat stream runs.</div>
+            {% endif %}
+        </section>
+
+        <section class="section">
+            <h2>Upcoming games</h2>
+            {{ data_table(games_table) }}
+        </section>
+    </div>
+
+    <aside>
+        <section class="section">
+            <h2>Top stories</h2>
+            {% if stories %}
+            <div class="stories">
+                {% for story in stories %}
+                <article class="card">
+                    <div class="label">{{ story.cluster_basis | replace('_', ' ') }}</div>
+                    <a href="{{ story.url }}" target="_blank" rel="noopener"><strong>{{ story.title }}</strong></a>
+                    <div class="meta">{{ story.sources | length }} linked source{% if story.sources | length != 1 %}s{% endif %} &middot; {{ story.source_name }}</div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty">No recent verified-source clusters have resolved to this conference yet.</div>
+            {% endif %}
+        </section>
+
+        <section class="section">
+            <h2>Players to know</h2>
+            <div class="section-note">2025 PFF historical snapshot &middot; not a live {{ season }} grade</div>
+            {{ data_table(pff_table) }}
+        </section>
+    </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}{{ tabs_script() }}{% endblock %}

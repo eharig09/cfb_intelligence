@@ -1,0 +1,40 @@
+from __future__ import annotations
+import argparse, json, os
+from concurrent.futures import ThreadPoolExecutor
+from dotenv import load_dotenv
+from sports_aggregator.social.bluesky import BlueskyIdentityClient
+from sports_aggregator.social.registry import SourceRegistry
+from sports_aggregator.social.seeds import CFB_BLUESKY_SEEDS
+from sports_aggregator.social.reddit import RedditCommunityClient
+from sports_aggregator.social.unified import UnifiedSourceRegistry, migrate_bluesky_sources
+
+def main(argv=None):
+    load_dotenv(); p=argparse.ArgumentParser(); p.add_argument('command',choices=('seed','resolve','status','prepare','validate-reddit','unified-status')); p.add_argument('--force',action='store_true'); a=p.parse_args(argv)
+    database=os.getenv('CFB_DATABASE_PATH','instance/cfb.sqlite3')
+    registry=SourceRegistry(database); unified=UnifiedSourceRegistry(database)
+    if a.command=='seed':
+        seeded=registry.seed(CFB_BLUESKY_SEEDS); migrated=migrate_bluesky_sources(database)
+        reddit=unified.seed_reddit_communities(); candidates=unified.seed_media_candidates()
+        configured=unified.seed_configured_endpoints(); relationships=unified.infer_organization_relationships()
+        print(f"bluesky_seeded={seeded} entities_migrated={migrated} reddit_seeded={reddit} media_candidates={candidates} configured_endpoints={configured} relationships_added={relationships}"); return 0
+    if a.command=='prepare':
+        migrated=migrate_bluesky_sources(database); reddit=unified.seed_reddit_communities()
+        candidates=unified.seed_media_candidates(); configured=unified.seed_configured_endpoints()
+        relationships=unified.infer_organization_relationships()
+        print(f"entities_migrated={migrated} reddit_seeded={reddit} media_candidates={candidates} configured_endpoints={configured} relationships_added={relationships}"); return 0
+    if a.command=='status':
+        s=registry.status(); print(f"sources={s['count']} verified={s['verified']} failed_or_unresolved={s['failed']}"); return 0
+    if a.command=='unified-status':
+        s=unified.status(); print(json.dumps({k:v for k,v in s.items() if k!='entities'},indent=2)); return 0
+    if a.command=='validate-reddit':
+        endpoints=unified.endpoints_by_platform('reddit'); client=RedditCommunityClient(); results=[]
+        for endpoint in endpoints:
+            result=client.resolve(endpoint['handle']); unified.store_endpoint_resolution(result)
+            results.append(result); print(f"{endpoint['handle']}: {result.status}")
+        return 0 if all(result.status=='verified' for result in results) else 1
+    handles=registry.unresolved_handles(a.force); client=BlueskyIdentityClient()
+    with ThreadPoolExecutor(max_workers=5) as pool: results=list(pool.map(client.resolve,handles))
+    for result in results: registry.store_resolution(result); print(f"{result.requested_handle}: {result.status}")
+    migrate_bluesky_sources(database); unified.seed_configured_endpoints()
+    return 0 if all(r.status=='verified' for r in results) else 1
+if __name__=='__main__': raise SystemExit(main())

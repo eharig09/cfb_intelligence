@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bengals News and Skeet Feed</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #FB4F14;
+            color: #FFFFFF;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #000000;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .news, .skeets {
+            background-color: #FFFFFF;
+            color: #000000;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .skeet {
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #e9e9e9;
+            color: #333;
+        }
+        .author-info {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .author-info img {
+            border-radius: 50%;
+            margin-right: 10px;
+            width: 40px;
+            height: 40px;
+        }
+        .quote-skeet, .reply-skeet {
+            background-color: #D3D3D3;
+            margin: 8px 0;
+            padding: 10px;
+            border-radius: 6px;
+            color: #555;
+        }
+        .media img {
+            max-width: 100%;
+            border-radius: 6px;
+            margin-top: 5px;
+        }
+        a {
+            color: #FB4F14;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #777;
+        }
+        .reply-chain {
+            margin-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Bengals News and Skeet Feed</h1>
+    <div class="container">
+        <div class="news">
+            <h2>Latest News</h2>
+            {% for article in news %}
+                <div class="article">
+                    <h3>{{ article.title }}</h3>
+                    <p>Source: {{ article.source }} | Author: {{ article.author }}</p>
+                    <p>Date: {{ article.date }}</p>
+                    <p><a href="{{ article.url }}" target="_blank">Read more</a></p>
+                </div>
+            {% endfor %}
+        </div>
+        <div class="skeets">
+            <h2>Latest Skeets</h2>
+            {% for skeet in skeets %}
+                <div class="skeet">
+                    <div class="author-info">
+                        <img src="{{ skeet.avatar_url }}" alt="{{ skeet.display_name }}">
+                        <div>
+                            <strong>{{ skeet.display_name }}</strong> (@{{ skeet.author }})<br>
+                            <span class="timestamp">{{ skeet.timestamp }}</span>
+                        </div>
+                    </div>
+                    <p>{{ skeet.text|safe }}</p>
+                    {% if skeet.media %}
+                        <div class="media">
+                            {% for url in skeet.media %}
+                                <img src="{{ url }}" alt="Media">
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    {% if skeet.quote_skeet %}
+                        <div class="quote-skeet">
+                            <div class="author-info">
+                                <strong>{{ skeet.quote_skeet.display_name }}</strong> (@{{ skeet.quote_skeet.author }})<br>
+                                <span class="timestamp">Context Skeet</span>
+                            </div>
+                            <p>{{ skeet.quote_skeet.text|safe }}</p>
+                            {% if skeet.quote_skeet.media %}
+                                <div class="media">
+                                    {% for url in skeet.quote_skeet.media %}
+                                        <img src="{{ url }}" alt="Media">
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                    {% if skeet.replies %}
+                        <div class="reply-chain">
+                            {% for reply in skeet.replies %}
+                                <div class="reply-skeet">
+                                    <div class="author-info">
+                                        <img src="{{ reply.avatar_url }}" alt="{{ reply.display_name }}">
+                                        <div>
+                                            <strong>{{ reply.display_name }}</strong> (@{{ reply.author }})<br>
+                                            <span class="timestamp">{{ reply.timestamp }}</span>
+                                        </div>
+                                    </div>
+                                    <p>{{ reply.text|safe }}</p>
+                                    {% if reply.media %}
+                                        <div class="media">
+                                            {% for url in reply.media %}
+                                                <img src="{{ url }}" alt="Media">
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

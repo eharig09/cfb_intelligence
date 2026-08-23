@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ league.name }} News | Sports News Aggregator</title>
+    <style>
+        :root { --accent: {{ league.accent_color }}; --ink: #17202a; --muted: #667085; --line: #e4e7ec; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #f8f7f3; color: var(--ink); font-family: Inter, Arial, sans-serif; }
+        header { background: var(--accent); color: white; padding: 16px 24px; }
+        .header-inner, main { max-width: 1040px; margin: 0 auto; }
+        .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+        header a { color: white; text-decoration: none; font-weight: 700; }
+        main { padding: 44px 20px 64px; }
+        .eyebrow { color: var(--accent); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; font-size: .75rem; }
+        h1 { font-family: Georgia, serif; font-size: clamp(2.4rem, 7vw, 5rem); margin: 8px 0 12px; line-height: .95; }
+        .dek { color: var(--muted); max-width: 720px; font-size: 1.05rem; line-height: 1.65; }
+        .meta { color: var(--muted); font-size: .82rem; margin: 24px 0; }
+        .notice { border-left: 4px solid #d97706; background: #fffbeb; padding: 12px 16px; margin: 20px 0; }
+        .feed { display: grid; gap: 14px; }
+        article { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+        article h2 { font-family: Georgia, serif; font-size: 1.35rem; line-height: 1.25; margin: 0 0 8px; }
+        article h2 a { color: var(--ink); text-decoration: none; }
+        article h2 a:hover { color: var(--accent); }
+        .source { color: var(--accent); font-weight: 800; }
+        .summary { color: var(--muted); line-height: 1.55; margin: 10px 0 0; }
+        .empty { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 28px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-inner">
+            <a href="{{ url_for('index') }}">Sports News Aggregator</a>
+            <span>{{ league.abbreviation }}</span>
+        </div>
+    </header>
+    <main>
+        <p class="eyebrow">{{ league.sport }} · League feed</p>
+        <h1>{{ league.name }}</h1>
+        <p class="dek">{{ league.description }}</p>
+        <p class="meta">
+            {{ result.articles|length }} stories · Refreshed {{ result.fetched_at.strftime('%b %d at %I:%M %p UTC') }} ·
+            JSON: <a href="{{ url_for('leagues.league_articles_api', league_slug=league.slug) }}">API endpoint</a>
+        </p>
+
+        {% if result.errors %}
+        <div class="notice">
+            Some sources could not be refreshed:
+            {% for error in result.errors %}<strong>{{ error.source }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}.
+            Available sources are still shown.
+        </div>
+        {% endif %}
+
+        <section class="feed" aria-label="Latest {{ league.name }} stories">
+            {% for article in result.articles %}
+            <article>
+                <h2><a href="{{ article.url }}" target="_blank" rel="noopener noreferrer">{{ article.title }}</a></h2>
+                <div class="meta">
+                    <span class="source">{{ article.source }}</span> · {{ article.published_label }}
+                    {% if article.author %} · {{ article.author }}{% endif %}
+                </div>
+                {% if article.summary %}<p class="summary">{{ article.summary }}</p>{% endif %}
+            </article>
+            {% else %}
+            <div class="empty">
+                <strong>No stories are available right now.</strong>
+                The page will retry its configured providers after the cache window.
+            </div>
+            {% endfor %}
+        </section>
+    </main>
+</body>
+</html>

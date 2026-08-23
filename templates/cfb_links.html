@@ -1,0 +1,79 @@
+{% extends "_layout.html" %}
+
+{% block title %}Entity link audit | College Football{% endblock %}
+
+{% block head %}
+<style>
+    .filters { display: flex; flex-wrap: wrap; gap: 5px; margin: 14px 0 6px; }
+    .filters a { background: var(--paper); border: 1px solid var(--line); padding: 5px 10px; font-size: .72rem; font-weight: 700; text-decoration: none; }
+    .filters a.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .link-row { background: var(--paper); border: 1px solid var(--line); border-left: 5px solid var(--team); padding: 11px 13px; margin-bottom: 8px; }
+    .link-row.is-weak { border-left-color: var(--gold); }
+    .link-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .link-target { font: 700 1rem Georgia, serif; }
+    .link-method { color: var(--muted); font-size: .66rem; font-variant-numeric: tabular-nums; }
+    .link-excerpt { font-size: .8rem; line-height: 1.45; margin: 6px 0 5px; }
+    .link-evidence { color: var(--muted); font-size: .68rem; }
+    .link-evidence code { background: #eee5d8; padding: 0 3px; }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('cfb.today') }}">&larr; College Football Today</a>
+<span class="tagline">Link audit</span>
+{% endblock %}
+
+{% block content %}
+<div class="eyebrow">Resolution review</div>
+<h1>Entity link audit</h1>
+<p class="dek">
+    Every team and player link with the text that produced it. Resolution rules are
+    only trustworthy if they can be checked, so each row shows the matched words, the
+    rule that fired, and the confidence it carries.
+</p>
+
+<div class="facts">
+    <div class="fact"><b>{{ audit.count }}</b><span>Shown</span></div>
+    {% for method, total in audit.counts.items() %}
+    <div class="fact"><b>{{ total }}</b><span>{{ method | replace('_', ' ') }}</span></div>
+    {% endfor %}
+</div>
+
+<div class="filters">
+    <a href="{{ url_for('cfb.link_audit', kind='player') }}" class="{{ 'active' if audit.kind == 'player' and not audit.method }}">All player links</a>
+    {% for method in audit.counts %}
+    <a href="{{ url_for('cfb.link_audit', kind=audit.kind, method=method) }}"
+       class="{{ 'active' if audit.method == method }}">{{ method | replace('_', ' ') }}</a>
+    {% endfor %}
+    <a href="{{ url_for('cfb.link_audit', kind='team') }}" class="{{ 'active' if audit.kind == 'team' }}">Team links</a>
+</div>
+
+<section class="section">
+    <h2>{{ audit.kind | title }} links</h2>
+    <div class="section-note">
+        Rows with a gold rule used a weaker rule and are the ones most worth checking.
+    </div>
+    {% for link in audit.links %}
+    <article class="link-row {{ 'is-weak' if link.confidence < 0.8 }}">
+        <div class="link-head">
+            <span class="link-target">
+                {{ link.label or link.target }}
+                {%- if link.team %} <span class="meta">&middot; {{ link.team }}{% if link.position %} {{ link.position }}{% endif %}</span>{% endif %}
+            </span>
+            <span class="link-method">{{ link.method | replace('_', ' ') }} &middot; {{ link.confidence }}</span>
+        </div>
+        <div class="link-excerpt">
+            <a href="{{ link.canonical_url }}" target="_blank" rel="noopener">{{ link.headline }}</a>
+        </div>
+        <div class="link-evidence">
+            {{ link.source_name or 'unattributed' }} &middot; {{ link.platform }}
+            {%- for item in link.evidence %}
+            &middot; matched <code>{{ item.matched_text }}</code> in the {{ item.location }}
+            {%- endfor %}
+        </div>
+    </article>
+    {% else %}
+    <div class="empty">No links match this filter.</div>
+    {% endfor %}
+</section>
+{% endblock %}

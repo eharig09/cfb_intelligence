@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports News Aggregator</title>
+    <style>
+        :root {
+            color-scheme: light; --surface: #fffdf8; --ink: #18222d; --muted: #586675;
+            --accent: #9a3412; --accent-dark: #6b210c; --panel: #efe5d2;
+            --shadow: 0 20px 40px rgba(24, 34, 45, 0.08);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: Georgia, "Times New Roman", serif; color: var(--ink);
+            background: radial-gradient(circle at top left, rgba(154, 52, 18, 0.14), transparent 28%),
+                        linear-gradient(135deg, #f8f2e7 0%, #f3eee2 52%, #ece6d7 100%);
+            min-height: 100vh;
+        }
+        main { max-width: 1060px; margin: 0 auto; padding: 48px 20px 64px; }
+        .hero, .card {
+            background: rgba(255, 253, 248, 0.92); border: 1px solid rgba(24, 34, 45, 0.08);
+            box-shadow: var(--shadow);
+        }
+        .hero { border-radius: 24px; padding: 32px; margin-bottom: 28px; }
+        .eyebrow, .section-label {
+            text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.75rem;
+            color: var(--accent-dark); margin: 0 0 12px;
+        }
+        h1 { font-size: clamp(2.2rem, 5vw, 4rem); line-height: 0.96; margin: 0 0 12px; }
+        .intro, .card p { color: var(--muted); line-height: 1.65; }
+        .intro { max-width: 52rem; margin: 0; }
+        .section-label { margin: 28px 2px 12px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 18px; }
+        .card { border-radius: 20px; padding: 24px; }
+        .card h2 { margin: 0 0 10px; font-size: 1.55rem; }
+        .card p { margin: 0 0 18px; }
+        .pill {
+            display: inline-block; background: var(--panel); color: var(--accent-dark);
+            padding: 6px 10px; border-radius: 999px; font-size: 0.84rem; margin-bottom: 16px;
+        }
+        .cta {
+            display: inline-block; text-decoration: none; background: var(--accent); color: white;
+            padding: 11px 16px; border-radius: 999px; font-weight: bold;
+        }
+        .cta:hover { background: var(--accent-dark); }
+        .legacy { opacity: 0.9; }
+    </style>
+</head>
+<body>
+    <main>
+        <section class="hero">
+            <p class="eyebrow">Sports News Aggregator</p>
+            <h1>Follow the leagues that matter.</h1>
+            <p class="intro">
+                College football is the first league on the shared aggregation platform. News providers,
+                league metadata, and delivery APIs are now separated so more leagues can plug into the same flow.
+            </p>
+        </section>
+
+        <p class="section-label">League feeds</p>
+        <section class="grid">
+            {% for league in leagues %}
+            <article class="card">
+                <span class="pill">{{ league.abbreviation }}</span>
+                <h2>{{ league.name }}</h2>
+                <p>{{ league.description }}</p>
+                <a class="cta" href="{{ url_for('leagues.league_page', league_slug=league.slug) }}">
+                    Open {{ league.abbreviation }} feed
+                </a>
+            </article>
+            {% endfor %}
+        </section>
+
+        {% if legacy_dashboards %}
+        <p class="section-label">Legacy team dashboards</p>
+        <section class="grid legacy">
+            <article class="card">
+                <span class="pill">MLB</span>
+                <h2>Cincinnati Reds</h2>
+                <p>News, social posts, schedule, leaderboards, and pitch analysis.</p>
+                <a class="cta" href="/reds/">Open Reds page</a>
+            </article>
+            <article class="card">
+                <span class="pill">NFL</span>
+                <h2>Cincinnati Bengals</h2>
+                <p>Team news and Bluesky posts from the original aggregator prototype.</p>
+                <a class="cta" href="/bengals/">Open Bengals page</a>
+            </article>
+        </section>
+        {% endif %}
+    </main>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CFB Source Registry</title>
+    <style>
+        :root { --ink:#17130f; --muted:#6b625a; --cream:#f5f0e7; --paper:#fffdf8; --rust:#9a3412; --line:#ddd4c6; --green:#166534; }
+        * { box-sizing:border-box; } body { margin:0; color:var(--ink); background:var(--cream); font-family:Arial,sans-serif; }
+        header { background:var(--ink); padding:15px 22px; } header a { color:white; text-decoration:none; font-weight:800; }
+        main { max-width:1180px; margin:auto; padding:38px 20px 70px; }
+        h1 { font:700 clamp(2.5rem,7vw,5.4rem)/.95 Georgia,serif; margin:8px 0 12px; }
+        .eyebrow { color:var(--rust); font-weight:900; text-transform:uppercase; letter-spacing:.15em; font-size:.74rem; }
+        .summary { display:flex; gap:10px; margin:24px 0; flex-wrap:wrap; } .pill { background:var(--ink); color:white; padding:10px 14px; }
+        .pill strong { font:700 1.35rem Georgia,serif; margin-right:5px; } .verified { color:#bbf7d0; }
+        table { width:100%; border-collapse:collapse; background:var(--paper); font-size:.83rem; }
+        th { text-align:left; background:#e9e0d3; text-transform:uppercase; letter-spacing:.06em; font-size:.68rem; }
+        th,td { padding:11px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+        .handle { color:var(--muted); font-size:.74rem; margin-top:3px; } .tag { display:inline-block; background:#eee5d8; padding:3px 5px; margin:1px; }
+        .ok { color:var(--green); font-weight:800; } .pending { color:var(--rust); font-weight:800; }
+        @media(max-width:760px) { .optional { display:none; } table { font-size:.75rem; } }
+    </style>
+</head>
+<body>
+<header><a href="{{ url_for('cfb.today') }}">College Football Today</a></header>
+<main>
+    <div class="eyebrow">Editorial controls</div>
+    <h1>Source registry</h1>
+    <p><a href="{{ url_for('cfb.source_graph_admin') }}">Open the unified cross-platform source graph →</a></p>
+    <p>Curated accounts are canonicalized by DID. Failed or changed identities stay visible for review rather than being silently replaced.</p>
+    <div class="summary">
+        <div class="pill"><strong>{{ count }}</strong> seeded</div>
+        <div class="pill"><strong class="verified">{{ verified }}</strong> verified</div>
+        <div class="pill"><strong>{{ failed }}</strong> pending or failed</div>
+    </div>
+    <table>
+        <thead><tr><th>Source</th><th>Type</th><th>Status</th><th>Trust</th><th class="optional">Specialties / scope</th></tr></thead>
+        <tbody>
+        {% for source in sources %}
+            <tr>
+                <td><strong>{{ source.display_name }}</strong><div class="handle">@{{ source.handle }}</div></td>
+                <td>{{ source.source_type }}</td>
+                <td class="{{ 'ok' if source.resolution_status == 'verified' else 'pending' }}">{{ source.resolution_status }}</td>
+                <td>{{ source.reliability }}/5</td>
+                <td class="optional">
+                    {% for item in source.specialties %}<span class="tag">{{ item }}</span>{% endfor %}
+                    {% for item in source.teams %}<span class="tag">Team: {{ item }}</span>{% endfor %}
+                    {% for item in source.conferences %}<span class="tag">{{ item }}</span>{% endfor %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <h2>Conference coverage gaps</h2>
+    <p>Counts include only explicitly mapped, currently verified sources. National accounts are not assumed to cover every conference.</p>
+    <table>
+        <thead><tr><th>Conference</th><th>Verified mapped sources</th><th>Coverage</th></tr></thead>
+        <tbody>{% for row in coverage.conferences %}<tr><td>{{ row.conference }}</td><td>{{ row.source_count }}</td><td class="{{ 'pending' if row.rating == 'LOW' else 'ok' }}">{{ row.rating }}</td></tr>{% endfor %}</tbody>
+    </table>
+    <h2>Largest team-level gaps</h2>
+    <p>The registry has {{ coverage.teams|selectattr('source_count', 'equalto', 0)|list|length }} FBS teams with no explicitly mapped seed source.</p>
+    <table>
+        <thead><tr><th>Team</th><th>Conference</th><th>Verified mapped sources</th></tr></thead>
+        <tbody>{% for row in coverage.teams[:30] %}<tr><td>{{ row.school }}</td><td>{{ row.conference or 'Independent' }}</td><td>{{ row.source_count }}</td></tr>{% endfor %}</tbody>
+    </table>
+</main>
+</body>
+</html>

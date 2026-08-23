@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>CFB Trusted Source Graph</title>
+    <style>
+        :root{--ink:#17130f;--cream:#f5f0e7;--paper:#fffdf8;--rust:#9a3412;--line:#ddd4c6;--muted:#6b625a;--green:#166534}
+        *{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font-family:Arial,sans-serif}header{background:var(--ink);padding:15px 22px}header a{color:white;text-decoration:none;font-weight:800}main{max-width:1200px;margin:auto;padding:38px 20px 70px}h1{font:700 clamp(2.6rem,7vw,5.6rem)/.95 Georgia,serif;margin:8px 0 12px}.eyebrow{color:var(--rust);font-weight:900;text-transform:uppercase;letter-spacing:.15em;font-size:.74rem}.summary{display:flex;gap:10px;flex-wrap:wrap;margin:24px 0}.pill{background:var(--ink);color:white;padding:11px 15px}.pill strong{font:700 1.4rem Georgia,serif;margin-right:5px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}.entity{background:var(--paper);border:1px solid var(--line);border-top:4px solid var(--rust);padding:16px}.entity h2{font:700 1.3rem Georgia,serif;margin:0}.meta{color:var(--muted);font-size:.76rem;margin:5px 0 10px}.tag{display:inline-block;background:#eee5d8;padding:3px 5px;margin:2px;font-size:.68rem}.endpoint{display:grid;grid-template-columns:90px 1fr auto;gap:8px;border-top:1px solid var(--line);padding-top:8px;margin-top:8px;font-size:.74rem}.ok{color:var(--green);font-weight:800}.pending{color:var(--rust);font-weight:800}table{width:100%;border-collapse:collapse;background:var(--paper)}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;font-size:.8rem}th{background:#e9e0d3}
+    </style>
+</head>
+<body><header><a href="{{ url_for('cfb.source_admin') }}">Source registry</a></header><main>
+    <div class="eyebrow">Cross-platform attribution</div><h1>Trusted source graph</h1>
+    <p>One person, show, publication, community, or organization can own several platform endpoints without receiving duplicate authority.</p>
+    <div class="summary"><div class="pill"><strong>{{ entity_count }}</strong> entities</div><div class="pill"><strong>{{ endpoint_count }}</strong> endpoints</div><div class="pill"><strong>{{ verified_endpoints }}</strong> verified</div><div class="pill"><strong>{{ relationship_count }}</strong> relationships</div><div class="pill"><strong>{{ candidates|length }}</strong> candidates</div></div>
+    <div class="grid">{% for entity in entities %}<article class="entity">
+        <h2>{{ entity.name }}</h2><div class="meta">{{ entity.entity_type }}{% if entity.organization %} · {{ entity.organization }}{% endif %} · reliability {{ entity.reliability_score }}/5</div>
+        {% for class in entity.classes %}<span class="tag">{{ class }}</span>{% endfor %}
+        {% for endpoint in entity.endpoints %}<div class="endpoint"><strong>{{ endpoint.platform }}</strong><span>{{ endpoint.endpoint_type }}{% if endpoint.handle %} · {{ endpoint.handle }}{% endif %}</span><span class="{{ 'ok' if endpoint.verification_status == 'verified' else 'pending' }}">{{ endpoint.verification_status }}</span></div>{% endfor %}
+    </article>{% endfor %}</div>
+    <h2>Platform coverage</h2><table><thead><tr><th>Platform</th><th>Endpoints</th><th>Verified</th></tr></thead><tbody>{% for row in coverage.platforms %}<tr><td>{{ row.platform }}</td><td>{{ row.endpoint_count }}</td><td>{{ row.verified_count }}</td></tr>{% endfor %}</tbody></table>
+    <h2>Endpoint candidates awaiting validation</h2><table><thead><tr><th>Name</th><th>Entity type</th><th>Proposed classes</th><th>Status</th></tr></thead><tbody>{% for candidate in candidates %}<tr><td>{{ candidate.name }}</td><td>{{ candidate.proposed_entity_type }}</td><td>{{ candidate.proposed_classes }}</td><td>{{ candidate.validation_status }}</td></tr>{% endfor %}</tbody></table>
+</main></body></html>

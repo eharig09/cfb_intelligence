@@ -1,0 +1,314 @@
+/* College-football intelligence design system.
+
+   One stylesheet for every CFB page. Team and conference identity arrive as CSS
+   custom properties (--team, --team-fill, --team-on-fill, --conference) set by
+   the server, which contrast-checks each color first, so a pale team color can
+   accent a page without becoming unreadable.
+
+   Layout is mobile-first: the base rules describe a single column, and each
+   breakpoint adds structure rather than clawing it back. */
+
+:root {
+    --ink: #17130f;
+    --muted: #6b625a;
+    --cream: #f5f0e7;
+    --paper: #fffdf8;
+    --rust: #9a3412;
+    --gold: #d4a72c;
+    --line: #ddd4c6;
+    --line-strong: #c3b7a4;
+    --zebra: #faf6ee;
+    --hover: #f2ebdf;
+    --green: #166534;
+    --blue: #1d4ed8;
+    --red: #991b1b;
+
+    --team: var(--rust);
+    --team-fill: var(--rust);
+    --team-on-fill: #fff;
+    --conference: var(--muted);
+
+    --shell: 1520px;
+    --gap: 12px;
+    --pad: 16px;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+    margin: 0;
+    background: var(--cream);
+    color: var(--ink);
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Ingested text can contain unbroken URLs that would widen the page. Break
+   those, and only those: applying it globally split names like "Arch Manning"
+   character by character inside narrow table columns. */
+.stream-entry, .dev, .content-item, .story-entry, .why { overflow-wrap: anywhere; }
+
+a { color: inherit; }
+img { max-width: 100%; }
+
+/* ---------- page furniture ---------- */
+
+.site-header { background: var(--ink); padding: 11px var(--pad); border-bottom: 3px solid var(--team); }
+.site-header > div, main { max-width: var(--shell); margin: 0 auto; }
+.site-header a { color: #fff; text-decoration: none; font-weight: 800; }
+.site-header .tagline { display: none; color: #d7c8b5; font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; }
+.site-header .nav { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+
+main { padding: 20px var(--pad) 52px; }
+
+.eyebrow, .label {
+    color: var(--rust); font-weight: 900; text-transform: uppercase;
+    letter-spacing: .12em; font-size: .66rem;
+}
+h1 { font: 700 clamp(1.75rem, 6vw, 3.2rem)/1.02 Georgia, serif; margin: 6px 0 8px; }
+.dek { color: var(--muted); font: .92rem/1.5 Georgia, serif; max-width: 68ch; }
+.meta { color: var(--muted); font-size: .72rem; line-height: 1.5; }
+
+.section { margin-top: 26px; }
+.section > h2, .section-title h2 {
+    font: 700 clamp(1.3rem, 3.4vw, 1.75rem) Georgia, serif; margin: 0 0 8px;
+    border-bottom: 2px solid var(--ink); padding-bottom: 7px;
+}
+.section-title { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
+.section-title h2 { flex: 1 1 14rem; }
+.section-title span { color: var(--muted); font-size: .72rem; }
+.section-note { color: var(--muted); font-size: .74rem; margin: 0 0 11px; }
+
+.card { background: var(--paper); border: 1px solid var(--line); padding: 13px; }
+.empty {
+    background: var(--paper); border: 1px dashed var(--line-strong);
+    padding: 15px; color: var(--muted); font-size: .82rem;
+}
+.badge, .chip {
+    display: inline-block; background: #eee5d8; padding: 2px 6px;
+    font-size: .62rem; margin: 4px 3px 0 0;
+}
+
+/* Key figures. Two across on a phone, six on a desktop. */
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); background: var(--ink); color: #fff; margin: 14px 0 4px; }
+.fact { padding: 9px 11px; border-right: 1px solid #49423b; border-bottom: 1px solid #49423b; }
+.fact b { display: block; font: 700 1.15rem/1.2 Georgia, serif; font-variant-numeric: tabular-nums; }
+.fact span { color: #d7c8b5; font-size: .58rem; text-transform: uppercase; letter-spacing: .06em; }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+
+/* ---------- identity ---------- */
+
+.team-bar { border-left: 6px solid var(--team); padding-left: 14px; }
+.team-head { display: flex; align-items: center; gap: 12px; }
+.team-head img { width: 44px; height: 44px; object-fit: contain; flex: 0 0 auto; }
+.team-head .team-name { font: 700 1.15rem Georgia, serif; }
+.team-head .team-name a { text-decoration: none; }
+
+.conference-tag {
+    display: inline-block; background: var(--conference); color: #fff;
+    padding: 2px 7px; font-size: .6rem; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .07em; text-decoration: none;
+}
+
+.identity-crest {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2.1rem; height: 2.1rem; flex: 0 0 auto;
+    background: var(--team-fill); color: var(--team-on-fill);
+    font: 800 .68rem/1 Arial, sans-serif;
+}
+
+/* ---------- table system ---------- */
+
+.table-wrap {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 12px;
+}
+
+.table-caption {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px;
+    padding: 8px 11px; border-bottom: 1px solid var(--line);
+    background: #f0e8db;
+}
+.table-caption strong { font: 700 .9rem Georgia, serif; }
+.table-caption span { color: var(--muted); font-size: .66rem; }
+
+table.data {
+    width: 100%;
+    border-collapse: collapse;
+    /* Digits must line up column-to-column; this is the point of the table. */
+    font-variant-numeric: tabular-nums;
+    font-size: .84rem;
+}
+
+table.data thead th {
+    position: sticky; top: 0; z-index: 1;
+    background: #ede5d9;
+    color: var(--muted);
+    font-size: .63rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em;
+    padding: 8px 9px;
+    border-bottom: 2px solid var(--line-strong);
+    white-space: nowrap;
+}
+table.data thead th[title] { cursor: help; }
+
+table.data tbody td {
+    padding: 8px 9px; border-bottom: 1px solid var(--line); vertical-align: top;
+    overflow-wrap: normal; word-break: keep-all;
+}
+/* Names and schools stay on one line and ellipsize rather than stacking. */
+table.data td.col-left.emphasis { white-space: nowrap; }
+table.data tbody tr:nth-child(even) { background: var(--zebra); }
+table.data tbody tr:hover { background: var(--hover); }
+table.data tbody tr:last-child td { border-bottom: 0; }
+
+table.data tfoot td {
+    padding: 8px 9px; border-top: 2px solid var(--line-strong);
+    font-weight: 800; background: #f0e8db;
+}
+
+table.data .col-right { text-align: right; }
+table.data .col-left { text-align: left; }
+table.data .col-center { text-align: center; }
+
+table.data .num { white-space: nowrap; }
+table.data .is-empty { color: var(--muted); }
+table.data .emphasis { font-weight: 700; }
+table.data .col-rank { color: var(--muted); width: 2.4rem; }
+table.data td a { text-decoration: none; font-weight: 700; }
+table.data td a:hover { text-decoration: underline; }
+table.data .sub { display: block; color: var(--muted); font-size: .68rem; font-weight: 400; margin-top: 1px; }
+table.data .pos { color: var(--muted); font-size: .72rem; }
+
+/* Team identity inside a cell: colored rule, mark, then the name. */
+table.data .team-cell { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+table.data .team-rule {
+    flex: 0 0 auto; width: 3px; align-self: stretch; min-height: 1.1em;
+    background: var(--row-team, var(--line-strong)); border-radius: 2px;
+}
+table.data .team-logo { flex: 0 0 auto; width: 19px; height: 19px; object-fit: contain; }
+table.data .team-cell a, table.data .team-cell > span {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.table-note { color: var(--muted); font-size: .68rem; margin: -6px 0 14px; }
+
+table.data.dense { font-size: .78rem; }
+table.data.dense thead th, table.data.dense tbody td { padding: 6px 8px; }
+
+.win { color: var(--green); font-weight: 800; }
+.loss { color: var(--red); font-weight: 800; }
+.pending { color: var(--muted); }
+.trend-up { color: var(--green); }
+.trend-down { color: var(--red); }
+
+/* ---------- source streams ---------- */
+
+.stream-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); align-items: start; }
+.stream-column { background: var(--paper); border: 1px solid var(--line); min-width: 0; }
+.stream-column-head {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+    padding: 9px 11px; background: var(--ink); color: #fff;
+}
+.stream-column-head strong { font: 700 .95rem Georgia, serif; }
+.stream-column-head span { color: #d7c8b5; font-size: .66rem; font-variant-numeric: tabular-nums; }
+.stream-column-note {
+    margin: 0; padding: 6px 11px; color: var(--muted); font-size: .64rem;
+    border-bottom: 1px solid var(--line); background: #f0e8db;
+}
+.stream-entry { padding: 9px 11px; border-bottom: 1px solid var(--line); }
+.stream-entry:last-child { border-bottom: 0; }
+.stream-entry > a {
+    display: block; font-size: .8rem; line-height: 1.35; font-weight: 700;
+    text-decoration: none; margin-bottom: 5px;
+}
+.stream-entry > a:hover { text-decoration: underline; }
+.stream-entry-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.stream-type { color: var(--rust); font-size: .58rem; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
+.stream-score { color: var(--muted); font-size: .64rem; font-variant-numeric: tabular-nums; }
+.stream-entry-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.stream-teams { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.stream-team {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: .62rem; font-weight: 700; padding: 2px 5px;
+    background: #eee5d8; border-left: 3px solid var(--row-team, var(--line-strong));
+}
+.stream-team img { width: 13px; height: 13px; object-fit: contain; }
+.stream-source { color: var(--muted); font-size: .62rem; }
+
+/* ---------- story lists ---------- */
+
+.story-list { background: var(--paper); border: 1px solid var(--line); }
+/* Context streams are visibly secondary: they are about the subject's world,
+   not about the subject. */
+.story-list.is-context { border-left: 4px solid var(--line-strong); background: var(--zebra); }
+.story-entry { padding: 10px 12px; border-bottom: 1px solid var(--line); border-left: 4px solid transparent; }
+/* A story block carries the color of the team it resolved to, so a long list
+   can be scanned by team before a single headline is read. */
+.story-entry.has-team { border-left-color: var(--story-team); }
+.story-entry:last-child { border-bottom: 0; }
+.story-entry-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 3px; }
+.story-type { color: var(--rust); font-size: .58rem; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
+.story-source { color: var(--muted); font-size: .63rem; }
+.story-entry > a { display: block; font-size: .84rem; line-height: 1.35; font-weight: 700; text-decoration: none; }
+.story-entry > a:hover { text-decoration: underline; }
+.story-entry-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 5px; color: var(--muted); font-size: .63rem; }
+.story-team {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #eee5d8; padding: 2px 6px; font-size: .62rem; font-weight: 700;
+    text-decoration: none; border-left: 3px solid var(--row-team, var(--team));
+}
+.story-team img { width: 13px; height: 13px; object-fit: contain; }
+
+/* ---------- tabs ---------- */
+
+.tabs { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 10px; }
+.tabs button {
+    font: 700 .7rem/1 Arial, sans-serif; text-transform: uppercase; letter-spacing: .05em;
+    padding: 8px 11px; border: 1px solid var(--line); background: var(--paper);
+    color: var(--muted); cursor: pointer; min-height: 34px;
+}
+.tabs button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.tabpanel[hidden] { display: none; }
+
+/* ---------- breakpoints ---------- */
+
+@media (min-width: 560px) {
+    :root { --pad: 20px; }
+    .facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .site-header .tagline { display: inline; }
+}
+
+@media (min-width: 860px) {
+    :root { --gap: 14px; }
+    main { padding-top: 28px; }
+    .facts { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .fact { border-bottom: 0; }
+    .fact:last-child { border-right: 0; }
+    .layout { grid-template-columns: minmax(0, 1.6fr) minmax(280px, .78fr); gap: 24px; }
+    .stream-columns { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .team-head img { width: 54px; height: 54px; }
+}
+
+@media (min-width: 1280px) {
+    :root { --pad: 26px; }
+}
+
+/* Phones: strip decoration that only costs space. */
+@media (max-width: 559px) {
+    .table-caption { padding: 7px 9px; }
+    table.data { font-size: .8rem; }
+    table.data thead th, table.data tbody td { padding: 7px 7px; }
+    .section { margin-top: 20px; }
+    .tabs button { flex: 1 1 auto; }
+}
+
+@media print {
+    .tabs, .site-header { display: none; }
+    .tabpanel[hidden] { display: block; }
+}
