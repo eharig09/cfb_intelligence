@@ -225,6 +225,13 @@ than refreshing SQLite inside a separate service. The web service needs a
 persistent disk and a shared `CFB_REFRESH_TOKEN`; deployment details are in
 [`docs/SCHEDULED_REFRESH.md`](docs/SCHEDULED_REFRESH.md#render).
 
+The Blueprint mounts a 5 GB disk at `/var/data` and keeps SQLite, CFBD responses,
+SportsDataverse assets, and weather responses there. Consequently, only a brand-new
+empty disk needs `bootstrap initial`; code rebuilds reuse the stored database and
+routine `bootstrap refresh` calls only update moving datasets. The CFB Render service
+uses one threaded Gunicorn worker and leaves the memory-heavy legacy dashboards off,
+which preserves headroom for an in-service refresh subprocess.
+
 `initial` builds canonical teams/games/current rosters first, then current and
 prior-season games, coaches and production, models, roster lifecycle, PFF, transfer identity
 links, draft data, weather, source registries, ingestion, retagging, clustering,

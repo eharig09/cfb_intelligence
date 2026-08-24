@@ -45,10 +45,26 @@ because Render cron expressions themselves use UTC.
 
 In the Render web service:
 
-1. Attach a persistent disk at `/var/data`.
+1. Attach a persistent disk at `/var/data` (5 GB for the current roughly 876 MB
+   SQLite database plus WAL growth and provider caches). The repository Blueprint
+   now declares this disk for `cfb_intelligence`.
 2. Set `CFB_DATABASE_PATH=/var/data/cfb.sqlite3`.
 3. Set `CFBD_RAW_CACHE_PATH=/var/data/cfbd_raw`.
-4. Generate a long random value and set it as `CFB_REFRESH_TOKEN`.
+4. Set `SPORTSDATAVERSE_CACHE_PATH=/var/data/sportsdataverse` and
+   `CFB_WEATHER_CACHE_PATH=/var/data/weather`.
+5. Generate a long random value and set it as `CFB_REFRESH_TOKEN`.
+
+Only the first deployment against an empty disk needs `bootstrap initial`. Every
+later rebuild remounts the same SQLite database and raw caches; run `bootstrap
+refresh` for moving data instead of reseeding. Render does not expose persistent
+disks to build or pre-deploy commands, so never put the initial seed in either one.
+
+The Blueprint deliberately runs one Gunicorn worker with four threads and disables
+the pandas-heavy legacy Reds/Bengals dashboards on the CFB service. A refresh runs
+inside this same instance so it can update SQLite; limiting the resident web process
+prevents Gunicorn workers plus an ingestion subprocess from exceeding the service's
+memory allocation. If memory alerts continue during a specific bootstrap step,
+inspect the refresh log for the last `[ ] step` marker before increasing the instance.
 
 The default `CFB_SQLITE_BUSY_TIMEOUT_MS=60000` lets a refresh writer wait for a
 short concurrent transaction. Write transactions reserve their WAL writer slot

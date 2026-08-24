@@ -28,10 +28,15 @@ def _repository(path: str | None = None) -> CFBRepository:
     return CFBRepository(path or os.getenv("CFB_DATABASE_PATH", "instance/cfb.sqlite3"))
 
 
+def _cache_path(env_name: str, default: str) -> str:
+    return (os.getenv(env_name) or default).strip()
+
+
 def ingest_fpi(repository: CFBRepository, seasons: list[int], *,
                force: bool = False) -> int:
     """Import ESPN FPI projections for one or more seasons."""
-    client = SportsDataverseClient()
+    client = SportsDataverseClient(cache_path=_cache_path(
+        "SPORTSDATAVERSE_CACHE_PATH", "instance/sportsdataverse"))
     failures = 0
     for season in seasons:
         started = utc_now()
@@ -77,7 +82,8 @@ def ingest_weather(repository: CFBRepository, season: int, *,
                    limit: int = 60, force: bool = False) -> int:
     """Snapshot kickoff weather for upcoming games inside the forecast horizon."""
     initialize(repository)
-    client = OpenMeteoClient()
+    client = OpenMeteoClient(cache_path=_cache_path(
+        "CFB_WEATHER_CACHE_PATH", "instance/weather"))
     venues = repository.team_venues()
     started = utc_now()
     generated_at = datetime.now(timezone.utc).isoformat()
@@ -142,7 +148,9 @@ def main(argv=None) -> int:
 
     if args.command == "sources":
         # What each upstream dataset currently publishes, before importing it.
-        for entry in SportsDataverseClient().status():
+        client = SportsDataverseClient(cache_path=_cache_path(
+            "SPORTSDATAVERSE_CACHE_PATH", "instance/sportsdataverse"))
+        for entry in client.status():
             seasons = entry.get("seasons") or []
             span = f"{seasons[0]}-{seasons[-1]}" if seasons else "none"
             print(f"  {entry['dataset']:20s} assets={entry.get('assets', 0):>4} "

@@ -64,9 +64,16 @@
     <div class="fact"><b>{{ movements.counts.get('DRAFTED', 0) }}</b><span>Drafted departures</span></div>
 </div>
 
+<nav class="mobile-page-tabs" data-mobile-page-tabs role="tablist" aria-label="Team page sections">
+    <button type="button" role="tab" data-mobile-tab="overview" aria-selected="true">Overview</button>
+    <button type="button" role="tab" data-mobile-tab="roster" aria-selected="false">Roster</button>
+    <button type="button" role="tab" data-mobile-tab="stats" aria-selected="false">Stats</button>
+    <button type="button" role="tab" data-mobile-tab="news" aria-selected="false">News</button>
+</nav>
+
 <div class="layout">
     <div>
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="overview">
             <h2>{% if schedule_is_upcoming %}Upcoming schedule{% else %}{{ schedule_year }} schedule{% endif %}</h2>
             <div class="section-note">
                 The team page defaults to remaining games. Completed seasons are available
@@ -81,7 +88,7 @@
             {{ data_table(schedule_table) }}
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="roster">
             <h2>Player production</h2>
             <div class="section-note">
                 {{ production.stat_season }} production split by what is here and what is not.
@@ -103,7 +110,7 @@
             {% endif %}
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="roster">
             <h2>Key arrivals</h2>
             <div class="section-note">
                 Transfers and signees joining for {{ season }}. Ratings are portal ratings for
@@ -112,7 +119,7 @@
             {{ data_table(arrivals_key_table) }}
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="roster">
             <h2>Experience-first depth board</h2>
             <div class="section-note">
                 Roster architecture, not an official depth chart. Ordering favors production
@@ -130,7 +137,7 @@
             {% endfor %}
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="roster">
             <h2>Portal impact</h2>
             <div class="section-note">
                 Ranked by prior production first, grade second, and recruiting opinion
@@ -140,7 +147,7 @@
             {{ data_table(transfers_table) }}
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="roster">
             <h2>Roster movement</h2>
             <div class="section-note">
                 Portal and draft labels are sourced; graduation and eligibility labels are
@@ -152,7 +159,7 @@
             </div>
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="stats">
             <h2>Team quality</h2>
             <div class="section-note">
                 {% if quality.state == 'PRESEASON' %}
@@ -178,13 +185,13 @@
     </div>
 
     <aside>
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="news">
             <h2>Team reporting</h2>
             <div class="section-note">Stories that resolved to {{ team.school }} specifically.</div>
             {{ story_list(stories, 'No story has resolved to this team yet.') }}
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="news">
             <h2>Around the {{ team.conference or 'conference' }}</h2>
             <div class="section-note">
                 Conference-wide reporting about other programmes. These are not about
@@ -193,19 +200,19 @@
             {{ story_list(conference_stories, 'No other conference reporting is available.', context=true) }}
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="roster">
             <h2>Key returning production</h2>
             <div class="section-note">Graded 2025 players still on the {{ season }} roster.</div>
             {{ data_table(pff_players_table) }}
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="roster">
             <h2>Key departures</h2>
             <div class="section-note">Graded 2025 players who left, and where they went.</div>
             {{ data_table(pff_departed_table) }}
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="roster">
             <h2>{{ board_year | default(2027) }} draft watch</h2>
             <div class="section-note">
                 Class-year eligibility estimate, ranked against players actually drafted
@@ -214,7 +221,7 @@
             {{ data_table(draft_table) }}
         </section>
 
-        <section class="section">
+        <section class="section" data-mobile-tab-panel="stats">
             <h2>Position philosophy</h2>
             <div class="section-note">
                 {{ position_philosophy_season or 'Latest stored' }} production identifies how

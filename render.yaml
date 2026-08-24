@@ -1,4 +1,33 @@
 services:
+  - type: web
+    name: cfb_intelligence
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 --max-requests 500 --max-requests-jitter 50 run:app
+    healthCheckPath: /api/v1/cfb/status
+    envVars:
+      - key: REGISTER_LEGACY_DASHBOARDS
+        value: "0"
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: MALLOC_ARENA_MAX
+        value: "2"
+      - key: CFB_DATABASE_PATH
+        value: /var/data/cfb.sqlite3
+      - key: CFBD_RAW_CACHE_PATH
+        value: /var/data/cfbd_raw
+      - key: SPORTSDATAVERSE_CACHE_PATH
+        value: /var/data/sportsdataverse
+      - key: CFB_WEATHER_CACHE_PATH
+        value: /var/data/weather
+      - key: CFB_REFRESH_TOKEN
+        sync: false
+    disk:
+      name: cfb-data
+      mountPath: /var/data
+      sizeGB: 5
+
   - type: cron
     name: cfb-refresh-trigger
     runtime: python

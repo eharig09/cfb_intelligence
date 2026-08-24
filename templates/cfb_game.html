@@ -78,7 +78,15 @@
     {% endfor %}
 </div>
 
-<section class="section">
+<nav class="mobile-page-tabs" data-mobile-page-tabs role="tablist" aria-label="Matchup page sections">
+    <button type="button" role="tab" data-mobile-tab="overview" aria-selected="true">Overview</button>
+    <button type="button" role="tab" data-mobile-tab="stats" aria-selected="false">Stats</button>
+    <button type="button" role="tab" data-mobile-tab="matchups" aria-selected="false">Matchups</button>
+    <button type="button" role="tab" data-mobile-tab="players" aria-selected="false">Players</button>
+    <button type="button" role="tab" data-mobile-tab="coverage" aria-selected="false">Coverage</button>
+</nav>
+
+<section class="section" data-mobile-tab-panel="overview">
     <h2>Matchup history</h2>
     <div class="section-note">
         Derived from completed games stored for {{ history.coverage.from or 'an unavailable start year' }}
@@ -118,7 +126,7 @@
     {{ data_table(history_games_table) }}
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="overview">
     <h2>Players with history against this opponent</h2>
     <div class="section-note">
         Past box-score production for players on the current rosters who have already
@@ -127,7 +135,7 @@
     {{ data_table(prior_player_games_table) }}
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="stats">
     <h2>{{ game.season }} team quality</h2>
     <div class="section-note">
         Current-season CFBD advanced metrics, each formatted to its own scale. Preseason
@@ -144,7 +152,7 @@
     {% endif %}
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="stats">
     <h2>Production &amp; schedule strength</h2>
     <div class="section-note">
         Compact team totals with a season and per-game switch. Highlighted cells show
@@ -167,7 +175,7 @@
     {{ data_table(opponent_quality_table) }}
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="stats">
     <h2>Models &amp; market</h2>
     <div class="section-note">
         Independent views of the same game. FPI, Elo and the betting market are kept
@@ -177,7 +185,7 @@
 </section>
 
 {% if weather %}
-<section class="section">
+<section class="section" data-mobile-tab-panel="overview">
     <h2>Kickoff weather</h2>
     <div class="section-note">
         Open-Meteo forecast for the venue at kickoff.
@@ -214,7 +222,7 @@
 </section>
 {% endif %}
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="overview">
     <h2>Situation</h2>
     <div class="section-note">
         Schedule, travel and availability context. A trap spot describes the calendar,
@@ -258,7 +266,7 @@
     </div>
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="stats">
     <h2>Market</h2>
     <div class="section-note">
         Each book is shown separately with its movement since opening. Disagreement
@@ -267,7 +275,7 @@
     {{ data_table(market_table) }}
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="matchups">
     <h2>Matchups to watch</h2>
     <div class="section-note">
         Ranked by how watchable each comparison is: whether the better unit is genuinely
@@ -285,7 +293,7 @@
     {{ data_table(pff_units_table) }}
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="matchups">
     <h2>Player and unit watches</h2>
     <div class="section-note">
         Linemen are paired directly. Receivers only draw a corner matchup when that
@@ -295,7 +303,7 @@
     {{ data_table(player_matchup_table) }}
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="players">
     <h2>Players to know</h2>
     <div class="section-note">
         Returning, arrived and departed, in that order. A departed star is context for
@@ -321,7 +329,7 @@
     </div>
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="players">
     <h2>Portal additions and departures</h2>
     <div class="section-note">
         Every stored portal move for the current roster cycle is shown. Impact remains
@@ -340,7 +348,7 @@
     </div>
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="players">
     <h2>Current production leaders</h2>
     <div class="section-note">
         {% if away_leaders.season or home_leaders.season %}Latest available CFBD season-stat snapshot
@@ -360,7 +368,7 @@
     </div>
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="coverage">
     <h2>Story clusters</h2>
     <div class="section-note">
         Cross-source groupings preserve attribution; "original report candidate" is an
@@ -369,7 +377,7 @@
     {{ story_list(story_clusters, 'No story cluster has resolved directly to this game yet.') }}
 </section>
 
-<section class="section">
+<section class="section" data-mobile-tab-panel="coverage">
     <h2>Reporting &amp; analysis</h2>
     <div class="section-note">
         Grouped by what each item is. Video and podcast entries show their title, not
