@@ -1129,6 +1129,172 @@ def team_stats_table(metrics: dict[str, Any], season: int) -> Table:
     )
 
 
+TEAM_SUMMARY_STATS = (
+    # label, team output, opponent output, per-game format,
+    # whether higher is favorable in each comparison
+    ("Points", "points_for", "points_against", "f1", True, False),
+    ("Total yards", "totalYards", "totalYardsOpponent", "f1", True, False),
+    ("Rushing yards", "rushingYards", "rushingYardsOpponent", "f1", True, False),
+    ("Passing yards", "netPassingYards", "netPassingYardsOpponent", "f1", True, False),
+    ("First downs", "firstDowns", "firstDownsOpponent", "f1", True, False),
+    ("Giveaways / takeaways", "turnovers", "turnoversOpponent", "f2", False, True),
+)
+
+
+def _team_summary_values(metrics: dict[str, Any], mode: str) -> list[dict[str, Any]]:
+    raw = {row["stat_name"]: row.get("stat_value") for row in metrics.get("stats") or []}
+    score = metrics.get("score") or {}
+    raw.update({"points_for": score.get("points_for"),
+                "points_against": score.get("points_against")})
+    games = score.get("games") or raw.get("games")
+    try:
+        games = float(games or 0)
+    except (TypeError, ValueError):
+        games = 0
+    rows = []
+    for label, offense_key, defense_key, average_format, offense_higher, defense_higher in TEAM_SUMMARY_STATS:
+        def value(key):
+            try:
+                number = float(raw[key])
+            except (KeyError, TypeError, ValueError):
+                return None
+            return number / games if mode == "per_game" and games else number
+        rows.append({"metric": label, "offense": value(offense_key),
+                     "defense": value(defense_key),
+                     "format": average_format if mode == "per_game" else "big",
+                     "offense_higher": offense_higher, "defense_higher": defense_higher})
+    # Conversion rates provide more signal than raw attempt totals and should
+    # not change when the totals/per-game control changes.
+    for label, made, attempts, opp_made, opp_attempts in (
+        ("Third down", "thirdDownConversions", "thirdDowns",
+         "thirdDownConversionsOpponent", "thirdDownsOpponent"),
+        ("Fourth down", "fourthDownConversions", "fourthDowns",
+         "fourthDownConversionsOpponent", "fourthDownsOpponent"),
+    ):
+        def rate(numerator, denominator):
+            try:
+                return float(raw[numerator]) / float(raw[denominator])
+            except (KeyError, TypeError, ValueError, ZeroDivisionError):
+                return None
+        rows.append({"metric": label, "offense": rate(made, attempts),
+                     "defense": rate(opp_made, opp_attempts), "format": "rate"})
+    return [row for row in rows if row["offense"] is not None or row["defense"] is not None]
+
+
+def team_summary_table(metrics: dict[str, Any], season: int, mode: str) -> Table:
+    rows = _team_summary_values(metrics, mode)
+    for row in rows:
+        row["offense"] = format_value(row["offense"], row["format"])
+        row["defense"] = format_value(row["defense"], row["format"])
+    label = "per game" if mode == "per_game" else "totals"
+    return Table(
+        columns=[Column("metric", "Metric", align="left", emphasis=True),
+                 Column("offense", "Team", align="right"),
+                 Column("defense", "Opponents", align="right")],
+        rows=rows, caption=f"{season} team summary · {label}", dense=True,
+        note="Third- and fourth-down rows are rates",
+        empty=f"No {season} team totals are stored yet.")
+
+
+def matchup_summary_table(game: dict[str, Any], away_metrics: dict[str, Any],
+                          home_metrics: dict[str, Any], season: int, mode: str) -> Table:
+    away = {row["metric"]: row for row in _team_summary_values(away_metrics, mode)}
+    home = {row["metric"]: row for row in _team_summary_values(home_metrics, mode)}
+    rows = []
+    for label, *_ in TEAM_SUMMARY_STATS:
+        if label not in away and label not in home:
+            continue
+        a, h = away.get(label, {}), home.get(label, {})
+        row = {"metric": label, "away_offense": a.get("offense"),
+               "away_defense": a.get("defense"), "home_offense": h.get("offense"),
+               "home_defense": h.get("defense")}
+        away_edges = home_edges = 0
+        for suffix, higher in (("offense", a.get("offense_higher", h.get("offense_higher", True))),
+                               ("defense", a.get("defense_higher", h.get("defense_higher", False)))):
+            av, hv = row[f"away_{suffix}"], row[f"home_{suffix}"]
+            if av is None or hv is None or abs(av - hv) < .0001:
+                continue
+            away_wins = av > hv if higher else av < hv
+            winner = "away" if away_wins else "home"
+            row[f"{winner}_{suffix}_class"] = "advantage"
+            away_edges += int(away_wins); home_edges += int(not away_wins)
+        row["edge"] = (game["away_team"] if away_edges > home_edges else
+                       game["home_team"] if home_edges > away_edges else "Even")
+        row["edge_class"] = "advantage" if row["edge"] != "Even" else "pending"
+        fmt = a.get("format") or h.get("format") or "f1"
+        for key in ("away_offense", "away_defense", "home_offense", "home_defense"):
+            row[key] = format_value(row[key], fmt)
+        rows.append(row)
+    return Table(columns=[
+        Column("metric", "Metric", align="left", emphasis=True),
+        Column("away_offense", game['away_team'], align="right"),
+        Column("away_defense", f"{game['away_team']} opp", align="right"),
+        Column("home_offense", game['home_team'], align="right"),
+        Column("home_defense", f"{game['home_team']} opp", align="right"),
+        Column("edge", "Edge", align="left", emphasis=True)], rows=rows, dense=True,
+        caption=f"{season} production · {'per game' if mode == 'per_game' else 'totals'}",
+        note="Green marks the better offense or defense in this two-team comparison",
+        empty=f"No comparable {season} totals are stored.")
+
+
+def opponent_quality_table(away_team: str, away: dict[str, Any], home_team: str,
+                           home: dict[str, Any], season: int) -> Table:
+    definitions = (
+        ("Opponents faced", "games", "int", None),
+        ("Avg opponent pregame Elo", "average_pregame_elo", "f1", True),
+        ("Avg opponent latest Elo", "average_latest_elo", "f1", True),
+        ("Avg opponent Elo rank", "average_elo_rank", "f1", False),
+        ("Elo top-25 opponents", "elo_top_25", "int", True),
+        ("Avg opponent CORE", "average_core", "f2", True),
+        ("Avg opponent CORE rank", "average_core_rank", "f1", False),
+        ("AP-ranked opponents", "poll_ranked", "int", True),
+    )
+    rows = []
+    for label, key, fmt, higher in definitions:
+        av, hv = away.get(key), home.get(key)
+        if av is None and hv is None:
+            continue
+        edge = "Even"
+        if higher is not None and av is not None and hv is not None and abs(float(av) - float(hv)) > .0001:
+            away_wins = float(av) > float(hv) if higher else float(av) < float(hv)
+            edge = away_team if away_wins else home_team
+        row = {"metric": label, "away": av, "home": hv, "edge": edge,
+               "edge_class": "advantage" if edge != "Even" else "pending"}
+        if edge == away_team: row["away_class"] = "advantage"
+        if edge == home_team: row["home_class"] = "advantage"
+        row["away"] = format_value(av, fmt)
+        row["home"] = format_value(hv, fmt)
+        rows.append(row)
+    return Table(columns=[Column("metric", "Schedule measure", align="left", emphasis=True),
+                          Column("away", away_team, align="right"),
+                          Column("home", home_team, align="right"),
+                          Column("edge", "Tougher slate", align="left", emphasis=True)],
+                 rows=rows, caption=f"{season} opponent quality", dense=True,
+                 note="Pregame Elo is at kickoff; latest Elo, CORE, and AP are shown separately",
+                 empty=f"No completed {season} opponents have model coverage.")
+
+
+def team_opponent_quality_table(team: str, quality: dict[str, Any], season: int) -> Table:
+    rows = []
+    for label, key, fmt in (
+        ("Completed opponents", "games", "int"),
+        ("Avg opponent pregame Elo", "average_pregame_elo", "f1"),
+        ("Avg opponent latest Elo", "average_latest_elo", "f1"),
+        ("Avg opponent Elo rank", "average_elo_rank", "f1"),
+        ("Elo top-25 opponents", "elo_top_25", "int"),
+        ("Avg opponent CORE", "average_core", "f2"),
+        ("Avg opponent CORE rank", "average_core_rank", "f1"),
+        ("AP-ranked opponents", "poll_ranked", "int"),
+    ):
+        if quality.get(key) is not None:
+            rows.append({"metric": label, "value": format_value(quality[key], fmt)})
+    return Table(columns=[Column("metric", "Schedule measure", align="left", emphasis=True),
+                          Column("value", team, align="right")], rows=rows, dense=True,
+                 caption=f"{season} opponent quality",
+                 note="Ratings remain separate because Elo, CORE, and polls use different scales",
+                 empty=f"No completed {season} opponent ratings are stored.")
+
+
 def _humanize(name: str) -> str:
     """CFBD stat names are camelCase; headers should not be."""
     spaced = "".join(f" {char}" if char.isupper() else char for char in name).strip()

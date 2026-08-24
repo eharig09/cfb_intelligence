@@ -319,6 +319,12 @@ def team_preview(team_id: int):
                                              requested_schedule > datetime.now().year + 2):
         abort(400)
     schedule_year = requested_schedule if requested_schedule is not None else current_schedule_year
+    stats_year = request.args.get("stats_year", season, type=int)
+    if stats_year not in {season, season - 1}:
+        abort(400)
+    stats_mode = (request.args.get("stats_mode") or "per_game").strip().lower()
+    if stats_mode not in {"total", "per_game"}:
+        abort(400)
     packet = _team_packet(team_id, season)
     selected_schedule = _label_games(repository.team_schedule(team_id, schedule_year))
     schedule_is_upcoming = schedule_year == current_schedule_year
@@ -333,9 +339,11 @@ def team_preview(team_id: int):
     return render_template(
         "cfb_team.html", **packet,
         **_team_tables(packet, season, schedule_year=schedule_year,
-                       schedule_is_upcoming=schedule_is_upcoming),
+                       schedule_is_upcoming=schedule_is_upcoming,
+                       stats_year=stats_year, stats_mode=stats_mode),
         schedule_year=schedule_year, schedule_options=schedule_options,
-        schedule_is_upcoming=schedule_is_upcoming,
+        schedule_is_upcoming=schedule_is_upcoming, stats_year=stats_year,
+        stats_mode=stats_mode, stats_year_options=(season, season - 1),
     )
 
 
@@ -370,11 +378,15 @@ def team_history_stats(team_id: int):
 
 
 def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
-                 schedule_is_upcoming: bool = False) -> dict:
+                 schedule_is_upcoming: bool = False, stats_year: int | None = None,
+                 stats_mode: str = "per_game") -> dict:
     """Rendered tables for the team page, derived from the JSON packet."""
     movements = packet["movements"]
     history = team_historical_stats(_repository(), packet["team"]["team_id"])
     schedule_year = schedule_year or season
+    stats_year = stats_year or season
+    selected_metrics = _repository().team_metrics(packet["team"]["school"], stats_year)
+    opponent_quality = _repository().opponent_quality(packet["team"]["team_id"], stats_year)
     return {
         "schedule_table": views.schedule_table(
             packet["schedule"], packet["team"]["team_id"], schedule_year,
@@ -395,7 +407,9 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
             movements["departures"][:20], season, arrivals=False
         ),
         "quality_table": views.quality_cards_table(packet["quality"]),
-        "team_stats_table": views.team_stats_table(packet["metrics"], season),
+        "team_stats_table": views.team_summary_table(selected_metrics, stats_year, stats_mode),
+        "opponent_quality_table": views.team_opponent_quality_table(
+            packet["team"]["school"], opponent_quality, stats_year),
         "fpi_season": fpi_team_season(_repository(), season, packet["team"]["team_id"]),
         "pff_players_table": views.pff_players_table(
             [row for row in packet["pff"]["players"]
@@ -470,6 +484,16 @@ def game_preview(game_id: int):
         conference=game["home_conference"], limit=6
     ) if game.get("home_conference") else []
     season = game["season"]
+    stats_year = request.args.get("stats_year", season, type=int)
+    if stats_year not in {season, season - 1}:
+        abort(400)
+    stats_mode = (request.args.get("stats_mode") or "per_game").strip().lower()
+    if stats_mode not in {"total", "per_game"}:
+        abort(400)
+    away_stats = repository.team_metrics(game["away_team"], stats_year)
+    home_stats = repository.team_metrics(game["home_team"], stats_year)
+    away_opponents = repository.opponent_quality(game["away_team_id"], stats_year)
+    home_opponents = repository.opponent_quality(game["home_team_id"], stats_year)
     home_quality = repository.team_quality_snapshot(game["home_team_id"], season)
     away_quality = repository.team_quality_snapshot(game["away_team_id"], season)
     home_leaders = repository.team_player_leaders(game["home_team"], season, 5)
@@ -542,6 +566,13 @@ def game_preview(game_id: int):
         ),
         game=game,
         metrics_table=views.matchup_metrics_table(game),
+        totals_table=views.matchup_summary_table(
+            game, away_stats, home_stats, stats_year, stats_mode),
+        opponent_quality_table=views.opponent_quality_table(
+            game["away_team"], away_opponents, game["home_team"], home_opponents,
+            stats_year),
+        stats_year=stats_year, stats_mode=stats_mode,
+        stats_year_options=(season, season - 1),
         preseason_table=views.preseason_context_table(
             game["away_team"], away_quality, game["home_team"], home_quality
         ),

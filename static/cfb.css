@@ -337,6 +337,26 @@ table.data th[aria-sort="ascending"]::after { content: " ↑"; color: currentCol
 table.data th[aria-sort="descending"]::after { content: " ↓"; color: currentColor; }
 table.data th[data-sortable="true"]:focus-visible { outline: 2px solid var(--rust); outline-offset: -2px; }
 
+/* Compact, shareable server-rendered controls for season/stat perspectives. */
+.metric-switch {
+    display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin: 9px 0;
+    padding: 6px; width: fit-content; max-width: 100%; background: #f0e8db;
+    border: 1px solid var(--line);
+}
+.metric-switch-label {
+    color: var(--muted); font-size: .58rem; font-weight: 900;
+    text-transform: uppercase; letter-spacing: .06em; padding: 0 3px;
+}
+.metric-switch a {
+    border: 1px solid var(--line); background: var(--paper); padding: 5px 8px;
+    text-decoration: none; font-size: .68rem; font-weight: 800; white-space: nowrap;
+}
+.metric-switch a.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+table.data td.advantage {
+    background: #e7f2e8; color: #174d28; font-weight: 900;
+    box-shadow: inset 3px 0 #2f7a45;
+}
+
 /* ---------- breakpoints ---------- */
 
 @media (min-width: 560px) {
@@ -442,6 +462,8 @@ table.data th[data-sortable="true"]:focus-visible { outline: 2px solid var(--rus
     .story-source { max-width: 45%; text-align: right; }
     .facts { margin-inline: calc(-1 * var(--pad)); }
     .fact { min-width: 0; }
+    .metric-switch { width: 100%; }
+    .metric-switch a { flex: 1 1 auto; text-align: center; }
 }
 
 @media print {

@@ -195,6 +195,31 @@ class ViewTableTests(unittest.TestCase):
         table = views.team_stats_table(metrics, 2026)
         self.assertEqual(table.rows[0]["stat_name"], "Third Down Conversions")
 
+    def test_team_summary_switches_between_totals_and_per_game(self):
+        metrics = {
+            "score": {"games": 2, "points_for": 70, "points_against": 40},
+            "stats": [
+                {"stat_name": "games", "stat_value": 2},
+                {"stat_name": "totalYards", "stat_value": 800},
+                {"stat_name": "totalYardsOpponent", "stat_value": 600},
+            ],
+        }
+        total = views.team_summary_table(metrics, 2026, "total")
+        average = views.team_summary_table(metrics, 2026, "per_game")
+        self.assertEqual(total.rows[0]["offense"], "70")
+        self.assertEqual(average.rows[0]["offense"], "35.0")
+        self.assertEqual(average.rows[1]["defense"], "300.0")
+
+    def test_matchup_summary_highlights_better_offense_and_defense(self):
+        game = {"away_team": "Wisconsin", "home_team": "Michigan"}
+        away = {"score": {"games": 2, "points_for": 50, "points_against": 30}}
+        home = {"score": {"games": 2, "points_for": 60, "points_against": 40}}
+        table = views.matchup_summary_table(game, away, home, 2026, "per_game")
+        points = table.rows[0]
+        self.assertEqual(points["home_offense_class"], "advantage")
+        self.assertEqual(points["away_defense_class"], "advantage")
+        self.assertEqual(points["edge"], "Even")
+
     def test_box_score_groups_follow_offense_defense_special_teams_order(self):
         rows = []
         for category, stat_type in (("kicking", "PTS"), ("defensive", "TOT"),

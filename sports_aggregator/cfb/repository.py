@@ -1350,6 +1350,8 @@ class CFBRepository:
                        FROM games WHERE season=? AND away_pregame_elo IS NOT NULL
                    ) ORDER BY start_date""",
                 (season, season)).fetchall()
+            fbs_ids = {row["team_id"] for row in connection.execute(
+                "SELECT team_id FROM teams WHERE lower(classification)='fbs'")}
         latest: dict[int, dict[str, Any]] = {}
         for row in rows:
             if row["team_id"] is None:
@@ -1358,7 +1360,9 @@ class CFBRepository:
                                       "source": "CFBD pregame Elo"}
         if not latest:
             return {}
-        ordered = sorted(latest.items(), key=lambda pair: -(pair[1]["elo"] or 0))
+        rank_pool = ((team_id, entry) for team_id, entry in latest.items()
+                     if not fbs_ids or team_id in fbs_ids)
+        ordered = sorted(rank_pool, key=lambda pair: -(pair[1]["elo"] or 0))
         for rank, (team_id, entry) in enumerate(ordered, start=1):
             entry["elo_rank"] = rank
         return latest
@@ -1893,8 +1897,75 @@ class CFBRepository:
             core=connection.execute("""SELECT * FROM core_ratings WHERE season=? AND team=?
               ORDER BY through_week DESC LIMIT 1""",(season,team)).fetchone()
             stats=[dict(row) for row in connection.execute("SELECT stat_name,stat_value FROM team_stats WHERE season=? AND team=? ORDER BY stat_name",(season,team))]
+            score=connection.execute("""SELECT COUNT(*) games,
+              SUM(CASE WHEN home_team=? THEN home_points ELSE away_points END) points_for,
+              SUM(CASE WHEN home_team=? THEN away_points ELSE home_points END) points_against
+              FROM games WHERE season=? AND completed=1
+              AND home_points IS NOT NULL AND away_points IS NOT NULL
+              AND (home_team=? OR away_team=?)""",
+              (team,team,season,team,team)).fetchone()
         return {"record":dict(record) if record else None,"advanced":dict(advanced) if advanced else None,
-                "core":dict(core) if core else None,"stats":stats}
+                "core":dict(core) if core else None,"stats":stats,
+                "score":dict(score) if score else {"games":0,"points_for":None,"points_against":None}}
+
+    def opponent_quality(self, team_id: int, season: int) -> dict[str, Any]:
+        """Cached schedule quality using contemporaneous and latest model ratings.
+
+        Pregame Elo is the cleanest historical measure because it describes the
+        opponent at kickoff. Latest Elo and CORE are retained as separate lenses;
+        their scales are intentionally not averaged together.
+        """
+        self.initialize()
+        elo = self.team_elo(season)
+        with closing(self._connect()) as connection:
+            games = [dict(row) for row in connection.execute(
+                """SELECT * FROM games WHERE season=? AND completed=1
+                   AND home_points IS NOT NULL AND away_points IS NOT NULL
+                   AND (home_team_id=? OR away_team_id=?) ORDER BY start_date""",
+                (season, team_id, team_id))]
+            core_rows = [dict(row) for row in connection.execute(
+                """SELECT c.* FROM core_ratings c JOIN (
+                     SELECT team,MAX(through_week) through_week FROM core_ratings
+                     WHERE season=? GROUP BY team
+                   ) latest ON latest.team=c.team AND latest.through_week=c.through_week
+                   WHERE c.season=? ORDER BY c.overall DESC""", (season, season))]
+            poll_rows = [dict(row) for row in connection.execute(
+                """SELECT r.school,r.rank FROM rankings r JOIN (
+                     SELECT school,MAX(week) week FROM rankings
+                     WHERE season=? AND poll='AP Top 25' GROUP BY school
+                   ) latest ON latest.school=r.school AND latest.week=r.week
+                   WHERE r.season=? AND r.poll='AP Top 25'""", (season, season))]
+        core = {row["team"]: {**row, "rank": rank}
+                for rank, row in enumerate(core_rows, start=1)}
+        poll = {row["school"]: row["rank"] for row in poll_rows}
+        opponents = []
+        for game in games:
+            home = game["home_team_id"] == team_id
+            opponent_id = game["away_team_id"] if home else game["home_team_id"]
+            opponent = game["away_team"] if home else game["home_team"]
+            pregame_elo = game["away_pregame_elo"] if home else game["home_pregame_elo"]
+            opponents.append({
+                "opponent_id": opponent_id, "opponent": opponent,
+                "pregame_elo": pregame_elo,
+                "elo": (elo.get(opponent_id) or {}).get("elo"),
+                "elo_rank": (elo.get(opponent_id) or {}).get("elo_rank"),
+                "core": (core.get(opponent) or {}).get("overall"),
+                "core_rank": (core.get(opponent) or {}).get("rank"),
+                "poll_rank": poll.get(opponent),
+            })
+        def average(key: str) -> float | None:
+            values = [float(row[key]) for row in opponents if row.get(key) is not None]
+            return sum(values) / len(values) if values else None
+        return {
+            "season": season, "games": len(opponents), "opponents": opponents,
+            "average_pregame_elo": average("pregame_elo"),
+            "average_latest_elo": average("elo"),
+            "average_elo_rank": average("elo_rank"),
+            "average_core": average("core"),
+            "average_core_rank": average("core_rank"),
+            "elo_top_25": sum(1 for row in opponents if row.get("elo_rank") and row["elo_rank"] <= 25),
+            "poll_ranked": sum(1 for row in opponents if row.get("poll_rank")),
+        }
 
     def pff_team_context(self, team_id: int, season: int=2025, player_limit: int=12) -> dict[str,Any]:
         self.initialize()

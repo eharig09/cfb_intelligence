@@ -151,6 +151,25 @@ class CFBRepositoryTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_opponent_quality_uses_kickoff_elo_and_keeps_models_separate(self):
+        completed = {**GAME_PAYLOAD[0], "completed": True, "homePoints": 31,
+                     "awayPoints": 17}
+        self.repository.replace_games(2026, [Game.from_cfbd(completed)])
+        with self.repository.transaction() as connection:
+            connection.execute(
+                "INSERT INTO core_ratings VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (2026, "regular", 2, "Wisconsin", "Big Ten", 8.5, 4.0,
+                 -4.5, 120, 118, "test"))
+            connection.execute(
+                "INSERT INTO rankings VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (2026, "regular", 2, "AP Top 25", 0, 18, 2, "Wisconsin",
+                 "Big Ten", 0, 500,))
+        quality = self.repository.opponent_quality(1, 2026)
+        self.assertEqual(quality["games"], 1)
+        self.assertEqual(quality["average_pregame_elo"], 1680)
+        self.assertEqual(quality["average_core"], 8.5)
+        self.assertEqual(quality["poll_ranked"], 1)
+
     def test_syncs_canonical_entities_aliases_and_preview_data(self):
         report = CFBDataSync(FakeCFBDClient(), self.repository).sync(2026)
         self.assertTrue(report.succeeded)

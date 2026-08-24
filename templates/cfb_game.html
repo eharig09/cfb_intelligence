@@ -145,6 +145,29 @@
 </section>
 
 <section class="section">
+    <h2>Production &amp; schedule strength</h2>
+    <div class="section-note">
+        Compact team totals with a season and per-game switch. Highlighted cells show
+        the better offense or defense in this two-team comparison; they are descriptive,
+        not a game prediction.
+    </div>
+    <nav class="metric-switch" aria-label="Matchup statistics controls">
+        <span class="metric-switch-label">Season</span>
+        {% for year in stats_year_options %}
+        <a class="{{ 'active' if year == stats_year }}"
+           href="{{ url_for('cfb.game_preview', game_id=game.game_id, stats_year=year, stats_mode=stats_mode) }}">{{ year }}</a>
+        {% endfor %}
+        <span class="metric-switch-label">View</span>
+        {% for mode, label in [('per_game', 'Per game'), ('total', 'Totals')] %}
+        <a class="{{ 'active' if mode == stats_mode }}"
+           href="{{ url_for('cfb.game_preview', game_id=game.game_id, stats_year=stats_year, stats_mode=mode) }}">{{ label }}</a>
+        {% endfor %}
+    </nav>
+    {{ data_table(totals_table) }}
+    {{ data_table(opponent_quality_table) }}
+</section>
+
+<section class="section">
     <h2>Models &amp; market</h2>
     <div class="section-note">
         Independent views of the same game. FPI, Elo and the betting market are kept
