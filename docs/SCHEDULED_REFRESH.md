@@ -50,6 +50,11 @@ In the Render web service:
 3. Set `CFBD_RAW_CACHE_PATH=/var/data/cfbd_raw`.
 4. Generate a long random value and set it as `CFB_REFRESH_TOKEN`.
 
+The default `CFB_SQLITE_BUSY_TIMEOUT_MS=60000` lets a refresh writer wait for a
+short concurrent transaction. Write transactions reserve their WAL writer slot
+before reading, preventing deferred read-to-write upgrades from failing midway
+through a refresh.
+
 Create/apply the Blueprint from `render.yaml`. For its `cfb-refresh-trigger`
 Cron Job, set:
 

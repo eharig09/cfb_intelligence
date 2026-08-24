@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import sqlite3
 import re
@@ -354,14 +355,24 @@ class CFBRepository:
 
     def _connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.path, timeout=20)
+        try:
+            busy_timeout_ms = max(1_000, int(os.getenv("CFB_SQLITE_BUSY_TIMEOUT_MS", "60000")))
+        except ValueError:
+            busy_timeout_ms = 60_000
+        connection = sqlite3.connect(self.path, timeout=busy_timeout_ms / 1000)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute(f"PRAGMA busy_timeout = {busy_timeout_ms}")
         return connection
 
     def initialize(self) -> None:
         with closing(self._connect()) as connection:
+            # Changing journal mode requires an exclusive lock. Reissuing this
+            # on every request can itself cause `database is locked` on a live
+            # service, so only perform the write when the database is not yet WAL.
+            mode = str(connection.execute("PRAGMA journal_mode").fetchone()[0]).casefold()
+            if mode != "wal":
+                connection.execute("PRAGMA journal_mode = WAL")
             connection.executescript(SCHEMA)
             player_primary_key = [
                 row["name"] for row in sorted(
@@ -422,7 +433,10 @@ class CFBRepository:
         self.initialize()
         connection = self._connect()
         try:
-            connection.execute("BEGIN")
+            # These are write transactions. Reserving the writer slot before
+            # any reads avoids SQLITE_BUSY_SNAPSHOT when a deferred transaction
+            # tries to upgrade after another process commits under WAL.
+            connection.execute("BEGIN IMMEDIATE")
             yield connection
             connection.commit()
         except Exception:

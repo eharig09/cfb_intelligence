@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 import os
 import sqlite3
 import tempfile
+import threading
+import time
 import unittest
 
 from app import create_app
@@ -112,6 +114,36 @@ class CFBRepositoryTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp_dir.cleanup()
+
+    def test_write_transactions_wait_for_the_existing_writer(self):
+        self.repository.initialize()
+        blocker = sqlite3.connect(self.repository.path)
+        blocker.execute("BEGIN IMMEDIATE")
+        outcome = []
+
+        def write_after_blocker():
+            try:
+                with self.repository.transaction() as connection:
+                    connection.execute(
+                        "CREATE TABLE IF NOT EXISTS cfb_lock_probe(value INTEGER)")
+                    connection.execute("INSERT INTO cfb_lock_probe VALUES(1)")
+                outcome.append("committed")
+            except Exception as exc:  # pragma: no cover - asserted below
+                outcome.append(f"{type(exc).__name__}: {exc}")
+
+        writer = threading.Thread(target=write_after_blocker)
+        writer.start()
+        time.sleep(0.1)
+        self.assertTrue(writer.is_alive())
+        blocker.commit()
+        blocker.close()
+        writer.join(timeout=3)
+        self.assertEqual(outcome, ["committed"])
+        connection = self.repository._connect()
+        try:
+            self.assertEqual(connection.execute("PRAGMA busy_timeout").fetchone()[0], 60_000)
+        finally:
+            connection.close()
 
     def test_syncs_canonical_entities_aliases_and_preview_data(self):
         report = CFBDataSync(FakeCFBDClient(), self.repository).sync(2026)
