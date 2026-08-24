@@ -70,6 +70,9 @@ def main(argv=None) -> int:
         items=repository.recent(min(max(args.limit,1),100)); print(f"content_items={len(items)}")
         return 0
     if args.command=="ingest-reddit":
+        from sports_aggregator.social.team_reddit import load_registry
+        from sports_aggregator.social.unified import UnifiedSourceRegistry
+        UnifiedSourceRegistry(repository.path).seed_team_reddit_communities(load_registry())
         endpoints=repository.reddit_endpoints()
         if not endpoints:
             print("no verified subreddit endpoints"); return 1

@@ -252,6 +252,56 @@ class UnifiedSourceRegistry:
                 connection.commit()
         return len(seeds)
 
+    def seed_team_reddit_communities(self, entries: Iterable[dict]) -> int:
+        """Promote audited team communities into the graph ingestion uses.
+
+        The original team registry lived in ``team_subreddits`` while content
+        ingestion queried ``source_endpoints``. Keeping the two disconnected
+        made 47 verified communities invisible despite a healthy poll plan.
+        """
+        self.initialize()
+        with closing(self._connect()) as connection:
+            teams = {row["team_id"]: dict(row) for row in connection.execute(
+                "SELECT team_id,school,conference FROM teams")}
+        promoted = 0
+        for entry in entries:
+            team = teams.get(int(entry["team_id"]))
+            if not team:
+                continue
+            subreddit = str(entry["subreddit"]).removeprefix("r/").strip()
+            if not subreddit:
+                continue
+            tier = str(entry.get("tier") or "SCHEDULED").upper()
+            entity_id = self.upsert_entity(SourceEntityProfile(
+                name=f"r/{subreddit}", organization="Reddit", entity_type="COMMUNITY",
+                source_classes=("COMMUNITY",),
+                specialties=("team_community", "community_reaction", tier.casefold()),
+                conferences=(team["conference"],) if team.get("conference") else (),
+                teams=(team["school"],), reliability_score=2, reporting_score=1,
+                team_access_score=2, priority=2, trust_status="TRUSTED_COMMUNITY",
+                entity_key=f"reddit-community:{subreddit.casefold()}",
+            ))
+            endpoint_id = self.upsert_endpoint(entity_id, SourceEndpointProfile(
+                platform="reddit", endpoint_type="SUBREDDIT", handle=subreddit,
+                platform_id=f"r/{subreddit}",
+                url=f"https://www.reddit.com/r/{subreddit}/",
+                endpoint_key=f"reddit:subreddit:{subreddit.casefold()}",
+                verification_status=str(entry.get("verification_status") or
+                                        "seeded_unverified"),
+            ))
+            with closing(self._connect()) as connection:
+                connection.execute(
+                    """INSERT INTO reddit_communities(
+                         endpoint_id,community_type,quality_score,activity_score)
+                       VALUES(?,'TEAM',3,NULL)
+                       ON CONFLICT(endpoint_id) DO UPDATE SET
+                         community_type='TEAM',quality_score=excluded.quality_score""",
+                    (endpoint_id,),
+                )
+                connection.commit()
+            promoted += 1
+        return promoted
+
     def seed_media_candidates(self) -> int:
         candidates = (
             ("Cover 3 Podcast", "SHOW", "PODCAST,YOUTUBE_SHOW"),

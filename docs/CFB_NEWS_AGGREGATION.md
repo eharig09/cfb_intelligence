@@ -303,6 +303,11 @@ mascot shared with a professional team (r/Eagles is Philadelphia, not Boston
 College) and a description that reads as professional football (r/PittsburghPanthers).
 Four candidates were dropped on those rules.
 
+The audited mappings are committed in `data/team_subreddits.json`. Preparation,
+Reddit validation, and direct Reddit ingestion all promote those mappings into
+the unified source graph. This promotion is required: `team_subreddits` drives
+poll planning, while `source_endpoints` is what ingestion and the UI query.
+
 Outside the always-on tier, a team is polled when it plays an activated game,
 when it sits inside the Elo top 25, or when its Elo has moved 40 points or more
 this season. The last rule is the one that reaches G5 teams becoming interesting

@@ -266,6 +266,27 @@ class TeamSubredditTests(unittest.TestCase):
         self.assertEqual(plan["active_this_cycle"], 1)
         self.assertIn("always-on", plan["subreddits"][0]["why"])
 
+    def test_team_communities_are_promoted_to_unified_ingestion(self):
+        from sports_aggregator.social.unified import UnifiedSourceRegistry
+        unified = UnifiedSourceRegistry(self.path)
+        promoted = unified.seed_team_reddit_communities([{
+            "team_id": 1, "subreddit": "OhioStateFootball",
+            "tier": "ALWAYS", "verification_status": "verified",
+        }])
+        self.assertEqual(promoted, 1)
+        endpoints = unified.endpoints_by_platform("reddit")
+        self.assertEqual(endpoints[0]["handle"], "OhioStateFootball")
+        self.assertEqual(endpoints[0]["verification_status"], "verified")
+        connection = sqlite3.connect(self.path)
+        linked = connection.execute(
+            """SELECT setm.team,rc.community_type FROM source_endpoints ep
+               JOIN source_entity_teams setm USING(source_entity_id)
+               JOIN reddit_communities rc USING(endpoint_id)
+               WHERE ep.endpoint_key='reddit:subreddit:ohiostatefootball'"""
+        ).fetchone()
+        connection.close()
+        self.assertEqual(linked, ("Ohio State", "TEAM"))
+
 
 class RosterProductionTests(unittest.TestCase):
     """Preseason production must say what is here and what is not."""

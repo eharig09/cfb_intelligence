@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterable
@@ -48,6 +49,17 @@ DEFAULT_ACTIVE_GAMES = 12
 DEFAULT_TOP_ELO = 25
 #: Elo movement, in points, that marks a team as worth watching this week.
 ELO_MOVE_THRESHOLD = 40
+DEFAULT_REGISTRY_PATH = (
+    Path(__file__).resolve().parents[2] / "data" / "team_subreddits.json")
+
+
+def load_registry(path: str | Path | None = None) -> list[dict[str, Any]]:
+    """Load the audited registry that must survive a fresh deployment."""
+    registry = Path(path) if path else DEFAULT_REGISTRY_PATH
+    if not registry.exists():
+        return []
+    payload = json.loads(registry.read_text(encoding="utf-8"))
+    return [dict(row) for row in payload if row.get("team_id") and row.get("subreddit")]
 
 
 def initialize(repository: CFBRepository) -> None:
