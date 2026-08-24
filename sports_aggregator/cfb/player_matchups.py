@@ -1,23 +1,15 @@
-"""Individual player matchups inside a game.
+"""Player-vs-player and player-vs-unit watches inside a game.
 
-Unit grades say which side of the ball decides a game. They do not say who to
-watch. This pairs graded individuals across the line of scrimmage -- an edge
-rusher against the tackle who has to block him, a receiver against the corner who
-has to cover him -- and ranks the pairings by how good both players are.
-
-Two players are only paired when their positions genuinely oppose each other, and
-a pairing is only interesting when *both* sides grade well: a good rusher against
-a poor tackle is a mismatch worth noting, but two good players is the matchup a
-viewer actually tunes in for.
-
-Draft standing is a multiplier, not the basis. A pairing of two consensus board
-prospects is elevated because more people care, but a pairing of two well-graded
-unranked players still surfaces.
+An individual pairing is only used when the assignment is credible. Linemen
+oppose linemen directly; a receiver is paired with a corner only when that corner
+has a substantial man-coverage sample. Zone-heavy coverage is represented as a
+player against the responsible unit, with the unit's leading members retained.
 """
 
 from __future__ import annotations
 
 from contextlib import closing
+import json
 from typing import Any
 
 from sports_aggregator.cfb.identity import readable_accent
@@ -25,116 +17,251 @@ from sports_aggregator.cfb.models import normalize_alias
 from sports_aggregator.cfb.repository import CFBRepository
 
 
-#: (label, attacking positions, defending positions, why it matters).
 POSITION_PAIRINGS = (
-    ("Edge vs tackle", {"ED"}, {"T"},
-     "the pass rush against the man asked to block it"),
-    ("Interior rush vs guard", {"DI"}, {"G", "C"},
-     "pocket collapse from the middle"),
-    ("Receiver vs corner", {"WR"}, {"CB"},
-     "the outside passing game"),
-    ("Tight end vs safety", {"TE"}, {"S", "LB"},
-     "the seam and intermediate middle"),
-    ("Back vs linebacker", {"HB"}, {"LB"},
-     "the run game and check-downs"),
+    ("Edge vs tackle", {"ED"}, {"T"}, "the pass rush against the man asked to block it"),
+    ("Interior rush vs guard", {"DI"}, {"G", "C"}, "pocket collapse from the middle"),
 )
 
-#: Below this PFF grade a player is not worth naming as a matchup.
 MIN_GRADE = 68.0
-#: Minimum snaps/usage before a grade is trusted for an individual.
-MIN_USAGE = 120.0
+MIN_SKILL_USAGE = 60.0
+HEAVY_MAN_SHARE = 0.60
+HEAVY_MAN_SNAPS = 80.0
 
 
 def _side_players(rows: list[dict[str, Any]], team_id: int,
                   positions: set[str]) -> list[dict[str, Any]]:
     return sorted(
-        (row for row in rows
-         if row["cfbd_team_id"] == team_id and row["position"] in positions
-         and (row["interest_score"] or 0) >= MIN_GRADE),
-        key=lambda row: -(row["interest_score"] or 0))
+        (row for row in rows if row["cfbd_team_id"] == team_id
+         and row["position"] in positions and (row["interest_score"] or 0) >= MIN_GRADE),
+        key=lambda row: -(row["interest_score"] or 0),
+    )
 
 
 def player_matchups(repository: CFBRepository, home_team_id: int, away_team_id: int, *,
                     pff_season: int = 2025, roster_season: int = 2026,
                     draft_year: int = 2027, limit: int = 8) -> list[dict[str, Any]]:
-    """Rank individual matchups between graded players on the two rosters."""
+    """Rank credible individual and player-vs-unit watches for current rosters."""
     repository.initialize()
     with closing(repository._connect()) as connection:
         rows = [dict(row) for row in connection.execute(
             """SELECT p.pff_player_id,p.player_name,p.normalized_name,p.position,
                p.interest_score,p.cfbd_player_id,p.cfbd_team_id,
                t.school,t.color,r.class_year,r.jersey
-               FROM pff_players p
-               JOIN teams t ON t.team_id=p.cfbd_team_id
+               FROM pff_players p JOIN teams t ON t.team_id=p.cfbd_team_id
                LEFT JOIN players r ON r.player_id=p.cfbd_player_id AND r.season=?
                WHERE p.season=? AND p.cfbd_team_id IN (?,?)
                AND p.interest_score IS NOT NULL""",
             (roster_season, pff_season, home_team_id, away_team_id))]
-        # Only players still on a roster can play in this game.
         rows = [row for row in rows if row["cfbd_player_id"]]
-        board = {}
+
+        metrics: dict[tuple[str, str], dict[str, Any]] = {}
+        pff_ids = [row["pff_player_id"] for row in rows]
+        placeholders = ",".join("?" for _ in pff_ids) or "NULL"
+        for metric_row in connection.execute(
+            f"""SELECT pff_player_id,dataset,primary_grade,usage_count,metrics_json
+                FROM pff_player_metrics WHERE season=?
+                AND pff_player_id IN ({placeholders})""", (pff_season, *pff_ids)):
+            item = dict(metric_row)
+            try:
+                item["raw"] = json.loads(item.get("metrics_json") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                item["raw"] = {}
+            metrics[(item["pff_player_id"], item["dataset"])] = item
+        for metric_row in connection.execute(
+            f"""SELECT pff_player_id,dataset,primary_grade,usage_count,metrics_json
+                FROM pff_supplemental_metrics WHERE season=?
+                AND pff_player_id IN ({placeholders})""", (pff_season, *pff_ids)):
+            item = dict(metric_row)
+            try:
+                item["raw"] = json.loads(item.get("metrics_json") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                item["raw"] = {}
+            metrics[(item["pff_player_id"], item["dataset"])] = item
+
+        board: dict[str, int] = {}
         try:
-            for entry in connection.execute(
+            for board_row in connection.execute(
                 """SELECT normalized_name,rank,cfbd_player_id FROM draft_prospect_rankings
                    WHERE draft_year=?""", (draft_year,)):
-                board[entry["normalized_name"]] = entry["rank"]
-                if entry["cfbd_player_id"]:
-                    board[entry["cfbd_player_id"]] = entry["rank"]
+                board[board_row["normalized_name"]] = board_row["rank"]
+                if board_row["cfbd_player_id"]:
+                    board[board_row["cfbd_player_id"]] = board_row["rank"]
         except Exception:
             board = {}
 
     def board_rank(player: dict[str, Any]) -> int | None:
-        return (board.get(player.get("cfbd_player_id"))
-                or board.get(normalize_alias(player["player_name"])))
+        return board.get(player.get("cfbd_player_id")) or board.get(
+            normalize_alias(player.get("player_name") or ""))
 
-    matchups: list[dict[str, Any]] = []
+    def metric(player: dict[str, Any], dataset: str) -> dict[str, Any] | None:
+        return metrics.get((player["pff_player_id"], dataset))
+
+    def metric_players(team_id: int, positions: set[str], dataset: str,
+                       minimum_usage: float = MIN_SKILL_USAGE) -> list[dict[str, Any]]:
+        qualified = []
+        for player in rows:
+            if player["cfbd_team_id"] != team_id or player["position"] not in positions:
+                continue
+            evidence = metric(player, dataset)
+            if not evidence or (evidence.get("primary_grade") or 0) < MIN_GRADE:
+                continue
+            if (evidence.get("usage_count") or 0) < minimum_usage:
+                continue
+            qualified.append({**player, "interest_score": evidence["primary_grade"],
+                              "matchup_metric": evidence})
+        return sorted(qualified, key=lambda item: -item["interest_score"])
+
+    def unit(team_id: int, positions: set[str], dataset: str, label: str) -> dict[str, Any] | None:
+        values = []
+        for player in rows:
+            if player["cfbd_team_id"] != team_id or player["position"] not in positions:
+                continue
+            evidence = metric(player, dataset)
+            grade, usage = ((evidence or {}).get("primary_grade"),
+                            (evidence or {}).get("usage_count"))
+            if grade is not None and (usage or 0) > 0:
+                values.append((player, float(grade), float(usage)))
+        if len(values) < 2:
+            return None
+        total_usage = sum(usage for _, _, usage in values)
+        weighted = sum(grade * usage for _, grade, usage in values) / total_usage
+        members = sorted(values, key=lambda item: -(item[1] * min(item[2] / 150, 1)))[:4]
+        school = members[0][0]["school"]
+        return {
+            "player_name": f"{school} {label}", "position": "Unit", "school": school,
+            "color": members[0][0].get("color"),
+            "accent": readable_accent(members[0][0].get("color")),
+            "interest_score": round(weighted, 1), "cfbd_player_id": None,
+            "is_unit": True, "usage": round(total_usage, 1),
+            "members": [{"player_name": player["player_name"], "position": player["position"],
+                         "grade": round(grade, 1), "cfbd_player_id": player.get("cfbd_player_id")}
+                        for player, grade, _ in members],
+        }
+
+    def heavy_man_corners(team_id: int) -> list[dict[str, Any]]:
+        qualified = []
+        for player in rows:
+            if player["cfbd_team_id"] != team_id or player["position"] != "CB":
+                continue
+            scheme, coverage = metric(player, "coverage_scheme"), metric(player, "coverage")
+            if not scheme or not coverage:
+                continue
+            raw = scheme["raw"]
+            try:
+                man_snaps = float(raw.get("man_snap_counts_coverage") or 0)
+                base = float(raw.get("base_snap_counts_coverage") or 0)
+                share = (man_snaps / base if base else
+                         float(raw.get("man_snap_counts_coverage_percent") or 0) / 100)
+            except (TypeError, ValueError, ZeroDivisionError):
+                continue
+            if (man_snaps >= HEAVY_MAN_SNAPS and share >= HEAVY_MAN_SHARE
+                    and (coverage.get("primary_grade") or 0) >= MIN_GRADE):
+                qualified.append({**player, "interest_score": coverage["primary_grade"],
+                                  "man_share": share, "man_snaps": man_snaps})
+        return sorted(qualified, key=lambda item: -(item["interest_score"] or 0))
+
+    def score_pair(attacker: dict[str, Any], defender: dict[str, Any]) -> float:
+        floor = min(attacker["interest_score"] or 0, defender["interest_score"] or 0)
+        quality = max(0.0, min(1.0, (floor - MIN_GRADE) / 22))
+        ranks = sum(bool(board_rank(player)) for player in (attacker, defender))
+        return min(round(100 * quality * (1.0 + 0.25 * ranks), 1), 100.0)
+
+    def score_player_unit(player: dict[str, Any], opponent: dict[str, Any]) -> float:
+        player_quality = max(0.0, min(1.0, ((player["interest_score"] or 0) - 60) / 30))
+        unit_quality = max(0.0, min(1.0, ((opponent["interest_score"] or 0) - 55) / 35))
+        gap = min(abs((player["interest_score"] or 0) -
+                      (opponent["interest_score"] or 0)) / 25, 1)
+        score = (35 * player_quality + 20 * unit_quality
+                 + 25 * min(player_quality, unit_quality) + 20 * gap)
+        if board_rank(player):
+            score += 8
+        return round(min(score, 100), 1)
+
+    def entry(label: str, why: str, attacker: dict[str, Any],
+              defender: dict[str, Any]) -> dict[str, Any]:
+        attack_rank = board_rank(attacker)
+        defend_rank = None if defender.get("is_unit") else board_rank(defender)
+        interest = (score_player_unit(attacker, defender) if defender.get("is_unit")
+                    else score_pair(attacker, defender))
+        reasons = [
+            f"{attacker['school']} {attacker['position']} {attacker['interest_score']:.1f}",
+            f"{defender['player_name']} {defender['interest_score']:.1f}", why,
+        ]
+        if attack_rank or defend_rank:
+            names = []
+            if attack_rank:
+                names.append(f"{attacker['player_name']} #{attack_rank}")
+            if defend_rank:
+                names.append(f"{defender['player_name']} #{defend_rank}")
+            reasons.append(f"{draft_year} board: {', '.join(names)}")
+        clean_attacker = {key: value for key, value in attacker.items()
+                          if key != "matchup_metric"}
+        return {
+            "label": label, "why": why, "interest": interest,
+            "kind": "PLAYER_V_UNIT" if defender.get("is_unit") else "PLAYER_V_PLAYER",
+            "attacker": {**clean_attacker, "accent": readable_accent(attacker.get("color")),
+                         "board_rank": attack_rank},
+            "defender": {**defender,
+                         "accent": defender.get("accent") or readable_accent(defender.get("color")),
+                         "board_rank": defend_rank},
+            "prospect_count": int(bool(attack_rank)) + int(bool(defend_rank)),
+            "reasons": reasons,
+        }
+
+    matchups = []
     for label, attack_positions, defend_positions, why in POSITION_PAIRINGS:
         for attack_team, defend_team in ((away_team_id, home_team_id),
                                          (home_team_id, away_team_id)):
             attackers = _side_players(rows, attack_team, attack_positions)
             defenders = _side_players(rows, defend_team, defend_positions)
-            if not attackers or not defenders:
-                continue
-            attacker, defender = attackers[0], defenders[0]
-            attack_grade = attacker["interest_score"] or 0
-            defend_grade = defender["interest_score"] or 0
-            floor = min(attack_grade, defend_grade)
-            quality = max(0.0, min(1.0, (floor - MIN_GRADE) / 22))
+            if attackers and defenders:
+                matchups.append(entry(label, why, attackers[0], defenders[0]))
 
-            attack_rank, defend_rank = board_rank(attacker), board_rank(defender)
-            ranked = [rank for rank in (attack_rank, defend_rank) if rank]
-            # Draft standing raises a pairing without being able to create one.
-            draft_bonus = 1.0 + 0.25 * len(ranked)
-            interest = round(100 * quality * draft_bonus, 1)
-            reasons = [
-                f"{attacker['school']} {attacker['position']} {attack_grade:.1f}",
-                f"{defender['school']} {defender['position']} {defend_grade:.1f}",
-                why,
-            ]
-            if ranked:
-                names = []
-                if attack_rank:
-                    names.append(f"{attacker['player_name']} #{attack_rank}")
-                if defend_rank:
-                    names.append(f"{defender['player_name']} #{defend_rank}")
-                reasons.append(f"{draft_year} board: {', '.join(names)}")
-            matchups.append({
-                "label": label,
-                "why": why,
-                "interest": min(interest, 100.0),
-                "attacker": {
-                    **attacker, "accent": readable_accent(attacker.get("color")),
-                    "board_rank": attack_rank,
-                },
-                "defender": {
-                    **defender, "accent": readable_accent(defender.get("color")),
-                    "board_rank": defend_rank,
-                },
-                "prospect_count": len(ranked),
-                "reasons": reasons,
-            })
-    # Sort on interest alone: the draft bonus is already folded into it, so a
-    # weak pairing with one ranked player cannot outrank a strong pairing of two
-    # unranked ones.
+    for attack_team, defend_team in ((away_team_id, home_team_id),
+                                     (home_team_id, away_team_id)):
+        skill_specs = (
+            ("Receiver vs coverage unit", {"WR"}, {"CB", "S"}, "secondary",
+             "routes tested against the full coverage structure"),
+            ("Tight end vs middle coverage", {"TE"}, {"LB", "S"}, "linebackers & safeties",
+             "the seam, option routes, and intermediate middle"),
+            ("Receiving back vs linebackers", {"HB", "FB"}, {"LB"}, "linebackers",
+             "targets and yards from the backfield against underneath coverage"),
+        )
+        for label, positions, unit_positions, unit_label, why in skill_specs:
+            attackers = metric_players(attack_team, positions, "receiving")
+            if not attackers:
+                continue
+            attacker = attackers[0]
+            raw = attacker["matchup_metric"]["raw"]
+            if "back" in label.casefold():
+                try:
+                    if float(raw.get("targets") or 0) < 15 and float(raw.get("yards") or 0) < 150:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+            defender = None
+            actual_label = label
+            if positions == {"WR"}:
+                corners = heavy_man_corners(defend_team)
+                if corners:
+                    defender = corners[0]
+                    actual_label = "Receiver vs heavy-man corner"
+                    scheme = metric(attacker, "receiving_scheme")
+                    if scheme:
+                        scheme_raw = scheme["raw"]
+                        try:
+                            man_routes = float(scheme_raw.get("man_routes") or 0)
+                            man_grade = float(scheme_raw.get("man_grades_pass_route") or 0)
+                        except (TypeError, ValueError):
+                            man_routes, man_grade = 0.0, 0.0
+                        if man_routes >= MIN_SKILL_USAGE and man_grade >= MIN_GRADE:
+                            attacker = {**attacker, "interest_score": man_grade}
+                    why = (f"a true one-on-one: {defender['man_share']:.0%} man coverage "
+                           f"across {defender['man_snaps']:.0f} snaps")
+            if defender is None:
+                defender = unit(defend_team, unit_positions, "coverage", unit_label)
+            if defender is not None:
+                matchups.append(entry(actual_label, why, attacker, defender))
+
     matchups.sort(key=lambda item: -item["interest"])
     return matchups[:limit]

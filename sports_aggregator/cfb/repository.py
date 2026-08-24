@@ -220,6 +220,10 @@ CREATE TABLE IF NOT EXISTS pff_players (
 );
 CREATE INDEX IF NOT EXISTS idx_pff_players_team ON pff_players(season, cfbd_team_id);
 CREATE INDEX IF NOT EXISTS idx_pff_players_interest ON pff_players(season, interest_score DESC);
+CREATE INDEX IF NOT EXISTS idx_pff_players_cfbd_player
+    ON pff_players(cfbd_player_id, season DESC);
+CREATE INDEX IF NOT EXISTS idx_pff_players_identity
+    ON pff_players(normalized_name, cfbd_team, season DESC);
 
 CREATE TABLE IF NOT EXISTS pff_player_metrics (
     season INTEGER NOT NULL,
@@ -249,6 +253,25 @@ CREATE TABLE IF NOT EXISTS pff_position_groups (
 );
 CREATE INDEX IF NOT EXISTS idx_pff_groups_grade
     ON pff_position_groups(season, dataset, weighted_grade DESC);
+
+CREATE TABLE IF NOT EXISTS pff_supplemental_metrics (
+    season INTEGER NOT NULL,
+    pff_player_id TEXT NOT NULL,
+    player_name TEXT NOT NULL,
+    position TEXT,
+    event_team TEXT,
+    dataset TEXT NOT NULL,
+    context TEXT NOT NULL,
+    source_file TEXT NOT NULL,
+    game_count INTEGER,
+    primary_grade REAL,
+    usage_count REAL,
+    metrics_json TEXT NOT NULL,
+    imported_at TEXT NOT NULL,
+    PRIMARY KEY (season, pff_player_id, dataset, context)
+);
+CREATE INDEX IF NOT EXISTS idx_pff_supplemental_player
+    ON pff_supplemental_metrics(pff_player_id, season DESC);
 
 CREATE TABLE IF NOT EXISTS pff_imports (
     import_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1465,11 +1488,20 @@ class CFBRepository:
             )]
             normalized = normalize_alias(player["name"])
             player["pff"] = [dict(item) for item in connection.execute(
-                """SELECT p.*,m.dataset,m.primary_grade,m.usage_count,m.game_count games
+                """SELECT p.*,m.dataset,m.primary_grade,m.usage_count,m.game_count games,
+                   m.metrics_json,'REGULAR_SEASON' context,0 supplemental
                    FROM pff_players p LEFT JOIN pff_player_metrics m
                    ON m.season=p.season AND m.pff_player_id=p.pff_player_id
                    WHERE p.cfbd_player_id=? OR (p.normalized_name=? AND p.cfbd_team=?)
                    ORDER BY p.season DESC,m.primary_grade DESC""",
+                (player_id, normalized, player["team"]),
+            )]
+            player["pff_supplemental"] = [dict(item) for item in connection.execute(
+                """SELECT s.*,s.game_count games,1 supplemental
+                   FROM pff_supplemental_metrics s JOIN pff_players p
+                   ON p.season=s.season AND p.pff_player_id=s.pff_player_id
+                   WHERE p.cfbd_player_id=? OR (p.normalized_name=? AND p.cfbd_team=?)
+                   ORDER BY s.season DESC,s.context,s.dataset""",
                 (player_id, normalized, player["team"]),
             )]
             player["transfers"] = [dict(item) for item in connection.execute(
@@ -1542,13 +1574,39 @@ class CFBRepository:
                 player["player_page_id"] = None
         return {"season":season,"players":players,"position_groups":groups}
 
-    def conference_pff_players(self, conference: str, season: int=2025, limit: int=20) -> list[dict[str,Any]]:
+    def conference_pff_players(self, conference: str, season: int=2025,
+                               roster_season: int | None = None,
+                               limit: int=20) -> list[dict[str,Any]]:
+        """Prior-season standouts who are actually on a current conference roster.
+
+        Joining through the current roster is deliberate: a conference page is a
+        current-season discovery view, not a departures ledger. Drafted,
+        transferred-out, graduated, and otherwise absent players belong on their
+        former team's departures table instead.
+        """
         self.initialize()
+        current_season = roster_season or season + 1
         with closing(self._connect()) as connection:
-            return [dict(row) for row in connection.execute("""SELECT p.* FROM pff_players p
-              JOIN teams t ON t.team_id=p.cfbd_team_id WHERE p.season=? AND t.conference=?
-              AND p.interest_score IS NOT NULL ORDER BY p.interest_score DESC LIMIT ?""",
-              (season,conference,limit)).fetchall()]
+            rows = connection.execute(
+                """SELECT p.*,r.team current_team,r.position current_position,
+                   CASE WHEN r.team<>p.cfbd_team THEN 'TRANSFER_ARRIVAL'
+                        ELSE 'RETURNING' END roster_status,
+                   CASE WHEN r.team<>p.cfbd_team THEN 'from '||p.cfbd_team
+                        ELSE NULL END roster_destination,
+                   r.player_id player_page_id
+                   FROM pff_players p JOIN players r
+                   ON r.player_id=p.cfbd_player_id AND r.season=?
+                   JOIN teams t ON t.school=r.team
+                   WHERE p.season=? AND t.conference=?
+                   AND p.interest_score IS NOT NULL
+                   ORDER BY p.interest_score DESC LIMIT ?""",
+                (current_season,season,conference,limit),
+            ).fetchall()
+        players = [dict(row) for row in rows]
+        for player in players:
+            player["cfbd_team"] = player["current_team"]
+            player["position"] = player["current_position"] or player["position"]
+        return players
 
     def pff_game_units(self, home_team_id: int, away_team_id: int, season: int=2025) -> list[dict[str,Any]]:
         self.initialize()
@@ -1582,6 +1640,15 @@ class CFBRepository:
                    WHERE p.season=? AND p.cfbd_team_id IN (?,?)""",
                 (season, home_team_id, away_team_id),
             )]
+            rows.extend(dict(row) for row in connection.execute(
+                """SELECT p.cfbd_team_id,p.position,m.dataset,m.primary_grade,
+                   m.usage_count,m.metrics_json FROM pff_players p
+                   JOIN pff_supplemental_metrics m ON m.season=p.season
+                   AND m.pff_player_id=p.pff_player_id
+                   WHERE p.season=? AND p.cfbd_team_id IN (?,?)
+                   AND m.dataset='run_defense_detail'""",
+                (season, home_team_id, away_team_id),
+            ))
 
         def grade(team_id: int, dataset: str, groups: set[str],
                   raw_field: str | None = None) -> dict[str, Any] | None:
@@ -1608,9 +1675,9 @@ class CFBRepository:
 
         specs = (
             ("Rushing", "Rush offense", "rushing", {"Backfield"}, None,
-             "Run defense", "defense", {"Interior defensive line", "Edge", "Linebacker"}, "grades_run_defense"),
+             "Run defense", "run_defense_detail", {"Interior defensive line", "Edge", "Linebacker"}, None),
             ("Run blocking", "Run-block grade", "blocking", {"Offensive line", "Tight end"}, "grades_run_block",
-             "Run defense", "defense", {"Interior defensive line", "Edge", "Linebacker"}, "grades_run_defense"),
+             "Run defense", "run_defense_detail", {"Interior defensive line", "Edge", "Linebacker"}, None),
             ("Pass protection", "Pass-block grade", "blocking", {"Offensive line"}, "grades_pass_block",
              "Pass rush", "pass_rush", {"Interior defensive line", "Edge", "Linebacker"}, None),
             ("Passing", "Pass grade", "passing", {"Quarterback"}, None,

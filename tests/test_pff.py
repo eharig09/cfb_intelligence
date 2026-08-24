@@ -30,14 +30,36 @@ class PFFImporterTests(unittest.TestCase):
                                      "team_name": "MICH", "player_game_count": "12",
                                      grade_field: "91.2", usage_field: "400"})
 
+            with (pff_dir / "defense_coverage_scheme (1).csv").open(
+                "w", newline="", encoding="utf-8"
+            ) as output:
+                fields = ["player", "player_id", "position", "team_name",
+                          "player_game_count", "base_snap_counts_coverage",
+                          "man_grades_coverage_defense", "man_snap_counts_coverage",
+                          "zone_grades_coverage_defense", "zone_snap_counts_coverage"]
+                writer = csv.DictWriter(output, fieldnames=fields)
+                writer.writeheader()
+                writer.writerow({
+                    "player": "Alex Example", "player_id": "pff-1", "position": "QB",
+                    "team_name": "MICH", "player_game_count": "12",
+                    "base_snap_counts_coverage": "200",
+                    "man_grades_coverage_defense": "82", "man_snap_counts_coverage": "120",
+                    "zone_grades_coverage_defense": "76", "zone_snap_counts_coverage": "80",
+                })
+
             report = PFFImporter(repository).import_directory(pff_dir, season=2025, roster_season=2026)
             self.assertEqual(report.files, 7)
             self.assertEqual(report.rows, 7)
+            self.assertEqual(report.supplemental_files, 1)
+            self.assertEqual(report.supplemental_rows, 1)
             self.assertEqual(report.linked_players, 1)
             summary = pff_summary(repository, 2025)
             self.assertEqual(summary["players"], 1)
             self.assertEqual(summary["top_players"][0]["cfbd_player_id"], "cfbd-1")
+            self.assertEqual(summary["supplemental_metrics"], 1)
             self.assertEqual(len(summary["top_position_groups"]), 0)
+            player = repository.get_player("cfbd-1", 2026)
+            self.assertEqual(player["pff_supplemental"][0]["dataset"], "coverage_scheme")
 
 
 if __name__ == "__main__":

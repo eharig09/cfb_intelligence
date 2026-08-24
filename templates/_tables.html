@@ -24,7 +24,8 @@
 
 {% macro data_table(table, extra_class='') %}
     {%- if table.rows %}
-    <div class="table-wrap">
+    <div class="table-wrap" role="region" tabindex="0"
+         aria-label="{{ table.caption or 'Scrollable data table' }}">
         {%- if table.caption or table.note %}
         <div class="table-caption">
             <strong>{{ table.caption or '' }}</strong>
@@ -36,7 +37,7 @@
                 <tr>
                     {%- for column in table.columns %}
                     <th scope="col"
-                        class="col-{{ column.align }}{{ ' col-rank' if column.format == 'rank' }}"
+                        class="col-{{ column.align }} col-key-{{ column.key | replace('_', '-') }}{{ ' col-rank' if column.format == 'rank' }}"
                         {%- if column.title %} title="{{ column.title }}"{% endif %}>{{ column.label }}</th>
                     {%- endfor %}
                 </tr>
@@ -48,7 +49,7 @@
                     {%- set text = row.get(column.key) | cell(column.format) %}
                     {%- set href = row.get(column.key ~ '_url') %}
                     {%- set sub = row.get(column.key ~ '_sub') %}
-                    <td class="col-{{ column.align }}
+                    <td class="col-{{ column.align }} col-key-{{ column.key | replace('_', '-') }}
                         {{- ' num' if column.numeric }}
                         {{- ' emphasis' if column.emphasis }}
                         {{- ' is-empty' if text == '—' }}

@@ -1,0 +1,24 @@
+player,player_id,position,team_name,player_game_count,declined_penalties,franchise_id,grades_kick_return,grades_punt_return,grades_return,kickoff_attempts,kickoff_fair_catches,kickoff_long,kickoff_muffed_returns,kickoff_touchdowns,kickoff_yards,kickoff_ypa,penalties,punt_attempts,punt_fair_catches,punt_long,punt_muffed_returns,punt_touchdowns,punt_yards,punt_ypa,total_attempts
+Caullin Lacy,121426,WR,NORTH SENR,1,0,356,59.9,60.3,60.4,1,0,19,0,0,19,19.0,0,0,1,0,0,0,0,,1
+Lincoln Pare,121537,HB,WRHK AMER,1,0,1542,59.9,,59.9,0,1,0,0,0,0,,0,0,0,0,0,0,0,,0
+Kentrel Bullock,124129,HB,EAST SHRNE,1,0,354,63.0,,63.6,1,0,31,0,0,31,31.0,0,0,0,0,0,0,0,,1
+Kris Hutson,131713,WR,WEST SHRNE,1,0,355,57.5,,57.3,1,0,18,0,0,18,18.0,0,0,0,0,0,0,0,,1
+Trenton Leary,132721,WR,HBCURO,1,0,1460,,61.7,61.3,0,0,0,0,0,0,,0,1,0,7,0,0,7,7.0,1
+Jamal Haynes,143918,HB,GUAR AMER,1,0,1541,59.6,,59.5,0,2,0,0,0,0,,0,0,0,0,0,0,0,,0
+Eric Rivers,144279,WR,WEST SHRNE,1,0,355,67.3,61.0,69.2,2,0,31,0,0,61,30.5,0,0,1,0,0,0,0,,2
+Josh Cameron,144513,WR,NORTH SENR,1,0,356,,61.0,60.8,0,0,0,0,0,0,,0,0,1,0,0,0,0,,0
+Daylan Long,145825,LB,HBCUGA,1,0,1459,,,,0,0,0,0,0,0,,0,1,0,0,1,0,0,0.0,1
+Gabriel Benyard,147969,WR,GUAR AMER,1,0,1541,,62.2,61.5,0,0,0,0,0,0,,0,0,2,0,0,0,0,,0
+Reggie Davis,149834,HB,HBCURO,1,0,1460,59.9,,59.9,0,1,0,0,0,0,,0,0,0,0,0,0,0,,0
+Cash Jones,155211,HB,WRHK AMER,1,0,1542,59.6,,59.5,0,2,0,0,0,0,,0,0,0,0,0,0,0,,0
+Kaden Wetjen,156448,WR,WEST SHRNE,1,0,355,59.9,61.4,60.7,1,0,24,0,0,24,24.0,0,1,0,20,0,0,20,20.0,2
+Cyrus Allen,156582,WR,WRHK AMER,2,0,1542,,60.3,60.4,0,0,0,0,0,0,,0,1,0,0,1,0,0,0.0,1
+Aaron Anderson,157010,WR,AMER SENR,1,0,357,59.9,,59.9,1,0,18,0,0,18,18.0,0,0,0,0,0,0,0,,1
+Hank Beatty,158198,WR,KAI HULA,1,0,1446,59.4,60.3,59.9,0,1,0,0,0,0,,0,0,1,0,0,0,0,,0
+Kevin Coleman Jr.,160756,WR,AMER SENR,1,0,357,,61.9,61.4,0,0,0,0,0,0,,0,0,2,0,0,0,0,,0
+Junior Vandeross III,163156,WR,WRHK AMER,2,0,1542,,60.3,60.4,0,0,0,0,0,0,,0,0,1,0,0,0,0,,0
+Kobe Prentice,163609,WR,AIN HULA,1,0,1447,58.0,60.3,58.4,0,1,0,0,0,0,,0,0,1,0,0,0,0,,0
+Barion Brown,163779,WR,AMER SENR,1,0,357,,60.3,60.4,0,0,0,0,0,0,,0,0,1,0,0,0,0,,0
+Michael Wortham,170696,WR,EAST SHRNE,1,0,354,63.2,62.7,65.0,3,0,25,0,0,54,18.0,0,2,0,12,0,0,18,9.0,5
+Ronnie West,195324,,HBCURO,1,0,1460,,60.3,60.4,0,0,0,0,0,0,,0,1,0,5,0,0,5,5.0,1
+Deandre Proctor,213349,WR,HBCUGA,1,0,1459,59.9,,59.9,0,1,0,0,0,0,,0,0,0,0,0,0,0,,0

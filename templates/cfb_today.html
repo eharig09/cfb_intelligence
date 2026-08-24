@@ -50,7 +50,16 @@
     .conference-chip span { color: var(--muted); font-weight: 400; }
     .reference .table-wrap { max-height: 27rem; overflow-y: auto; }
 
-    @media (max-width: 600px) { .season { display: none; } }
+    @media (max-width: 600px) {
+        .season { display: none; }
+        .hero { align-items: flex-start; gap: 8px; }
+        .panel-head { align-items: flex-start; }
+        .panel-head span { max-width: 48%; text-align: right; line-height: 1.35; }
+        .panel-body { max-height: 24rem; }
+        .conference-strip { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px;
+                            overscroll-behavior-inline: contain; }
+        .conference-chip { flex: 0 0 auto; }
+    }
 </style>
 {% endblock %}
 
@@ -167,6 +176,19 @@
         <div class="panel-body">{{ data_table(draft_table) }}</div>
     </section>
 </div>
+
+<section class="section">
+    <div class="section-title">
+        <h2>Upcoming Week{% if nearest_week is not none %} {{ nearest_week }}{% endif %}: Matchups to Watch</h2>
+        <span>Players, units, and assignment-aware one-on-ones</span>
+    </div>
+    <div class="section-note">
+        Receiver/corner pairings require a substantial man-coverage sample. Otherwise
+        the receiver is evaluated against the full coverage unit; backs and tight ends
+        are matched to the linebackers and safeties responsible for the relevant space.
+    </div>
+    {{ data_table(weekly_matchups_table) }}
+</section>
 
 <section class="section">
     <div class="section-title">

@@ -26,6 +26,26 @@ DATASETS = {
     "rushing_summary (11).csv": ("rushing", "grades_run", "attempts"),
 }
 
+# Optional regular-season detail exports. They enrich player cards and assignment
+# logic without replacing the seven stable summary datasets.
+SUPPLEMENTAL_DATASETS = {
+    "defense_coverage_scheme (1).csv": (
+        "coverage_scheme", (("man_grades_coverage_defense", "man_snap_counts_coverage"),
+                            ("zone_grades_coverage_defense", "zone_snap_counts_coverage"))),
+    "passing_depth (4).csv": (
+        "passing_depth", (("behind_los_grades_pass", "behind_los_attempts"),
+                           ("short_grades_pass", "short_attempts"),
+                           ("medium_grades_pass", "medium_attempts"),
+                           ("deep_grades_pass", "deep_attempts"))),
+    "receiving_scheme (5).csv": (
+        "receiving_scheme", (("man_grades_pass_route", "man_routes"),
+                              ("zone_grades_pass_route", "zone_routes"))),
+    "return_summary (1).csv": (
+        "returns", (("grades_return", "total_attempts"),)),
+    "run_defense_summary (1).csv": (
+        "run_defense_detail", (("grades_run_defense", "snap_counts_run"),)),
+}
+
 DATASET_POSITION_GROUPS = {
     "coverage": {"SECONDARY", "LB"},
     "defense": {"SECONDARY", "LB", "EDGE", "INTERIOR_DL"},
@@ -79,6 +99,8 @@ class PFFImportReport:
     candidate_transfers: int
     unresolved_players: int
     unresolved_teams: tuple[str, ...]
+    supplemental_files: int = 0
+    supplemental_rows: int = 0
 
 
 def _number(value: Any) -> float | None:
@@ -109,6 +131,22 @@ def _primary_grade(row: dict[str, str], dataset: str, grade_field: str) -> float
         _number(row.get("grades_pass_block")), _number(row.get("grades_run_block"))
     ) if value is not None]
     return sum(components) / len(components) if components else None
+
+
+def _weighted_metric(
+    row: dict[str, str], fields: tuple[tuple[str, str], ...]
+) -> tuple[float | None, float | None]:
+    """Usage-weight a grade across scheme/depth splits without inventing data."""
+    values = []
+    for grade_field, usage_field in fields:
+        grade = _number(row.get(grade_field))
+        usage = _number(row.get(usage_field))
+        if grade is not None and usage is not None and usage > 0:
+            values.append((grade, usage))
+    if not values:
+        return None, None
+    usage = sum(weight for _, weight in values)
+    return sum(grade * weight for grade, weight in values) / usage, usage
 
 
 class PFFImporter:
@@ -159,6 +197,8 @@ class PFFImporter:
         self.repository.initialize()
         imported_at = datetime.now(timezone.utc).isoformat()
         rows_seen = 0
+        supplemental_rows = 0
+        supplemental_files = 0
         player_ids: set[str] = set()
         unresolved_teams: set[str] = set()
         groups: dict[tuple[str, int | None, str, str], list[tuple[float, float]]] = defaultdict(list)
@@ -174,7 +214,17 @@ class PFFImporter:
             connection.execute("DELETE FROM pff_position_groups WHERE season=?", (season,))
 
             for filename, (dataset, grade_field, usage_field) in DATASETS.items():
-                with (directory / filename).open("r", encoding="utf-8-sig", newline="") as source:
+                source_path = directory / filename
+                # The historical OL collection includes a more complete, later
+                # 2025 export. Prefer it while retaining the established filename
+                # as a required fallback for portable/test snapshots.
+                preferred = directory / "oline_data" / f"ol_{season}.csv"
+                if dataset == "blocking" and preferred.is_file():
+                    source_path = preferred
+                corrected_pass_rush = directory / "pass_rush_summary (2).csv"
+                if dataset == "pass_rush" and corrected_pass_rush.is_file():
+                    source_path = corrected_pass_rush
+                with source_path.open("r", encoding="utf-8-sig", newline="") as source:
                     for row in csv.DictReader(source):
                         rows_seen += 1
                         pff_id = str(row.get("player_id") or "").strip()
@@ -219,7 +269,7 @@ class PFFImporter:
                         )
                         connection.execute(
                             "INSERT INTO pff_player_metrics VALUES(?,?,?,?,?,?,?,?,?)",
-                            (season, pff_id, dataset, filename, games, grade, usage,
+                            (season, pff_id, dataset, str(source_path.relative_to(directory)), games, grade, usage,
                              json.dumps(row, separators=(",", ":")), imported_at),
                         )
                         if grade is not None:
@@ -236,6 +286,70 @@ class PFFImporter:
                     (season, team_id, pff_team, position_group, dataset,
                      round(weighted, 2), len(values), total_usage),
                 )
+
+            connection.execute(
+                """DELETE FROM pff_supplemental_metrics
+                   WHERE season=? AND dataset!='blocking_history'""", (season,))
+            for filename, (dataset, fields) in SUPPLEMENTAL_DATASETS.items():
+                source_path = directory / filename
+                if not source_path.is_file():
+                    continue
+                supplemental_files += 1
+                with source_path.open("r", encoding="utf-8-sig", newline="") as source:
+                    for row in csv.DictReader(source):
+                        pff_id = str(row.get("player_id") or "").strip()
+                        if not pff_id:
+                            continue
+                        grade, usage = _weighted_metric(row, fields)
+                        connection.execute(
+                            """INSERT INTO pff_supplemental_metrics VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                               ON CONFLICT(season,pff_player_id,dataset,context) DO UPDATE SET
+                               player_name=excluded.player_name,position=excluded.position,
+                               event_team=excluded.event_team,source_file=excluded.source_file,
+                               game_count=excluded.game_count,primary_grade=excluded.primary_grade,
+                               usage_count=excluded.usage_count,metrics_json=excluded.metrics_json,
+                               imported_at=excluded.imported_at""",
+                            (season, pff_id, str(row.get("player") or "").strip(),
+                             row.get("position"), row.get("team_name"), dataset,
+                             "REGULAR_SEASON_DETAIL", filename,
+                             int(_number(row.get("player_game_count")) or 0), grade, usage,
+                             json.dumps(row, separators=(",", ":")), imported_at),
+                        )
+                        supplemental_rows += 1
+
+            # Older college OL files add career context for players whose stable
+            # PFF IDs appear in the current snapshot. They never alter current
+            # team units or interest scores.
+            history_dir = directory / "oline_data"
+            if history_dir.is_dir():
+                for source_path in sorted(history_dir.glob("ol_*.csv")):
+                    try:
+                        metric_season = int(source_path.stem.removeprefix("ol_"))
+                    except ValueError:
+                        continue
+                    if metric_season >= season:
+                        continue
+                    connection.execute(
+                        """DELETE FROM pff_supplemental_metrics
+                           WHERE season=? AND dataset='blocking_history'
+                           AND context='REGULAR_SEASON'""", (metric_season,))
+                    supplemental_files += 1
+                    with source_path.open("r", encoding="utf-8-sig", newline="") as source:
+                        for row in csv.DictReader(source):
+                            pff_id = str(row.get("player_id") or "").strip()
+                            if not pff_id:
+                                continue
+                            grade = _primary_grade(row, "blocking", "grades_offense")
+                            usage = _number(row.get("snap_counts_offense"))
+                            connection.execute(
+                                """INSERT INTO pff_supplemental_metrics VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                (metric_season, pff_id, str(row.get("player") or "").strip(),
+                                 row.get("position"), row.get("team_name"), "blocking_history",
+                                 "REGULAR_SEASON", str(source_path.relative_to(directory)),
+                                 int(_number(row.get("player_game_count")) or 0), grade, usage,
+                                 json.dumps(row, separators=(",", ":")), imported_at),
+                            )
+                            supplemental_rows += 1
 
             counts = connection.execute(
                 """SELECT COUNT(*) players,
@@ -258,6 +372,7 @@ class PFFImporter:
             season, roster_season, len(DATASETS), rows_seen, counts["players"],
             counts["linked"] or 0, counts["candidates"] or 0,
             counts["unresolved"] or 0, tuple(sorted(unresolved_teams)),
+            supplemental_files, supplemental_rows,
         )
 
 
@@ -280,7 +395,10 @@ def pff_summary(repository: CFBRepository, season: int) -> dict[str, Any]:
             """SELECT * FROM pff_players WHERE season=? AND interest_score IS NOT NULL
                ORDER BY interest_score DESC LIMIT 50""", (season,)
         )]
+        supplemental = connection.execute(
+            "SELECT COUNT(*) FROM pff_supplemental_metrics WHERE season=?", (season,)
+        ).fetchone()[0]
     return {"season": season, "players": counts["players"] or 0,
             "linked": counts["linked"] or 0, "candidates": counts["candidates"] or 0,
             "unresolved": counts["unresolved"] or 0, "top_players": players,
-            "top_position_groups": groups}
+            "top_position_groups": groups, "supplemental_metrics": supplemental}

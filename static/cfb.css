@@ -135,7 +135,10 @@ h1 { font: 700 clamp(1.75rem, 6vw, 3.2rem)/1.02 Georgia, serif; margin: 6px 0 8p
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     margin-bottom: 12px;
+    overscroll-behavior-inline: contain;
+    scrollbar-gutter: stable;
 }
+.table-wrap:focus-visible { outline: 3px solid var(--team); outline-offset: 2px; }
 
 .table-caption {
     display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px;
@@ -146,7 +149,8 @@ h1 { font: 700 clamp(1.75rem, 6vw, 3.2rem)/1.02 Georgia, serif; margin: 6px 0 8p
 .table-caption span { color: var(--muted); font-size: .66rem; }
 
 table.data {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
     /* Digits must line up column-to-column; this is the point of the table. */
     font-variant-numeric: tabular-nums;
@@ -332,11 +336,25 @@ table.data td.state-departed .sub { color: var(--red); }
 
 /* Phones: strip decoration that only costs space. */
 @media (max-width: 559px) {
+    :root { --pad: 12px; --gap: 10px; }
+    main { padding-top: 14px; padding-bottom: 38px; }
+    .site-header .nav { flex-wrap: wrap; gap: 8px; }
+    .site-header .nav > a { max-width: calc(100% - 7rem); font-size: .84rem; }
+    .header-search { flex: 1 1 100%; }
+    .header-search input, .header-search input:focus { width: 100%; min-height: 36px; }
+    h1 { font-size: clamp(1.65rem, 9vw, 2.3rem); }
+    .team-bar { border-left-width: 4px; padding-left: 10px; }
     .table-caption { padding: 7px 9px; }
     table.data { font-size: .8rem; }
     table.data thead th, table.data tbody td { padding: 7px 7px; }
     .section { margin-top: 20px; }
-    .tabs button { flex: 1 1 auto; }
+    .tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 3px;
+            overscroll-behavior-inline: contain; scroll-snap-type: x proximity; }
+    .tabs button { flex: 0 0 auto; scroll-snap-align: start; }
+    .story-entry-top, .stream-entry-top { align-items: flex-start; }
+    .story-source { max-width: 45%; text-align: right; }
+    .facts { margin-inline: calc(-1 * var(--pad)); }
+    .fact { min-width: 0; }
 }
 
 @media print {

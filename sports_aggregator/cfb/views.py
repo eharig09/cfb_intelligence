@@ -9,6 +9,7 @@ table objects.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Iterable, Sequence
 
 from flask import url_for
@@ -235,14 +236,107 @@ def player_stat_groups(player: dict[str, Any]) -> list[dict[str, Any]]:
     return player_stat_tables(player.get("stats") or [])
 
 
+def _pff_detail(grade: dict[str, Any]) -> str | None:
+    """A compact, dataset-specific stat line from the licensed raw row."""
+    try:
+        raw = json.loads(grade.get("metrics_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+    def number(key: str, digits: int = 0) -> str | None:
+        value = raw.get(key)
+        if value in (None, ""):
+            return None
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+        return f"{numeric:.{digits}f}" if digits else f"{numeric:,.0f}"
+
+    dataset = grade.get("dataset")
+    if dataset in {"blocking", "blocking_history"}:
+        return " · ".join(filter(None, (
+            f"PB {number('grades_pass_block', 1)}" if number("grades_pass_block", 1) else None,
+            f"RB {number('grades_run_block', 1)}" if number("grades_run_block", 1) else None,
+            f"{number('pressures_allowed')} pressures allowed" if number("pressures_allowed") else None,
+        ))) or None
+    if dataset == "receiving":
+        routes = number("routes")
+        yards = number("yards")
+        yprr = None
+        try:
+            if float(raw.get("routes") or 0) > 0:
+                yprr = float(raw.get("yards") or 0) / float(raw["routes"])
+        except (TypeError, ValueError):
+            pass
+        return " · ".join(filter(None, (
+            f"{number('targets')} tgt / {number('receptions')} rec" if number("targets") else None,
+            f"{yards} yd" if yards else None, f"{yprr:.2f} YPRR" if yprr is not None else None,
+        ))) or None
+    if dataset == "rushing":
+        return " · ".join(filter(None, (
+            f"{number('attempts')} att / {number('yards')} yd" if number("attempts") else None,
+            f"receiving {number('targets')} tgt, {number('receptions')} rec, {number('rec_yards')} yd"
+            if number("targets") else None,
+        ))) or None
+    if dataset in {"coverage", "coverage_scheme"}:
+        if dataset == "coverage_scheme":
+            return " · ".join(filter(None, (
+                f"man {number('man_snap_counts_coverage')} snaps / {number('man_grades_coverage_defense', 1)} grade"
+                if number("man_snap_counts_coverage") else None,
+                f"zone {number('zone_snap_counts_coverage')} snaps / {number('zone_grades_coverage_defense', 1)} grade"
+                if number("zone_snap_counts_coverage") else None,
+            ))) or None
+        return " · ".join(filter(None, (
+            f"{number('targets')} tgt / {number('receptions')} rec" if number("targets") else None,
+            f"{number('yards')} yd allowed" if number("yards") else None,
+            f"{number('qb_rating_against', 1)} rating" if number("qb_rating_against", 1) else None,
+        ))) or None
+    if dataset == "pass_rush":
+        return " · ".join(filter(None, (
+            f"{number('total_pressures')} pressures" if number("total_pressures") else None,
+            f"{number('sacks', 1)} sacks" if number("sacks", 1) else None,
+            f"{number('pass_rush_win_rate', 1)}% win" if number("pass_rush_win_rate", 1) else None,
+        ))) or None
+    if dataset == "receiving_scheme":
+        return " · ".join(filter(None, (
+            f"man {number('man_routes')} routes / {number('man_yards')} yd / {number('man_grades_pass_route', 1)} grade"
+            if number("man_routes") else None,
+            f"zone {number('zone_routes')} routes / {number('zone_yards')} yd / {number('zone_grades_pass_route', 1)} grade"
+            if number("zone_routes") else None,
+        ))) or None
+    if dataset == "passing_depth":
+        return " · ".join(filter(None, (
+            f"deep {number('deep_attempts')} att / {number('deep_ypa', 1)} YPA"
+            if number("deep_attempts") else None,
+            f"medium {number('medium_attempts')} att / {number('medium_ypa', 1)} YPA"
+            if number("medium_attempts") else None,
+        ))) or None
+    if dataset == "returns":
+        return " · ".join(filter(None, (
+            f"{number('kickoff_attempts')} KR / {number('kickoff_yards')} yd" if number("kickoff_attempts") else None,
+            f"{number('punt_attempts')} PR / {number('punt_yards')} yd" if number("punt_attempts") else None,
+        ))) or None
+    if dataset == "run_defense_detail":
+        return " · ".join(filter(None, (
+            f"{number('snap_counts_run')} run snaps" if number("snap_counts_run") else None,
+            f"{number('run_stop_percent', 1)}% stops" if number("run_stop_percent", 1) else None,
+        ))) or None
+    return None
+
+
 def pff_grades_table(grades: Sequence[dict[str, Any]]) -> Table:
     """Confirmed PFF grades for one player, with the usage that qualifies them."""
     rows = [{
         "season": grade.get("season"),
         "dataset": (grade.get("dataset") or "overall").replace("_", " ").title(),
+        "dataset_sub": ("Regular-season scheme/depth split"
+                        if grade.get("context") == "REGULAR_SEASON_DETAIL"
+                        else "Regular-season college sample"),
         "primary_grade": grade.get("primary_grade"),
         "usage_count": grade.get("usage_count"),
         "games": grade.get("games"),
+        "detail": _pff_detail(grade),
     } for grade in grades]
     return Table(
         columns=[
@@ -253,6 +347,7 @@ def pff_grades_table(grades: Sequence[dict[str, Any]]) -> Table:
             Column(key="usage_count", label="Usage", format="num",
                    title="Snaps, attempts, or routes for this dataset"),
             Column(key="games", label="G", format="int", title="Games"),
+            Column(key="detail", label="Detail", align="left"),
         ],
         rows=rows,
         caption="PFF grades",
@@ -625,10 +720,14 @@ def matchup_watch_table(report: dict[str, Any], brands_by_school: dict[str, dict
 
 
 def player_matchup_table(matchups: Sequence[dict[str, Any]], season: int) -> Table:
-    """Individual matchups, with board-ranked prospects called out by rank."""
+    """Credible player pairings blended with player-vs-unit watches."""
     rows = []
     for matchup in matchups:
         attacker, defender = matchup["attacker"], matchup["defender"]
+        members = defender.get("members") or []
+        defender_detail = (", ".join(
+            f"{member['player_name']} {member['grade']:.1f}" for member in members)
+            if members else None)
         entry = {
             "label": matchup["label"],
             "label_sub": matchup["why"],
@@ -640,9 +739,10 @@ def player_matchup_table(matchups: Sequence[dict[str, Any]], season: int) -> Tab
             "attacker_grade": attacker.get("interest_score"),
             "defender": defender["player_name"],
             "defender_url": _player_url(defender.get("cfbd_player_id"), season),
-            "defender_sub": (f"{defender['school']} {defender['position']}"
-                             + (f" · board #{defender['board_rank']}"
-                                if defender.get("board_rank") else "")),
+            "defender_sub": (defender_detail or
+                             (f"{defender['school']} {defender['position']}"
+                              + (f" · board #{defender['board_rank']}"
+                                 if defender.get("board_rank") else ""))),
             "defender_grade": defender.get("interest_score"),
             "interest": matchup["interest"],
         }
@@ -662,9 +762,37 @@ def player_matchup_table(matchups: Sequence[dict[str, Any]], season: int) -> Tab
                    title="Both players graded well; ranked draft prospects raise it further"),
         ],
         rows=rows,
-        caption="Individual matchups",
-        note="2025 PFF grades · 2027 board ranks",
-        empty="No graded individual matchup is available for these rosters.",
+        caption="Player and unit watches",
+        note="2025 PFF grades · unit rows list the leading graded members",
+        empty="No graded player or unit watch is available for these rosters.",
+    )
+
+
+def weekly_matchups_table(matchups: Sequence[dict[str, Any]], season: int) -> Table:
+    """Top blended watches across the nearest upcoming week."""
+    rows = []
+    for matchup in matchups:
+        rows.append({
+            "game": f"{matchup['away_team']} at {matchup['home_team']}",
+            "game_url": url_for("cfb.game_preview", game_id=matchup["game_id"]),
+            "game_sub": matchup.get("start_label"),
+            "kind": matchup.get("kind_label"), "focus": matchup.get("focus"),
+            "focus_url": _player_url(matchup.get("focus_player_id"), season),
+            "focus_sub": matchup.get("label"), "against": matchup.get("against"),
+            "against_sub": matchup.get("detail"),
+            "watch_score": matchup.get("weekly_score"),
+        })
+    return Table(
+        columns=[
+            Column(key="game", label="Game", align="left", emphasis=True),
+            Column(key="kind", label="Type", align="left"),
+            Column(key="focus", label="Focus", align="left", emphasis=True),
+            Column(key="against", label="Against", align="left"),
+            Column(key="watch_score", label="Watch", format="f1",
+                   title="Matchup interest blended with the game's attention score"),
+        ], rows=rows, caption="Top matchups in the next scheduled week",
+        note="player-v-player, player-v-unit, and unit-v-unit",
+        empty="No qualifying graded matchup is available for the upcoming week.",
     )
 
 

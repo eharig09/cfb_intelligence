@@ -168,15 +168,65 @@ def _with_matchup_edges(repository: CFBRepository, games: list[dict]) -> list[di
     return games
 
 
+def _weekly_matchup_watches(repository: CFBRepository, games: list[dict],
+                            limit: int = 12) -> list[dict]:
+    """Blend the best player/unit and unit/unit watches across one week."""
+    watches = []
+    for game in games:
+        attention = float(game.get("attention_score") or 0)
+        for matchup in player_matchups(
+            repository, game["home_team_id"], game["away_team_id"], limit=3
+        ):
+            attacker, defender = matchup["attacker"], matchup["defender"]
+            members = defender.get("members") or []
+            detail = (", ".join(f"{member['player_name']} {member['grade']:.1f}"
+                                for member in members) or matchup["why"])
+            watches.append({
+                "game_id": game["game_id"], "away_team": game["away_team"],
+                "home_team": game["home_team"], "start_label": game.get("start_label"),
+                "kind_label": "Player vs unit" if defender.get("is_unit") else "One-on-one",
+                "label": matchup["label"], "focus": attacker["player_name"],
+                "focus_player_id": attacker.get("cfbd_player_id"),
+                "against": defender["player_name"], "detail": detail,
+                "weekly_score": round(0.8 * matchup["interest"] + 0.2 * attention, 1),
+            })
+        report = game_matchup_report(
+            repository.pff_matchups(game["home_team_id"], game["away_team_id"], 2025),
+            game["away_team"], game["home_team"], limit=1)
+        for matchup in report["matchups"]:
+            watches.append({
+                "game_id": game["game_id"], "away_team": game["away_team"],
+                "home_team": game["home_team"], "start_label": game.get("start_label"),
+                "kind_label": "Unit vs unit", "label": matchup["label"],
+                "focus": f"{matchup['attack_team']} {matchup['attack_label']}",
+                "focus_player_id": None,
+                "against": f"{matchup['defend_team']} {matchup['defend_label']}",
+                "detail": matchup["headline"],
+                "weekly_score": round(0.8 * matchup["interest"] + 0.2 * attention, 1),
+            })
+    watches.sort(key=lambda item: -item["weekly_score"])
+    return watches[:limit]
+
+
+def _nearest_week_games(games: list[dict]) -> tuple[int | None, list[dict]]:
+    """Select the next scheduled week, explicitly retaining preseason Week 0."""
+    nearest = min((game.get("week") for game in games
+                   if game.get("week") is not None), default=None)
+    return nearest, [game for game in games if game.get("week") == nearest]
+
+
 @cfb_pages.get("/college-football/")
 def today():
     season = _season()
     repository = _repository()
-    watch_games = games_to_watch(repository.upcoming_games(season, limit=80))
+    upcoming = repository.upcoming_games(season, limit=80)
+    nearest_week, week_games = _nearest_week_games(upcoming)
+    watch_games = games_to_watch(upcoming)
     rankings = repository.latest_rankings(season)
     movement_stream = repository.recent_movements(season, limit=16)
     brands = repository.team_brands()
     slate = _with_matchup_edges(repository, _label_games(watch_games))
+    weekly_slate = _label_games(games_to_watch(week_games, limit=20))
     market = lines_by_game(repository, season)
     for game in slate:
         game['market'] = market.get(game['game_id']) or {}
@@ -186,6 +236,9 @@ def today():
         status=repository.status(season),
         rankings=rankings,
         games_table=views.games_to_watch_compact(slate, brands),
+        weekly_matchups_table=views.weekly_matchups_table(
+            _weekly_matchup_watches(repository, weekly_slate), season),
+        nearest_week=nearest_week,
         conferences=repository.conferences(),
         national_stories=_story_repository().list_stories(limit=16),
         streams=_content_repository().source_streams(limit=8),
@@ -194,7 +247,7 @@ def today():
         draft_table=views.draft_panel_table(
             board_with_profile(
                 repository, prospect_board(repository, roster_season=season, limit=500),
-                limit=18),
+                limit=500),
             season),
         reference_tables=[
             {"label": "Rankings", "table": views.rankings_table(rankings, season, brands)},
@@ -231,7 +284,8 @@ def conference_preview(slug: str):
         leaders=leaders,
         leader_groups=views.leader_groups(leaders, season),
         pff_table=views.pff_players_table(
-            repository.conference_pff_players(name, 2025, limit=20), season, dense=True
+            repository.conference_pff_players(
+                name, 2025, roster_season=season, limit=20), season, dense=True
         ),
         stories=_story_repository().list_stories(conference=name, limit=24),
     )
@@ -306,7 +360,8 @@ def player_preview(player_id: str):
         "cfb_player.html", season=season, player=player,
         identity=team_identity(_repository().brand_for(player.get("team_id"))),
         stat_groups=views.player_stat_groups(player),
-        pff_table=views.pff_grades_table(player.get("pff") or []),
+        pff_table=views.pff_grades_table(
+            (player.get("pff") or []) + (player.get("pff_supplemental") or [])),
         stories=[{**story, "coverage_label": "Player linked"} for story in direct],
         team_stories=team_context,
     )
@@ -654,6 +709,19 @@ def games_to_watch_api():
     return jsonify({"season": season, "count": len(games), "games": games})
 
 
+@cfb_pages.get("/api/v1/cfb/matchups-to-watch")
+def matchups_to_watch_api():
+    season = _season()
+    repository = _repository()
+    upcoming = repository.upcoming_games(season, limit=100)
+    nearest_week, week_games = _nearest_week_games(upcoming)
+    week_games = _label_games(games_to_watch(
+        week_games, limit=20))
+    matchups = _weekly_matchup_watches(repository, week_games, limit=20)
+    return jsonify({"season": season, "week": nearest_week,
+                    "count": len(matchups), "matchups": matchups})
+
+
 @cfb_pages.get("/api/v1/cfb/teams")
 def teams_api():
     limit = min(max(request.args.get("limit", 150, type=int) or 150, 1), 200)
@@ -698,7 +766,8 @@ def conference_api(slug: str):
         "standings": repository.conference_standings(name, season),
         "games": repository.conference_games(name, season),
         "player_leaders": repository.conference_player_leaders(name, season),
-        "pff_players": repository.conference_pff_players(name, 2025, limit=20),
+        "pff_players": repository.conference_pff_players(
+            name, 2025, roster_season=season, limit=20),
         "stories": _story_repository().list_stories(conference=name, limit=24),
     })
 
@@ -744,6 +813,8 @@ def game_preview_api(game_id: int):
         "pff_matchups": repository.pff_matchups(
             game["home_team_id"], game["away_team_id"], 2025
         ),
+        "player_unit_watches": player_matchups(
+            repository, game["home_team_id"], game["away_team_id"]),
         "home_pff": repository.pff_team_context(game["home_team_id"], 2025, 8),
         "away_pff": repository.pff_team_context(game["away_team_id"], 2025, 8),
         "home_leaders": repository.team_player_leaders(game["home_team"], game["season"], 5),

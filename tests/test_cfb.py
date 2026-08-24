@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import os
+import sqlite3
 import tempfile
 import unittest
 
@@ -9,8 +10,18 @@ from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError
 from sports_aggregator.cfb.models import Player
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.sync import CFBDataSync
+from sports_aggregator.cfb.web import _nearest_week_games
 from sports_aggregator.models import Article
 from sports_aggregator.service import AggregationResult
+
+
+class WeekSelectionTests(unittest.TestCase):
+    def test_week_zero_is_the_first_upcoming_week(self):
+        week, games = _nearest_week_games([
+            {"game_id": 2, "week": 1}, {"game_id": 1, "week": 0},
+        ])
+        self.assertEqual(week, 0)
+        self.assertEqual([game["game_id"] for game in games], [1])
 
 
 TEAM_PAYLOAD = [
@@ -66,6 +77,7 @@ class FakeCFBDClient:
     def teams(self, _year, _force=False): return TEAM_PAYLOAD
     def roster(self, _year, _force=False): return PLAYER_PAYLOAD
     def games(self, _year, _force=False): return GAME_PAYLOAD
+    def betting_lines(self, _year, _force=False): return []
     def game_media(self, _year, _force=False): return [{"id": 100, "outlet": "ABC"}]
     def records(self, _year, _force=False):
         return [
@@ -217,6 +229,24 @@ class CFBRepositoryTests(unittest.TestCase):
         self.assertEqual(by_name["Gary Graduate"]["movement_type"], "ELIGIBILITY_DEPARTURE")
         depth = self.repository.team_depth_chart(1, 2026)
         self.assertEqual(depth["summary"]["returners"], 1)
+
+        connection = sqlite3.connect(self.repository.path)
+        connection.executemany(
+            """INSERT INTO pff_players(season,pff_player_id,player_name,normalized_name,
+               position,pff_team_name,cfbd_team_id,cfbd_team,cfbd_player_id,
+               match_status,match_confidence,interest_score,updated_at)
+               VALUES(2025,?,?,?,?,?,?,?,?,'CONFIRMED',1.0,?,'now')""", (
+                ("pff-returner", "Alex Example", "alex example", "QB", "MICH",
+                 1, "Michigan", "p1", 90.0),
+                ("pff-drafted", "Dan Drafted", "dan drafted", "DE", "MICH",
+                 1, "Michigan", "draft1", 95.0),
+            ))
+        connection.commit()
+        connection.close()
+        conference_players = self.repository.conference_pff_players(
+            "Big Ten", 2025, roster_season=2026)
+        self.assertEqual([row["player_name"] for row in conference_players], ["Alex Example"])
+        self.assertEqual(conference_players[0]["roster_status"], "RETURNING")
 
         app = create_app({
             "TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False,

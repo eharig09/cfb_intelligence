@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+import json
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -22,9 +24,29 @@ def main(argv=None) -> int:
     load_dotenv(); parser=argparse.ArgumentParser()
     parser.add_argument("command",choices=("ingest","ingest-reddit","ingest-youtube",
                                           "ingest-podcasts","ingest-reporting",
-                                          "retag","score","status","cluster")); parser.add_argument("--season",type=int,default=datetime.now().year)
-    parser.add_argument("--limit",type=int,default=15); args=parser.parse_args(argv)
+                                          "retag","score","status","cluster",
+                                          "review-export","review-import","review-report")); parser.add_argument("--season",type=int,default=datetime.now().year)
+    parser.add_argument("--limit",type=int,default=15)
+    parser.add_argument("--input")
+    parser.add_argument("--output",default="instance/cfb_content_review.csv")
+    parser.add_argument("--reviewer",default="local")
+    parser.add_argument("--review-mode",choices=("triage","stratified"),default="triage")
+    args=parser.parse_args(argv)
     repository=ContentRepository(os.getenv("CFB_DATABASE_PATH","instance/cfb.sqlite3"))
+    if args.command.startswith("review-"):
+        from sports_aggregator.social.review import ContentReviewRepository
+        reviews = ContentReviewRepository(repository.path)
+        if args.command == "review-export":
+            report = reviews.export_csv(Path(args.output), limit=args.limit,
+                                        reviewer=args.reviewer, mode=args.review_mode)
+        elif args.command == "review-import":
+            if not args.input:
+                parser.error("review-import requires --input")
+            report = reviews.import_csv(Path(args.input), reviewer=args.reviewer)
+        else:
+            report = reviews.report(reviewer=args.reviewer)
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
     if args.command=="retag":
         report=repository.retag(args.season)
         print(" ".join(f"{key}={value}" for key,value in report.items()))

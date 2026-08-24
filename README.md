@@ -25,6 +25,8 @@ The active application factory is `app.create_app`. It exposes:
 - `/api/v1/cfb/status` — structured-data freshness and row counts
 - `/api/v1/cfb/games` — upcoming canonical CFBD games
 - `/api/v1/cfb/games-to-watch` — scored upcoming games with explanation factors
+- `/api/v1/cfb/matchups-to-watch` — the nearest week's top player/unit and
+  unit/unit watches across games
 - `/api/v1/cfb/teams` and `/api/v1/cfb/rankings` — canonical discovery data
 - `/api/v1/cfb/conferences` and `/api/v1/cfb/conferences/<slug>` — conference discovery and view packets
 - `/api/v1/cfb/teams/<team_id>` — team preview packet
@@ -104,9 +106,11 @@ Presentation is its own boundary rather than template logic:
   reported as unproven, which is not the same as low impact.
 - `sports_aggregator/social/team_reddit.py` keeps team subreddits in a registry
   and activates them by the week's schedule rather than sweeping all 138.
-- `sports_aggregator/cfb/player_matchups.py` pairs graded individuals across the
-  line of scrimmage and ranks the pairings. Both sides must grade well; a place
-  on the consensus board raises a pairing but cannot create one.
+- `sports_aggregator/cfb/player_matchups.py` combines direct line assignments with
+  player-versus-unit watches. WR/CB is one-on-one only for a substantial heavy-man
+  sample; otherwise receivers face the secondary, receiving backs face linebackers,
+  and tight ends face linebackers and safeties. Draft standing can raise a credible
+  watch but cannot create one.
 - `sports_aggregator/social/context.py` gates the widest resolution rule. An
   unscoped player match is blocked by professional-football vocabulary and by a
   coaching title beside the name, because shared names across levels were the
@@ -148,7 +152,8 @@ The `sports_aggregator/cfb/` package adds the structured college-football path:
 - `insights.py` contains an intentionally provisional, explainable game-attention
   score. It is not presented as the final importance model.
 - `pff.py` imports the user-provided 2025 PFF snapshots with source-file provenance,
-  conservative player matching, and usage-weighted position-group summaries.
+  conservative player matching, usage-weighted position-group summaries, and
+  regular-season scheme/depth/run-defense detail for player cards and matchups.
 
 The parallel `sports_aggregator/social/` package is the curated reporting boundary.
 It models people, publications, shows, organizations, and communities once, then
@@ -170,14 +175,28 @@ python -m pip install -r requirements.txt
 python run.py
 ```
 
-Add `CFBD_API_KEY` to `.env`, then build or refresh the 2026 structured store:
+Add `CFBD_API_KEY` to `.env`, then use the orchestrator for a complete build or
+routine refresh:
 
 ```powershell
-python -m sports_aggregator.cfb.cli sync --year 2026
-python -m sports_aggregator.cfb.cli sync-player-stats --year 2025
-python -m sports_aggregator.cfb.cli sync-roster-context --year 2026
-python -m sports_aggregator.cfb.cli status --year 2026
+python -m sports_aggregator.bootstrap plan --season 2026
+python -m sports_aggregator.bootstrap initial --season 2026
+python -m sports_aggregator.bootstrap refresh --season 2026
+python -m sports_aggregator.bootstrap status --season 2026
 ```
+
+`initial` builds canonical teams/games/current rosters first, then current and
+prior-season player production, models, roster lifecycle, PFF, transfer identity
+links, draft data, weather, source registries, ingestion, retagging, clustering,
+and relevance scores. `refresh` updates every moving current-season source in the
+same dependency order. Week 0 is retained as a real scheduled week. Optional
+sources are visibly skipped when their credentials are unavailable; Reddit
+requires both its client ID and client secret.
+
+The current-season player-stat step is season-dependent and non-blocking: CFBD can
+legitimately publish zero rows before games are played. The prior-season baseline
+remains available until current production appears, and a failed/empty refresh does
+not erase the last successful snapshot.
 
 Backfill prior seasons so a player page shows a full career rather than one year.
 Careers span roughly five seasons, so a current senior was a freshman well outside
@@ -245,6 +264,9 @@ python -m sports_aggregator.social.content_cli ingest-podcasts --season 2026 --l
 python -m sports_aggregator.social.content_cli ingest-reporting --season 2026
 python -m sports_aggregator.social.content_cli cluster
 python -m sports_aggregator.social.content_cli score
+python -m sports_aggregator.social.content_cli review-export --limit 50 --review-mode triage --reviewer editorial
+python -m sports_aggregator.social.content_cli review-import --input instance/cfb_content_review.csv --reviewer editorial
+python -m sports_aggregator.social.content_cli review-report --reviewer editorial
 python -m sports_aggregator.cfb.prospects_cli 2027_nfl_mock_draft_database_top_100.csv     --draft-year 2027 --roster-season 2026 --source mock_draft_database_consensus
 python -m sports_aggregator.social.content_cli status --limit 50
 ```
@@ -261,6 +283,17 @@ re-fetching any source, so a tagging-rule change reaches the whole archive:
 ```powershell
 python -m sports_aggregator.social.content_cli retag --season 2026
 ```
+
+The default review export is exception-focused: it selects uncertain roles,
+ranking-boundary items, missing scope, borderline entity links, and classifier
+disagreements. This makes a 25–50 row triage pass more useful than reviewing every
+ordinary item. Periodically use `--review-mode stratified --limit 25` as a blind
+quality audit. The three `review-*` commands persist completed labels and report
+relevance precision/recall, topic and entity
+multilabel precision/recall, role accuracy, and the rank correlation between the
+feed score and a human 1–5 priority. Blank label cells are ignored; enter `NONE`
+to review a topic/team/player field as explicitly empty. See
+[docs/CLASSIFIER_REVIEW.md](docs/CLASSIFIER_REVIEW.md).
 
 Set `YOUTUBE_API_KEY` (or `YOUTUBE_API`, which is also accepted) before validating
 or polling any YouTube candidate. Candidate names are not production endpoints:
@@ -332,22 +365,27 @@ as CFBD publishes in-season data.
 
 The unified source graph, Reddit discovery normalization, durable Bluesky ingestion,
 multilabel topic rules, conservative team/player/game candidates, and game-page
-reporting layers are implemented. Cross-source story clustering now preserves
-source roles and treats earliest-report attribution as a confidence-scored candidate,
-not a fact. Conference hubs plus full team and game preview shells consume the same
-repository packets in HTML and JSON. The next sequence is:
+reporting layers are implemented. Cross-source story clustering preserves URL
+identity, rejects platform permalinks and repeated source homepages as story keys,
+and requires independent-source evidence for similarity merges. Earliest-report
+attribution remains a confidence-scored candidate, not a fact. Conference hubs plus
+full team and game preview shells consume the same repository packets in HTML and
+JSON. The next sequence is:
 
-1. **Candidate validation:** resolve exact YouTube channel IDs and podcast feeds,
-   then promote only identities that pass live and editorial checks.
-2. **Official-source expansion:** validate athletics/conference endpoints and add
+1. **Classifier measurement:** label exception-focused 25–50 item triage packets,
+   retain small stratified audits, and use their precision/recall reports to tune
+   topics, roles, entity thresholds, and ranking.
+2. **In-season exercise:** replay completed prior-season weeks through advanced
+   stats, CORE ratings, recaps, situation flags, and result-driven Elo before Week 1.
+3. **Scheduling:** run the refresh outside web requests so weather, odds, injuries,
+   and reporting do not decay between manual runs.
+4. **Official-source expansion:** validate athletics/conference endpoints and add
    game notes, releases, press conferences, and official video.
-3. **Scoring:** apply topic expertise, team access, originality, recency, and game
-   relevance after classification precision has been measured.
-4. **Scheduling:** run source polling outside web requests, dynamically increasing
-   frequency for teams and games that matter that week.
-5. **Migrate legacy pages:** adapt Reds and Bengals sources one at a time, then
+5. **Coverage expansion:** add verified beat sources outside the power four after
+   clustering and classifier thresholds are measured.
+6. **Migrate legacy pages:** adapt Reds and Bengals sources one at a time, then
    remove the duplicate modules after parity tests pass.
-6. **Production hardening:** add database migrations, structured logging, request
+7. **Production hardening:** add database migrations, structured logging, request
    timeouts/retries, source rate limits, health checks, and CI.
 
 ## Tests
@@ -356,7 +394,7 @@ repository packets in HTML and JSON. The next sequence is:
 python -m unittest discover -s tests -v
 ```
 
-The 217 tests cover normalization, RSS/Reddit/YouTube/podcast adapters, external
+The test suite covers normalization, RSS/Reddit/YouTube/podcast adapters, external
 publisher credit, provider failure isolation, source-graph identity, content topics,
 team/player matching, story clusters and source roles, CFBD authentication and caching,
 conference standings/player leaders, roster lifecycle classification, PFF import,
@@ -383,6 +421,9 @@ normalization, and statistical coverage-gap reporting. `tests/test_features.py` 
 scoring and abbreviated school names, per-provider line storage and movement,
 travel and time-zone derivation, transfer impact evidence, and team-subreddit
 activation.
+`tests/test_review.py` covers classifier metric math and the export/import/report
+round trip; `tests/test_stories.py` protects URL identity, platform-link rejection,
+boilerplate-link handling, cross-source merging, and same-source separation.
 
 See [docs/CFB_ARCHITECTURE.md](docs/CFB_ARCHITECTURE.md) for schema ownership,
 cache policy, verified CFBD endpoints, and the next entity-linking boundary.

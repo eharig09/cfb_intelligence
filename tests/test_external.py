@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from sports_aggregator.bootstrap import Step, _env_satisfied, run_step, steps
+from sports_aggregator.bootstrap import Step, _env_satisfied, run_phase, run_step, steps
 from sports_aggregator.cfb.external import (
     fpi_for_game, fpi_team_season, import_status, record_run, store_fpi,
     store_weather, weather_flags_by_game, weather_for_game,
@@ -383,7 +383,7 @@ class ProvenanceTests(unittest.TestCase):
 class BootstrapTests(unittest.TestCase):
     def test_every_step_belongs_to_a_known_phase(self):
         for step in steps(2026):
-            self.assertTrue(set(step.phases) <= {"initial", "refresh"}, step.name)
+            self.assertTrue(set(step.phases) <= {"initial", "refresh", "history"}, step.name)
 
     def test_static_sources_are_excluded_from_routine_refresh(self):
         refresh = {step.name for step in steps(2026) if "refresh" in step.phases}
@@ -396,6 +396,28 @@ class BootstrapTests(unittest.TestCase):
         order = [step.name for step in steps(2026) if "refresh" in step.phases]
         self.assertLess(order.index("bluesky"), order.index("cluster"))
         self.assertLess(order.index("cluster"), order.index("score"))
+
+    def test_identity_derivations_follow_their_inputs(self):
+        initial = [step.name for step in steps(2026) if "initial" in step.phases]
+        self.assertLess(initial.index("cfbd-sync"), initial.index("cfbd-current-player-stats"))
+        self.assertLess(initial.index("cfbd-roster-context"), initial.index("pff"))
+        self.assertLess(initial.index("pff"), initial.index("transfer-grades"))
+        self.assertLess(initial.index("social-prepare"), initial.index("bluesky"))
+        current_stats = next(step for step in steps(2026)
+                             if step.name == "cfbd-current-player-stats")
+        self.assertTrue(current_stats.optional)
+
+    def test_reddit_requires_both_credentials(self):
+        step = Step("reddit", "", [], ("refresh",),
+                    requires_all_env=("REDDIT_TEST_ID", "REDDIT_TEST_SECRET"))
+        os.environ["REDDIT_TEST_ID"] = "value"
+        try:
+            self.assertFalse(_env_satisfied(step))
+            os.environ["REDDIT_TEST_SECRET"] = "value"
+            self.assertTrue(_env_satisfied(step))
+        finally:
+            os.environ.pop("REDDIT_TEST_ID", None)
+            os.environ.pop("REDDIT_TEST_SECRET", None)
 
     def test_a_step_without_its_credentials_is_skipped(self):
         step = Step("x", "needs a key", ["nonexistent_module"], ("refresh",),
@@ -417,3 +439,11 @@ class BootstrapTests(unittest.TestCase):
         result = run_step(step, timeout=60)
         self.assertEqual(result["status"], "failed")
         self.assertIn("step", result)
+
+    def test_phase_marks_optional_failures_for_non_blocking_reporting(self):
+        from unittest.mock import patch
+        optional = Step("optional", "", ["missing"], ("refresh",), optional=True)
+        with patch("sports_aggregator.bootstrap.steps", return_value=[optional]):
+            result = run_phase("refresh", 2026, timeout=10)[0]
+        self.assertTrue(result["optional"])
+        self.assertEqual(result["status"], "failed")

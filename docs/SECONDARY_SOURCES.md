@@ -157,9 +157,17 @@ python -m sports_aggregator.bootstrap refresh  --season 2026
 python -m sports_aggregator.bootstrap status   --season 2026
 ```
 
-`initial` includes the static datasets that only need fetching once (venues,
-historical backfill, promoted-team history). `refresh` runs only what moves and
-is safe to schedule. Every step runs in its own process, so one unavailable
-source cannot stop the rest; the exit code still reflects failures.
+`initial` builds current canonical data first, adds the immediately prior-season
+player baseline, then runs static sources (venues, promoted-team history, PFF and
+draft board) before identity derivation and content ingestion. Full multi-season
+career history remains the separate `history` phase. `refresh` updates current
+player production, models, markets, roster context, weather, verified reporting
+sources, entity tags, story clusters, and relevance scores. Every step runs in its
+own process, so one unavailable source cannot stop the rest; the exit code still
+reflects non-optional failures.
+
+Current-season player statistics are allowed to be empty before CFBD publishes
+in-season production. That step remains visible as an optional failure while the UI
+uses the prior-season baseline; it becomes current automatically once rows exist.
 
 `/api/v1/cfb/sources/status` exposes the same counts and freshness over HTTP.

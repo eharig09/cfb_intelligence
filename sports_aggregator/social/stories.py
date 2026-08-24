@@ -92,8 +92,6 @@ def _is_cfb_relevant(item: dict) -> bool:
 #: Query parameters that identify *which* resource a URL points at. Stripping the
 #: whole query string collapsed every YouTube video onto "youtube.com/watch",
 #: which then clustered 87 unrelated videos into a single story.
-IDENTIFYING_PARAMS = ("v", "id", "story", "article", "p", "video_id", "watch")
-
 #: Tracking parameters that never identify a resource and should not split one.
 TRACKING_PREFIXES = ("utm_", "fb", "gcl", "ig_", "mc_")
 TRACKING_PARAMS = {"s", "t", "ref", "source", "cmp", "campaign", "sh", "si",
@@ -127,14 +125,18 @@ def _canonical_url(url: str) -> str:
         lowered = key.casefold()
         if lowered in TRACKING_PARAMS or lowered.startswith(TRACKING_PREFIXES):
             continue
-        if lowered in IDENTIFYING_PARAMS or host.endswith("youtube.com"):
-            kept.append((lowered, value))
+        # Identity-bearing query names are publisher-specific, so retain every
+        # parameter that is not known tracking noise. This is essential for
+        # YouTube's ``v`` value, but also prevents the same collision on less
+        # common CMS query schemes.
+        kept.append((lowered, value))
     query = urlencode(sorted(kept))
-    return urlunsplit((parsed.scheme.casefold() or "https", host, path, query, ""))
+    scheme = "https" if parsed.scheme.casefold() in {"http", "https", ""} else parsed.scheme.casefold()
+    return urlunsplit((scheme, host, path, query, ""))
 
 
 def _external_article_url(item: dict) -> str:
-    """The outside article a item points at, if it points at one at all.
+    """The outside article an item points at, if it points at one at all.
 
     A platform permalink is not a story key. Two Bluesky posts both linking to
     their own bsky.app URLs are not the same story, and clustering on that put
@@ -169,7 +171,13 @@ def _story_type(topics: set[str]) -> str:
 
 
 #: Roles that represent journalism, for primary-source selection.
-REPORTING_ROLES = {"ORIGINAL_REPORT", "REPORTING", "CORROBORATION"}
+REPORTING_ROLES = {
+    "ORIGINAL_REPORT",
+    "REPORTING",
+    "CORROBORATION",
+    # Kept for content ingested before and during the role-classifier migration.
+    "REPORTING_UNDETERMINED",
+}
 
 #: How similar two items' words must be to be treated as the same story.
 #: Applied together with a shared entity and a shared topic, never alone.
@@ -227,23 +235,43 @@ def _boilerplate_urls(items: list[dict]) -> set[str]:
         url = _external_article_url(item)
         if not url:
             continue
-        by_url[url].add(item.get("source_entity_id"))
+        by_url[url].add((item.get("platform"), item.get("source_entity_id")))
         counts[url] += 1
     return {url for url, count in counts.items()
             if count > BOILERPLATE_URL_LIMIT and len(by_url[url]) <= 1}
 
 
+def _source_identity(item: dict) -> tuple[str | None, int | None]:
+    """Stable-enough identity used to prevent a source clustering with itself."""
+    return item.get("platform"), item.get("source_entity_id")
+
+
+def _best_cross_source_match(
+    left: list[dict], right: list[dict]
+) -> tuple[float, str | None]:
+    """Return the strongest supported match between two independent sources."""
+    best_score = 0.0
+    best_method = None
+    for left_item in left:
+        for right_item in right:
+            if _source_identity(left_item) == _source_identity(right_item):
+                continue
+            matched, method = _similarity(left_item, right_item)
+            if not matched:
+                continue
+            score = _jaccard(left_item["tokens"], right_item["tokens"])
+            if score > best_score:
+                best_score, best_method = score, method
+    return best_score, best_method
+
+
 def _build_clusters(items: list[dict]) -> list[tuple[str, str, list[dict]]]:
     """Group content into stories.
 
-    Two passes. First, items pointing at the same outside article are the same
-    story by definition. Then every remaining item is compared against every
-    cluster -- including the article-seeded ones, which the previous version
-    never did, so a report and its pickup could not merge unless neither carried
-    a link.
-
-    Matching takes the *best* candidate rather than the first, because the first
-    acceptable anchor is an accident of ordering.
+    Exact shared-article groups are seeded first. All seeds are then considered
+    for similarity merges, including seeds with different article URLs. A merge
+    requires evidence from different sources, a shared confidently resolved
+    subject, a shared topic, and sufficient wording overlap.
     """
     clusters: list[tuple[str, str, list[dict]]] = []
     by_article: dict[str, list[dict]] = defaultdict(list)
@@ -255,30 +283,35 @@ def _build_clusters(items: list[dict]) -> list[tuple[str, str, list[dict]]]:
             url = ""
         (by_article[url] if url else loose).append(item)
     for url, group in by_article.items():
-        clusters.append((f"url:{url}", "SHARED_ARTICLE", group))
-
+        method = "SHARED_ARTICLE" if len(group) > 1 else "SINGLE_ITEM"
+        clusters.append((f"url:{url}", method, group))
     for item in loose:
-        best_index, best_score, best_method = None, 0.0, None
-        for index, (_, _, group) in enumerate(clusters):
-            if len(group) >= MAX_CLUSTER_SIZE:
-                continue
-            matched, method = _similarity(item, group[0])
-            if not matched:
-                continue
-            score = _jaccard(item["tokens"], group[0]["tokens"])
-            if score > best_score:
-                best_index, best_score, best_method = index, score, method
-        if best_index is None:
-            digest = hashlib.sha256(
-                f"{item['platform']}:{item['platform_content_id']}".encode()).hexdigest()[:24]
-            clusters.append((f"item:{digest}", "SINGLE_ITEM", [item]))
-        else:
-            key, method, group = clusters[best_index]
-            group.append(item)
-            # A cluster seeded by an article keeps that provenance; one grown
-            # from similarity records how it actually formed.
-            clusters[best_index] = (key, method if method == "SHARED_ARTICLE"
-                                    else best_method or method, group)
+        digest = hashlib.sha256(
+            f"{item['platform']}:{item['platform_content_id']}".encode()).hexdigest()[:24]
+        clusters.append((f"item:{digest}", "SINGLE_ITEM", [item]))
+
+    # Agglomerate the strongest pair first. Requiring cross-source evidence
+    # prevents a run of similar videos from one channel becoming a false story.
+    while True:
+        best_pair = None
+        best_score = 0.0
+        best_method = None
+        for left_index, (_, _, left_group) in enumerate(clusters):
+            for right_index in range(left_index + 1, len(clusters)):
+                right_group = clusters[right_index][2]
+                if len(left_group) + len(right_group) > MAX_CLUSTER_SIZE:
+                    continue
+                score, method = _best_cross_source_match(left_group, right_group)
+                if method and score > best_score:
+                    best_pair = left_index, right_index
+                    best_score, best_method = score, method
+        if best_pair is None:
+            break
+        left_index, right_index = best_pair
+        key, _, group = clusters[left_index]
+        group.extend(clusters[right_index][2])
+        clusters[left_index] = (key, best_method or "SHARED_TEAM_TOPIC", group)
+        clusters.pop(right_index)
     return clusters
 
 

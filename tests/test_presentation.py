@@ -178,6 +178,11 @@ class ResponsiveTests(unittest.TestCase):
     def test_touch_targets_have_a_minimum_height(self):
         self.assertIn("min-height: 34px", self.css)
 
+    def test_phone_navigation_and_tabs_do_not_squeeze_content(self):
+        self.assertIn(".site-header .nav { flex-wrap: wrap", self.css)
+        self.assertIn(".tabs { flex-wrap: nowrap; overflow-x: auto", self.css)
+        self.assertIn("width: max-content", self.css)
+
 
 class PlayerMatchupTests(unittest.TestCase):
     """Individual matchups pair opposing positions and weight draft standing."""
@@ -197,6 +202,7 @@ class PlayerMatchupTests(unittest.TestCase):
         self.repository.replace_players(2026, (
             Player("wr1", 2026, "Wide", "Out", "Alpha", "WR", 1, 73, 190, 3),
             Player("cb1", 2026, "Cover", "Man", "Beta", "CB", 2, 71, 185, 3),
+            Player("s1", 2026, "Safe", "Zone", "Beta", "S", 3, 72, 195, 3),
         ))
         # The real pff_players schema is created by the repository; insert by
         # name so this fixture does not depend on its column order.
@@ -208,6 +214,13 @@ class PlayerMatchupTests(unittest.TestCase):
                VALUES(?,?,?,?,?,?,?,?,?,'CONFIRMED',1.0,?,'now')""", [
                 (2025, "p1", "Wide Out", "wide out", "WR", "Alpha", 1, "Alpha", "wr1", 88.0),
                 (2025, "p2", "Cover Man", "cover man", "CB", "Beta", 2, "Beta", "cb1", 86.0),
+                (2025, "p3", "Safe Zone", "safe zone", "S", "Beta", 2, "Beta", "s1", 78.0),
+            ])
+        connection.executemany(
+            """INSERT INTO pff_player_metrics VALUES(2025,?,?,'fixture',12,?,?,?,'now')""", [
+                ("p1", "receiving", 88.0, 220, '{"targets":"80","yards":"1100"}'),
+                ("p2", "coverage", 86.0, 240, '{"targets":"45","yards":"400"}'),
+                ("p3", "coverage", 78.0, 220, '{"targets":"35","yards":"350"}'),
             ])
         connection.commit()
         connection.close()
@@ -222,13 +235,38 @@ class PlayerMatchupTests(unittest.TestCase):
     def test_opposing_positions_are_paired(self):
         matchups = self._matchups()
         self.assertEqual(len(matchups), 1)
-        self.assertEqual(matchups[0]["label"], "Receiver vs corner")
+        self.assertEqual(matchups[0]["label"], "Receiver vs coverage unit")
         self.assertEqual(matchups[0]["attacker"]["player_name"], "Wide Out")
-        self.assertEqual(matchups[0]["defender"]["player_name"], "Cover Man")
+        self.assertTrue(matchups[0]["defender"]["is_unit"])
+        self.assertEqual(len(matchups[0]["defender"]["members"]), 2)
+
+    def test_receiver_pairs_with_corner_only_for_heavy_man_sample(self):
+        connection = sqlite3.connect(self.path)
+        connection.execute(
+            """INSERT INTO pff_supplemental_metrics VALUES(
+               2025,'p2','Cover Man','CB','Beta','coverage_scheme',
+               'REGULAR_SEASON_DETAIL','fixture',12,86,200,?,'now')""",
+            ('{"base_snap_counts_coverage":"200","man_snap_counts_coverage":"130",'
+             '"man_snap_counts_coverage_percent":"65"}',))
+        connection.execute(
+            """INSERT INTO pff_supplemental_metrics VALUES(
+               2025,'p1','Wide Out','WR','Alpha','receiving_scheme',
+               'REGULAR_SEASON_DETAIL','fixture',12,90,210,?,'now')""",
+            ('{"man_grades_pass_route":"92","man_routes":"140",'
+             '"zone_grades_pass_route":"81","zone_routes":"70"}',))
+        connection.commit()
+        connection.close()
+        matchup = self._matchups()[0]
+        self.assertEqual(matchup["label"], "Receiver vs heavy-man corner")
+        self.assertEqual(matchup["defender"]["player_name"], "Cover Man")
+        self.assertFalse(matchup["defender"].get("is_unit", False))
+        self.assertEqual(matchup["attacker"]["interest_score"], 92.0)
+        self.assertNotIn("matchup_metric", matchup["attacker"])
 
     def test_a_weakly_graded_side_removes_the_pairing(self):
         connection = sqlite3.connect(self.path)
-        connection.execute("UPDATE pff_players SET interest_score=50 WHERE cfbd_player_id='cb1'")
+        connection.execute(
+            "UPDATE pff_player_metrics SET primary_grade=50 WHERE pff_player_id='p1' AND dataset='receiving'")
         connection.commit()
         connection.close()
         self.assertEqual(self._matchups(), [])
@@ -249,13 +287,13 @@ class PlayerMatchupTests(unittest.TestCase):
             """INSERT INTO draft_prospect_rankings(draft_year,source,rank,player_name,
                normalized_name,school,position,cfbd_player_id,cfbd_team_id,
                link_status,link_evidence,source_file,imported_at)
-               VALUES(2027,'t',4,'Cover Man','cover man','Beta','CB','cb1',2,
+               VALUES(2027,'t',4,'Wide Out','wide out','Alpha','WR','wr1',1,
                'CONFIRMED','','f','now')""")
         connection.commit()
         connection.close()
         raised = self._matchups()[0]
         self.assertGreater(raised["interest"], baseline)
-        self.assertEqual(raised["defender"]["board_rank"], 4)
+        self.assertEqual(raised["attacker"]["board_rank"], 4)
         self.assertTrue(any("2027 board" in reason for reason in raised["reasons"]))
 
 

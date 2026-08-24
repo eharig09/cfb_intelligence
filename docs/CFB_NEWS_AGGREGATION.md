@@ -42,9 +42,9 @@ HTTP 400 from the public handle resolver and remains visible as
 
 ## PFF snapshot policy
 
-The seven CSVs under `PFF/` are treated as a licensed historical 2025 snapshot,
-not as current 2026 production and not as a replacement for CFBD identity. The
-importer stores:
+The seven summary CSVs plus corrected regular-season detail exports under `PFF/`
+are treated as a licensed historical 2025 snapshot, not as current 2026 production
+and not as a replacement for CFBD identity. The importer stores:
 
 - PFF player ID, exported name/team/position, season, and source filename;
 - the complete original metric row as JSON;
@@ -53,6 +53,12 @@ importer stores:
 - CFBD team IDs and conservative player-link evidence;
 - an explainable interest score that discounts samples below eight games and below
   100 dataset-relevant snaps/attempts/routes;
+- man/zone coverage and receiving splits, passing depth, return work, and detailed
+  run-defense evidence in a separate supplemental table;
+
+Historical `oline_data/ol_*.csv` rows add player-career context. The NFL team-grade
+exports are deliberately excluded from the college store to prevent cross-league
+contamination.
 
 Linking 2025 PFF players to the 2026 CFBD roster follows three rules:
 
@@ -61,9 +67,10 @@ Linking 2025 PFF players to the 2026 CFBD roster follows three rules:
    `possible_transfer` candidate; it does not populate the canonical player link.
 3. Duplicate or absent names remain ambiguous/unresolved.
 
-The current import contains 24,363 metric rows and 10,812 unique 2025 players:
-5,289 exact same-team links, 1,933 transfer candidates, and 3,590 unresolved or
-ambiguous players. All 136 PFF team labels resolve to current CFBD teams through
+The current import contains 24,459 core metric rows, 69,742 supplemental rows,
+and 10,872 unique 2025 players: 5,324 exact same-team links, 1,937 transfer
+candidates, and 3,611 unresolved or ambiguous players. All 136 PFF team labels
+resolve to current CFBD teams through
 exact aliases or reviewed deterministic overrides.
 
 ## Entity-matching path for posts
@@ -276,20 +283,29 @@ before they are obvious, without polling all 138.
 
 ## Next implementation sequence
 
+Completed in this pass:
+
+1. Story URLs retain identity-bearing query parameters while dropping tracking
+   parameters. Platform permalinks and one-source boilerplate homepages do not
+   become shared-story keys.
+2. Similarity merging now compares items with different article URLs, requires
+   independent sources plus confident shared entities/topics, and prevents a run
+   of similar videos from one channel from swallowing the feed.
+3. `content_review_labels` plus the `review-export`, `review-import`, and
+   `review-report` commands provide the review queue and measured precision/recall
+   loop described in [CLASSIFIER_REVIEW.md](CLASSIFIER_REVIEW.md).
+
 The next increments should be:
 
-1. Cluster exact links and strongly similar entity/topic/time records into stories;
-   prioritize earliest credible reporting while retaining corroboration and
-   analysis as separate roles.
-2. Add a review queue and measure precision for topic and entity candidates before
-   using them in generated factual summaries.
-3. Validate media and official endpoints, then ingest videos, podcast episodes,
-   releases, game notes, and press conferences into the same content tables.
-4. Add source health/latency tracking and a real scheduler with weekly game-driven
-   activation.
-5. Only after measured precision is acceptable, generate source candidates from
-   trusted-network interactions. Every candidate must pass live identity and
-   editorial validation before promotion.
+1. Label the first stratified packet and establish held-out baselines before
+   tuning topic, role, relevance, or entity rules.
+2. Exercise the untested in-season advanced-statistics, CORE rating, recap,
+   situation, and Elo update paths against replayed completed games.
+3. Add a scheduler for routine data and source refreshes.
+4. Validate official endpoints, then ingest videos, releases, game notes, and
+   press conferences into the same content tables.
+5. Expand verified beat coverage outside the power four only after classifier and
+   clustering quality are measured.
 
 This order keeps the feed useful and auditable while avoiding premature automated
 trust, false player transfers, and a rewrite of working legacy functionality.

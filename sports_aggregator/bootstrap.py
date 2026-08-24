@@ -4,7 +4,7 @@ from __future__ import annotations
 Phases:
 * initial  -- complete normal app update: structured data, live ingestion and
               downstream processing; never historical player-stat backfills.
-* refresh  -- current-season/live update; never historical stats.
+* refresh  -- current-season/live update; never prior-season history.
 * history  -- historical player-stat backfill, isolated one season per process
               and one conference per child process.
 * status   -- compact freshness/coverage report.
@@ -35,6 +35,7 @@ class Step:
     phases: tuple[str, ...]
     optional: bool = False
     requires_env: tuple[str, ...] = field(default_factory=tuple)
+    requires_all_env: tuple[str, ...] = field(default_factory=tuple)
 
 
 def steps(season: int) -> list[Step]:
@@ -43,6 +44,9 @@ def steps(season: int) -> list[Step]:
         Step("cfbd-sync", "Current teams, roster, games, lines, records, rankings and stats",
              ["sports_aggregator.cfb.cli", "sync", "--year", year],
              ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
+        Step("cfbd-current-player-stats", "Current-season player production by conference",
+             ["sports_aggregator.cfb.cli", "sync-player-stats", "--year", year],
+             ("initial", "refresh"), optional=True, requires_env=("CFBD_API_KEY",)),
         Step("cfbd-models", "CFBD CORE ratings and ESPN FPI model data",
              ["sports_aggregator.cfb.models_cli", "sync", "--year", year],
              ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
@@ -55,6 +59,9 @@ def steps(season: int) -> list[Step]:
         Step("cfbd-roster-context", "Prior roster, portal, draft and returning production",
              ["sports_aggregator.cfb.cli", "sync-roster-context", "--year", year],
              ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
+        Step("cfbd-prior-player-stats", "Prior-season roster and production baseline",
+             ["sports_aggregator.cfb.history_cli", "--year", str(season - 1)],
+             ("initial",), requires_env=("CFBD_API_KEY",)),
         Step("cfbd-player-stats", "Most recent completed-season player statistics",
              ["sports_aggregator.cfb.history_cli", "--year", str(season - 1)],
              ("history",), requires_env=("CFBD_API_KEY",)),
@@ -64,13 +71,13 @@ def steps(season: int) -> list[Step]:
         Step("cfbd-recruits", "Signing class ratings",
              ["sports_aggregator.cfb.cli", "sync-recruits", "--year", year],
              ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
-        Step("transfer-grades", "Confirm PFF identities using portal evidence",
-             ["sports_aggregator.cfb.cli", "link-transfer-grades", "--year", year],
-             ("initial", "refresh")),
         Step("pff", "Import local PFF snapshot",
              ["sports_aggregator.cfb.pff_cli", "import", "--season", str(season - 1),
               "--roster-season", year, "--directory", "PFF"],
              ("initial",), optional=True),
+        Step("transfer-grades", "Confirm PFF identities using portal evidence",
+             ["sports_aggregator.cfb.cli", "link-transfer-grades", "--year", year],
+             ("initial", "refresh")),
         Step("prospects", "Import consensus NFL draft board",
              ["sports_aggregator.cfb.prospects_cli", "2027_nfl_mock_draft_database_top_100.csv",
               "--draft-year", str(season + 1), "--roster-season", year,
@@ -89,7 +96,7 @@ def steps(season: int) -> list[Step]:
         Step("reddit-validate", "Validate configured subreddit endpoints",
              ["sports_aggregator.social.cli", "validate-reddit"],
              ("initial", "refresh"), optional=True,
-             requires_env=("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET")),
+             requires_all_env=("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET")),
         Step("media-validate", "Validate/promote YouTube and podcast endpoints",
              ["sports_aggregator.social.media_cli", "validate-all"],
              ("initial", "refresh"), optional=True),
@@ -99,7 +106,7 @@ def steps(season: int) -> list[Step]:
         Step("reddit", "Curated subreddit submissions",
              ["sports_aggregator.social.content_cli", "ingest-reddit", "--season", year],
              ("initial", "refresh"), optional=True,
-             requires_env=("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET")),
+             requires_all_env=("REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET")),
         Step("youtube", "Verified channel uploads",
              ["sports_aggregator.social.content_cli", "ingest-youtube", "--season", year],
              ("initial", "refresh"), optional=True,
@@ -132,16 +139,20 @@ def steps(season: int) -> list[Step]:
 
 
 def _env_satisfied(step: Step) -> bool:
-    if not step.requires_env:
-        return True
-    return any((os.getenv(name) or "").strip() for name in step.requires_env)
+    alternatives_ok = (not step.requires_env or
+                       any((os.getenv(name) or "").strip() for name in step.requires_env))
+    required_ok = all((os.getenv(name) or "").strip() for name in step.requires_all_env)
+    return alternatives_ok and required_ok
 
 
 def run_step(step: Step, *, timeout: int = 1800) -> dict[str, Any]:
     started = datetime.now(timezone.utc)
     if not _env_satisfied(step):
+        requirements = list(step.requires_all_env)
+        if step.requires_env:
+            requirements.append("one of " + ", ".join(step.requires_env))
         return {"step": step.name, "status": "skipped",
-                "message": f"needs one of {', '.join(step.requires_env)}", "seconds": 0.0}
+                "message": f"needs {', '.join(requirements)}", "seconds": 0.0}
     try:
         completed = subprocess.run([sys.executable, "-m", *step.command],
                                    capture_output=True, text=True, timeout=timeout)
@@ -168,6 +179,7 @@ def run_phase(phase: str, season: int, *, only: list[str] | None = None,
     for step in plan:
         print(f"[ ] {step.name}: {step.description}")
         result = run_step(step, timeout=timeout)
+        result["optional"] = step.optional
         marker = {"success": "[ok]", "skipped": "[--]"}.get(result["status"], "[!!]")
         print(f"{marker} {result['status']} ({result['seconds']}s) {result['message']}")
         results.append(result)
@@ -221,7 +233,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     results = run_phase(args.command, args.season, only=args.only, timeout=args.timeout)
-    failures = [row for row in results if row["status"] not in ("success", "skipped")]
+    failures = [row for row in results
+                if row["status"] not in ("success", "skipped") and not row["optional"]]
     print(f"\n{args.command}: {len(results)} steps, {len(failures)} failed")
     for row in failures:
         print(f"   FAILED {row['step']}: {row['message']}")
