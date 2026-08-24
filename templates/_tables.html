@@ -38,7 +38,9 @@
                     {%- for column in table.columns %}
                     <th scope="col"
                         class="col-{{ column.align }} col-key-{{ column.key | replace('_', '-') }}{{ ' col-rank' if column.format == 'rank' }}"
-                        {%- if column.title %} title="{{ column.title }}"{% endif %}>{{ column.label }}</th>
+                        data-sortable="true" data-sort-kind="{{ 'number' if column.numeric else 'text' }}"
+                        tabindex="0" aria-sort="none"
+                        {%- if column.title %} title="{{ column.title }}; activate to sort"{% else %} title="Activate to sort"{% endif %}>{{ column.label }}</th>
                     {%- endfor %}
                 </tr>
             </thead>
@@ -53,7 +55,8 @@
                         {{- ' num' if column.numeric }}
                         {{- ' emphasis' if column.emphasis }}
                         {{- ' is-empty' if text == '—' }}
-                        {{- ' ' ~ row.get(column.key ~ '_class') if row.get(column.key ~ '_class') }}">
+                        {{- ' ' ~ row.get(column.key ~ '_class') if row.get(column.key ~ '_class') }}"
+                        data-sort-value="{{ row.get(column.key ~ '_sort', row.get(column.key)) if row.get(column.key) is not none else '' }}">
                         {%- set logo = row.get(column.key ~ '_logo') %}
                         {%- set color = row.get(column.key ~ '_color') %}
                         {%- if logo or color %}<span class="team-cell"{% if color %} style="--row-team:{{ color }}"{% endif %}>

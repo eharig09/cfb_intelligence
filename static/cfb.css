@@ -311,6 +311,13 @@ table.data td.state-departed .sub { color: var(--red); }
 .tabs button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
 .tabpanel[hidden] { display: none; }
 
+/* Every shared data table is sortable without changing its server-side default. */
+table.data th[data-sortable="true"] { cursor: pointer; user-select: none; white-space: nowrap; }
+table.data th[data-sortable="true"]::after { content: " ↕"; color: var(--muted); font-size: .72em; }
+table.data th[aria-sort="ascending"]::after { content: " ↑"; color: currentColor; }
+table.data th[aria-sort="descending"]::after { content: " ↓"; color: currentColor; }
+table.data th[data-sortable="true"]:focus-visible { outline: 2px solid var(--rust); outline-offset: -2px; }
+
 /* ---------- breakpoints ---------- */
 
 @media (min-width: 560px) {

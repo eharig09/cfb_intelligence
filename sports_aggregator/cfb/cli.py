@@ -20,6 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("command", choices=("sync", "status", "sync-player-stats",
                                            "sync-roster-context", "backfill",
                                            "sync-history",
+                                           "sync-box-scores",
                                            "sync-promoted", "coverage", "sync-lines",
                                            "sync-venues", "sync-recruits",
                                            "link-transfer-grades"))
@@ -112,12 +113,58 @@ def main(argv: list[str] | None = None) -> int:
                     year, client.coaches(year, args.force))),
             )
             for name, operation in jobs:
+                if (year < datetime.now().year and not args.force
+                        and repository.history_dataset_cached(year, name)):
+                    print(f"{year} {name}: cached (SQLite)")
+                    continue
                 try:
-                    print(f"{year} {name}: success ({operation()})")
+                    count = operation()
+                    repository.mark_history_dataset(year, name, count)
+                    print(f"{year} {name}: success ({count})")
                 except Exception as exc:
                     failures.append(f"{year} {name}")
                     print(f"{year} {name}: failed ({exc})")
         print(f"sync-history {first}-{last} complete; {len(failures)} dataset failures")
+        return 1 if failures else 0
+    if args.command == "sync-box-scores":
+        first = args.from_year or args.year
+        last = args.to_year or args.year
+        if first > last:
+            parser.error("--from-year must not be after --to-year")
+        failures = []
+        for year in range(first, last + 1):
+            wanted = {
+                name for name in ("team_box_scores", "player_box_scores")
+                if args.force or year >= datetime.now().year
+                or not repository.history_dataset_cached(year, name)
+            }
+            if not wanted:
+                print(f"{year} box scores: cached (SQLite)")
+                continue
+            if args.force:
+                repository.clear_box_scores(year)
+            weeks = repository.completed_weeks(year)
+            dataset_failed = {name: False for name in wanted}
+            for week in weeks:
+                jobs = []
+                if "team_box_scores" in wanted:
+                    jobs.append(("team_box_scores", lambda week=week, year=year: repository.store_game_team_box_scores(
+                        client.game_team_box_scores(year, week, args.force))))
+                if "player_box_scores" in wanted:
+                    jobs.append(("player_box_scores", lambda week=week, year=year: repository.store_game_player_box_scores(
+                        client.game_player_box_scores(year, week, args.force))))
+                for name, operation in jobs:
+                    try:
+                        print(f"{year} week {week} {name}: success ({operation()})")
+                    except Exception as exc:
+                        dataset_failed[name] = True
+                        failures.append(f"{year} week {week} {name}")
+                        print(f"{year} week {week} {name}: failed ({exc})")
+            counts = repository.box_score_counts(year)
+            for name in wanted:
+                if not dataset_failed[name]:
+                    repository.mark_history_dataset(year, name, counts[name])
+        print(f"sync-box-scores {first}-{last} complete; {len(failures)} failures")
         return 1 if failures else 0
     if args.command == "sync-promoted":
         # A team promoted from FCS has no history in any FBS-filtered dataset.

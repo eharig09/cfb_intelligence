@@ -102,6 +102,47 @@ CREATE INDEX IF NOT EXISTS idx_coach_seasons_team
 CREATE INDEX IF NOT EXISTS idx_coach_seasons_coach
     ON coach_seasons(coach_id, season DESC);
 
+CREATE TABLE IF NOT EXISTS history_sync_state (
+    season INTEGER NOT NULL,
+    dataset TEXT NOT NULL,
+    row_count INTEGER NOT NULL,
+    synced_at TEXT NOT NULL,
+    PRIMARY KEY (season, dataset)
+);
+
+CREATE TABLE IF NOT EXISTS game_team_box_stats (
+    game_id INTEGER NOT NULL,
+    team_id INTEGER,
+    team TEXT NOT NULL,
+    conference TEXT,
+    home_away TEXT,
+    points INTEGER,
+    category TEXT NOT NULL,
+    stat_value TEXT,
+    numeric_value REAL,
+    PRIMARY KEY (game_id, team, category)
+);
+CREATE INDEX IF NOT EXISTS idx_game_team_box_game ON game_team_box_stats(game_id);
+
+CREATE TABLE IF NOT EXISTS game_player_box_stats (
+    game_id INTEGER NOT NULL,
+    team_id INTEGER,
+    team TEXT NOT NULL,
+    conference TEXT,
+    home_away TEXT,
+    points INTEGER,
+    category TEXT NOT NULL,
+    stat_type TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    player TEXT NOT NULL,
+    stat_value TEXT,
+    numeric_value REAL,
+    PRIMARY KEY (game_id, team, category, stat_type, player_id)
+);
+CREATE INDEX IF NOT EXISTS idx_game_player_box_game ON game_player_box_stats(game_id);
+CREATE INDEX IF NOT EXISTS idx_game_player_box_player
+    ON game_player_box_stats(player_id, game_id);
+
 CREATE TABLE IF NOT EXISTS team_records (
     season INTEGER NOT NULL,
     team_id INTEGER NOT NULL,
@@ -513,13 +554,30 @@ class CFBRepository:
                              connection.execute(
                                  "SELECT game_id,television FROM games WHERE season=?",
                                  (season,))}
-            connection.execute("DELETE FROM games WHERE season = ?", (season,))
             connection.executemany(
                 """
                 INSERT INTO games VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
+                ON CONFLICT(game_id) DO UPDATE SET
+                    season=excluded.season,week=excluded.week,
+                    season_type=excluded.season_type,start_date=excluded.start_date,
+                    start_time_tbd=excluded.start_time_tbd,completed=excluded.completed,
+                    neutral_site=excluded.neutral_site,
+                    conference_game=excluded.conference_game,venue_id=excluded.venue_id,
+                    venue=excluded.venue,
+                    television=COALESCE(excluded.television,games.television),
+                    home_team_id=excluded.home_team_id,home_team=excluded.home_team,
+                    home_conference=excluded.home_conference,
+                    home_points=excluded.home_points,
+                    home_pregame_elo=excluded.home_pregame_elo,
+                    away_team_id=excluded.away_team_id,away_team=excluded.away_team,
+                    away_conference=excluded.away_conference,
+                    away_points=excluded.away_points,
+                    away_pregame_elo=excluded.away_pregame_elo,
+                    excitement_index=excluded.excitement_index,notes=excluded.notes,
+                    updated_at=excluded.updated_at
                 """,
                 [
                     (
@@ -536,6 +594,15 @@ class CFBRepository:
                     for game in items
                 ],
             )
+            # Remove games genuinely withdrawn upstream only after their
+            # replacements are present. Updating in place preserves FPI,
+            # weather, box scores and every other game-keyed child row.
+            if items:
+                identifiers = [game.game_id for game in items]
+                placeholders = ",".join("?" for _ in identifiers)
+                connection.execute(
+                    f"DELETE FROM games WHERE season=? AND game_id NOT IN ({placeholders})",
+                    (season, *identifiers))
         return len(items)
 
     def replace_players(self, season: int, players: Iterable[Any]) -> int:
@@ -595,6 +662,143 @@ class CFBRepository:
             connection.executemany(
                 """INSERT INTO coach_seasons VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
         return len(rows)
+
+    HISTORY_TABLES = {
+        "games": "games", "records": "team_records", "team_stats": "team_stats",
+        "advanced_stats": "team_advanced_stats", "coaches": "coach_seasons",
+        "roster": "players", "player_stats": "player_season_stats",
+        "team_box_scores": "game_team_box_stats", "player_box_scores": "game_player_box_stats",
+    }
+
+    def history_dataset_cached(self, season: int, dataset: str) -> bool:
+        """Whether a completed-season dataset is already durable in SQLite."""
+        self.initialize()
+        table = self.HISTORY_TABLES.get(dataset)
+        if table is None:
+            raise ValueError(f"Unknown historical dataset: {dataset}")
+        with closing(self._connect()) as connection:
+            marker = connection.execute(
+                "SELECT 1 FROM history_sync_state WHERE season=? AND dataset=?",
+                (season, dataset)).fetchone()
+            if marker:
+                return True
+            # These arrive a week at a time. Any-row fallback would turn an
+            # interrupted first pass into a false whole-season cache hit.
+            if dataset in {"team_box_scores", "player_box_scores"}:
+                return False
+            count = connection.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE season=?", (season,)).fetchone()[0]
+        return count > 0
+
+    def mark_history_dataset(self, season: int, dataset: str, row_count: int) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                """INSERT INTO history_sync_state VALUES(?,?,?,?)
+                   ON CONFLICT(season,dataset) DO UPDATE SET
+                   row_count=excluded.row_count,synced_at=excluded.synced_at""",
+                (season, dataset, row_count, _now_iso()))
+
+    def history_conference_stats_cached(self, season: int, conference: str) -> bool:
+        self.initialize()
+        with closing(self._connect()) as connection:
+            return connection.execute(
+                """SELECT 1 FROM player_season_stats
+                   WHERE season=? AND conference=? LIMIT 1""",
+                (season, conference)).fetchone() is not None
+
+    def clear_box_scores(self, season: int) -> None:
+        with self.transaction() as connection:
+            game_ids = "SELECT game_id FROM games WHERE season=?"
+            connection.execute(
+                f"DELETE FROM game_team_box_stats WHERE game_id IN ({game_ids})", (season,))
+            connection.execute(
+                f"DELETE FROM game_player_box_stats WHERE game_id IN ({game_ids})", (season,))
+            connection.execute(
+                "DELETE FROM history_sync_state WHERE season=? AND dataset IN (?,?)",
+                (season, "team_box_scores", "player_box_scores"))
+
+    def completed_weeks(self, season: int) -> list[int]:
+        self.initialize()
+        with closing(self._connect()) as connection:
+            return [row[0] for row in connection.execute(
+                """SELECT DISTINCT week FROM games WHERE season=? AND completed=1
+                   ORDER BY week""", (season,))]
+
+    def box_score_counts(self, season: int) -> dict[str, int]:
+        self.initialize()
+        with closing(self._connect()) as connection:
+            return {
+                "team_box_scores": connection.execute(
+                    """SELECT COUNT(*) FROM game_team_box_stats b JOIN games g
+                       ON g.game_id=b.game_id WHERE g.season=?""", (season,)).fetchone()[0],
+                "player_box_scores": connection.execute(
+                    """SELECT COUNT(*) FROM game_player_box_stats b JOIN games g
+                       ON g.game_id=b.game_id WHERE g.season=?""", (season,)).fetchone()[0],
+            }
+
+    def store_game_team_box_scores(self, payload: Iterable[dict[str, Any]]) -> int:
+        rows = []
+        for game in payload:
+            game_id = int(game["id"])
+            for team in game.get("teams") or []:
+                for stat in team.get("stats") or []:
+                    rows.append((game_id, team.get("teamId"), str(team.get("team") or ""),
+                                 team.get("conference"), team.get("homeAway"),
+                                 team.get("points"), str(stat.get("category") or ""),
+                                 str(stat.get("stat") or ""), _numeric(stat.get("stat"))))
+        with self.transaction() as connection:
+            connection.executemany(
+                "INSERT OR REPLACE INTO game_team_box_stats VALUES(?,?,?,?,?,?,?,?,?)", rows)
+        return len(rows)
+
+    def store_game_player_box_scores(self, payload: Iterable[dict[str, Any]]) -> int:
+        games = tuple(payload)
+        game_ids = [int(item["id"]) for item in games]
+        with closing(self._connect()) as connection:
+            placeholders = ",".join("?" for _ in game_ids) or "NULL"
+            game_teams = {row["game_id"]: dict(row) for row in connection.execute(
+                f"SELECT game_id,home_team_id,home_team,away_team_id,away_team FROM games "
+                f"WHERE game_id IN ({placeholders})", game_ids)}
+        rows = []
+        for game in games:
+            game_id = int(game["id"]); canonical = game_teams.get(game_id) or {}
+            for team in game.get("teams") or []:
+                name = str(team.get("team") or "")
+                team_id = (canonical.get("home_team_id") if name == canonical.get("home_team")
+                           else canonical.get("away_team_id") if name == canonical.get("away_team")
+                           else None)
+                for category in team.get("categories") or []:
+                    category_name = str(category.get("name") or "")
+                    for stat_type in category.get("types") or []:
+                        type_name = str(stat_type.get("name") or "")
+                        for athlete in stat_type.get("athletes") or []:
+                            rows.append((
+                                game_id, team_id, name, team.get("conference"),
+                                team.get("homeAway"), team.get("points"), category_name,
+                                type_name, str(athlete.get("id") or ""),
+                                str(athlete.get("name") or ""),
+                                str(athlete.get("stat") or ""), _numeric(athlete.get("stat"))))
+        with self.transaction() as connection:
+            connection.executemany(
+                "INSERT OR REPLACE INTO game_player_box_stats VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                rows)
+        return len(rows)
+
+    def game_box_score(self, game_id: int) -> dict[str, Any] | None:
+        game = self.get_game(game_id)
+        if game is None:
+            return None
+        with closing(self._connect()) as connection:
+            team_stats = [dict(row) for row in connection.execute(
+                """SELECT * FROM game_team_box_stats WHERE game_id=?
+                   ORDER BY CASE home_away WHEN 'away' THEN 0 ELSE 1 END,category""",
+                (game_id,))]
+            player_stats = [dict(row) for row in connection.execute(
+                """SELECT * FROM game_player_box_stats WHERE game_id=?
+                   ORDER BY CASE home_away WHEN 'away' THEN 0 ELSE 1 END,
+                   category,player""", (game_id,))]
+        return {"game": game, "team_stats": team_stats, "player_stats": player_stats,
+                "available": bool(team_stats or player_stats)}
 
     def replace_records(self, season: int, records: Iterable[dict[str, Any]]) -> int:
         items = tuple(records)
@@ -998,14 +1202,24 @@ class CFBRepository:
                 "core_ratings": connection.execute("SELECT COUNT(*) FROM core_ratings WHERE season = ?", (season,)).fetchone()[0],
                 "pff_players": connection.execute("SELECT COUNT(*) FROM pff_players WHERE season = ?", (season,)).fetchone()[0],
                 "pff_metrics": connection.execute("SELECT COUNT(*) FROM pff_player_metrics WHERE season = ?", (season,)).fetchone()[0],
+                "team_box_stats": connection.execute(
+                    """SELECT COUNT(*) FROM game_team_box_stats b JOIN games g
+                       ON g.game_id=b.game_id WHERE g.season=?""", (season,)).fetchone()[0],
+                "player_box_stats": connection.execute(
+                    """SELECT COUNT(*) FROM game_player_box_stats b JOIN games g
+                       ON g.game_id=b.game_id WHERE g.season=?""", (season,)).fetchone()[0],
             }
+            history_state = [dict(row) for row in connection.execute(
+                """SELECT dataset,row_count,synced_at FROM history_sync_state
+                   WHERE season=? ORDER BY dataset""", (season,))]
             last_sync = connection.execute(
                 "SELECT * FROM sync_runs WHERE season = ? ORDER BY sync_id DESC LIMIT 1", (season,)
             ).fetchone()
         sync_payload = dict(last_sync) if last_sync else None
         if sync_payload:
             sync_payload["details"] = json.loads(sync_payload.pop("details_json"))
-        return {"season": season, "counts": counts, "last_sync": sync_payload}
+        return {"season": season, "counts": counts,
+                "history_datasets": history_state, "last_sync": sync_payload}
 
     def teams(self, conference: str | None = None, limit: int = 150) -> list[dict[str, Any]]:
         self.initialize()
@@ -1208,15 +1422,38 @@ class CFBRepository:
                     self._merge_arrivals(connection, groups, season, team, limit)
                 return {"season": season - 1 if groups else None, "groups": groups}
             groups={}
+            active_ids: list[str] | None = None
+            if available < season:
+                # A prior-season fallback is useful only for players who are
+                # actually on the requested-season roster. Without this guard,
+                # drafted and transferred stars were presented as current
+                # leaders (for example Ashton Jeanty on 2026 Boise State).
+                if team:
+                    active_rows = connection.execute(
+                        "SELECT player_id FROM players WHERE season=? AND team=?",
+                        (season, team)).fetchall()
+                else:
+                    active_rows = connection.execute(
+                        """SELECT p.player_id FROM players p JOIN teams t ON t.school=p.team
+                           WHERE p.season=? AND t.conference=?""",
+                        (season, conference)).fetchall()
+                active_ids = list(dict.fromkeys(str(row[0]) for row in active_rows))
+            active_placeholders = ",".join("?" for _ in (active_ids or []))
             for category in self.LEADER_CATEGORIES:
+                if active_ids == []:
+                    continue
                 stat_type=sort_stat(category)
                 threshold=qualifier(category)
+                active_plain = (f" AND player_id IN ({active_placeholders})"
+                                if active_ids is not None else "")
+                active_qualified = (f" AND s.player_id IN ({active_placeholders})"
+                                    if active_ids is not None else "")
                 if threshold is None:
                     rows=connection.execute(f"""SELECT player_id,player,position,team,stat_value,numeric_value
                       FROM player_season_stats WHERE season=? AND {scope_column}=? AND category=? AND stat_type=?
-                      AND numeric_value IS NOT NULL AND numeric_value>0
+                      AND numeric_value IS NOT NULL AND numeric_value>0{active_plain}
                       ORDER BY numeric_value DESC,player LIMIT ?""",
-                      (available,scope_value,category,stat_type,limit)).fetchall()
+                      (available,scope_value,category,stat_type,*(active_ids or []),limit)).fetchall()
                 else:
                     # Rank on the headline statistic, but only among players who
                     # cleared the usage minimum for the category.
@@ -1227,9 +1464,10 @@ class CFBRepository:
                         ON q.season=s.season AND q.player_id=s.player_id AND q.category=s.category
                         AND q.stat_type=? AND q.numeric_value>=?
                       WHERE s.season=? AND s.{scope_column}=? AND s.category=? AND s.stat_type=?
-                      AND s.numeric_value IS NOT NULL
+                      AND s.numeric_value IS NOT NULL{active_qualified}
                       ORDER BY s.numeric_value DESC,s.player LIMIT ?""",
-                      (qualifying_stat,minimum,available,scope_value,category,stat_type,limit)).fetchall()
+                      (qualifying_stat,minimum,available,scope_value,category,stat_type,
+                       *(active_ids or []),limit)).fetchall()
                 if not rows: continue
                 identifiers=[row["player_id"] for row in rows]
                 placeholders=",".join("?" for _ in identifiers)
@@ -1343,6 +1581,18 @@ class CFBRepository:
             rows=connection.execute("""SELECT * FROM games WHERE season=?
               AND (home_team_id=? OR away_team_id=?) ORDER BY start_date""",
               (season,team_id,team_id)).fetchall()
+        return [dict(row) for row in rows]
+
+    def team_schedule_seasons(self, team_id: int) -> list[dict[str, int]]:
+        """Stored schedule years, with remaining games kept separate from history."""
+        self.initialize()
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """SELECT season,COUNT(*) games,
+                          SUM(CASE WHEN completed=0 THEN 1 ELSE 0 END) upcoming
+                   FROM games WHERE home_team_id=? OR away_team_id=?
+                   GROUP BY season ORDER BY season DESC""",
+                (team_id, team_id)).fetchall()
         return [dict(row) for row in rows]
 
     def team_roster(self, team: str, season: int) -> list[dict[str,Any]]:

@@ -10,7 +10,7 @@ from sports_aggregator.cfb.external import (
     fpi_for_game, fpi_team_season, import_status, record_run, store_fpi,
     store_weather, weather_flags_by_game, weather_for_game,
 )
-from sports_aggregator.cfb.models import Team
+from sports_aggregator.cfb.models import Game, Team
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.providers.sportsdataverse import (
     FORMAT_PREFERENCE, ReleaseAsset, SportsDataverseClient, optional_float,
@@ -227,6 +227,17 @@ class FpiStorageTests(unittest.TestCase):
         connection.close()
         # A separate table, not folded into core_ratings.
         self.assertIn("fpi_game_projections", tables)
+
+    def test_canonical_game_refresh_preserves_game_keyed_model_rows(self):
+        store_fpi(self.repository, 2026, [
+            {"game_id": "500", "team_id": "1", "teampredptdiff": "7.5"}],
+            asset="a.csv")
+        refreshed = Game(
+            500, 2026, 1, "regular", datetime(2026, 9, 5, 18, tzinfo=timezone.utc),
+            False, False, False, True, 10, "Alpha Field", 1, "Alpha", "SEC",
+            None, 1700, 2, "Beta", "SEC", None, 1500, None, None)
+        self.repository.replace_games(2026, (refreshed,))
+        self.assertEqual(len(fpi_for_game(self.repository, 500)["rows"]), 1)
 
 
 class WeatherTests(unittest.TestCase):

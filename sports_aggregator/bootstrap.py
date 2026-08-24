@@ -38,7 +38,8 @@ class Step:
     requires_all_env: tuple[str, ...] = field(default_factory=tuple)
 
 
-def steps(season: int) -> list[Step]:
+def steps(season: int, *, history_from: int | None = None,
+          history_to: int | None = None) -> list[Step]:
     year = str(season)
     plan: list[Step] = [
         Step("cfbd-sync", "Current teams, roster, games, lines, records, rankings and stats",
@@ -65,9 +66,6 @@ def steps(season: int) -> list[Step]:
         Step("cfbd-prior-player-stats", "Prior-season roster and production baseline",
              ["sports_aggregator.cfb.history_cli", "--year", str(season - 1)],
              ("initial",), requires_env=("CFBD_API_KEY",)),
-        Step("cfbd-player-stats", "Most recent completed-season player statistics",
-             ["sports_aggregator.cfb.history_cli", "--year", str(season - 1)],
-             ("history",), requires_env=("CFBD_API_KEY",)),
         Step("cfbd-promoted", "Prior-classification history for promoted teams",
              ["sports_aggregator.cfb.cli", "sync-promoted", "--year", year],
              ("initial",), requires_env=("CFBD_API_KEY",)),
@@ -138,7 +136,9 @@ def steps(season: int) -> list[Step]:
              ("initial", "refresh"), optional=True),
     ]
 
-    for historical_year in range(season - 7, season - 1):
+    first_history = history_from if history_from is not None else season - 7
+    last_history = history_to if history_to is not None else season - 1
+    for historical_year in range(first_history, last_history + 1):
         plan.append(Step(
             f"game-history-{historical_year}",
             f"Games, records, team stats and coaches for {historical_year}",
@@ -149,6 +149,12 @@ def steps(season: int) -> list[Step]:
             f"history-{historical_year}",
             f"Player statistics and roster history for {historical_year}",
             ["sports_aggregator.cfb.history_cli", "--year", str(historical_year)],
+            ("history",), requires_env=("CFBD_API_KEY",),
+        ))
+        plan.append(Step(
+            f"box-history-{historical_year}",
+            f"Cached team and player box scores for {historical_year}",
+            ["sports_aggregator.cfb.cli", "sync-box-scores", "--year", str(historical_year)],
             ("history",), requires_env=("CFBD_API_KEY",),
         ))
     return plan
@@ -186,8 +192,10 @@ def run_step(step: Step, *, timeout: int = 1800) -> dict[str, Any]:
 
 
 def run_phase(phase: str, season: int, *, only: list[str] | None = None,
-              timeout: int = 1800) -> list[dict[str, Any]]:
-    plan = [step for step in steps(season) if phase in step.phases]
+              timeout: int = 1800, history_from: int | None = None,
+              history_to: int | None = None) -> list[dict[str, Any]]:
+    plan = [step for step in steps(
+        season, history_from=history_from, history_to=history_to) if phase in step.phases]
     if only:
         wanted = set(only)
         plan = [step for step in plan if step.name in wanted]
@@ -237,19 +245,26 @@ def main(argv: list[str] | None = None) -> int:
                         help="Run only named steps, e.g. history-2021 history-2022")
     parser.add_argument("--timeout", type=int, default=1800,
                         help="Per-step timeout in seconds; history also enforces a shorter timeout per conference")
+    parser.add_argument("--from-year", type=int, default=None,
+                        help="First historical season to add (history/plan only)")
+    parser.add_argument("--to-year", type=int, default=None,
+                        help="Last historical season to add (history/plan only)")
     args = parser.parse_args(argv)
 
     if args.command == "status":
         print(json.dumps(status_report(args.season), indent=2, default=str))
         return 0
     if args.command == "plan":
-        for step in steps(args.season):
+        for step in steps(args.season, history_from=args.from_year, history_to=args.to_year):
             phases = ",".join(step.phases)
             flag = " (optional)" if step.optional else ""
             print(f"  {step.name:22s} [{phases:15s}] {step.description}{flag}")
         return 0
 
-    results = run_phase(args.command, args.season, only=args.only, timeout=args.timeout)
+    if args.from_year is not None and args.to_year is not None and args.from_year > args.to_year:
+        parser.error("--from-year must not be after --to-year")
+    results = run_phase(args.command, args.season, only=args.only, timeout=args.timeout,
+                        history_from=args.from_year, history_to=args.to_year)
     failures = [row for row in results
                 if row["status"] not in ("success", "skipped") and not row["optional"]]
     print(f"\n{args.command}: {len(results)} steps, {len(failures)} failed")

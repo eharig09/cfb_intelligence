@@ -165,6 +165,18 @@ class ViewTableTests(unittest.TestCase):
         table = views.team_stats_table(metrics, 2026)
         self.assertEqual(table.rows[0]["stat_name"], "Third Down Conversions")
 
+    def test_box_score_groups_follow_offense_defense_special_teams_order(self):
+        rows = []
+        for category, stat_type in (("kicking", "PTS"), ("defensive", "TOT"),
+                                    ("receiving", "REC"), ("passing", "YDS")):
+            rows.append({"team": "Michigan", "category": category,
+                         "stat_type": stat_type, "player_id": "p1",
+                         "player": "Alex Example", "numeric_value": 1,
+                         "stat_value": "1"})
+        groups = views.player_box_score_groups(rows)["Michigan"]
+        self.assertEqual([group["label"] for group in groups],
+                         ["Passing", "Receiving", "Defense", "Kicking"])
+
 
 class RenderedTableTests(unittest.TestCase):
     """The pages must emit real tables, not divs styled to look like them."""
@@ -201,3 +213,5 @@ class RenderedTableTests(unittest.TestCase):
         # Values belong to one row, not five key/value rows.
         self.assertIn("67.5%", body)
         self.assertNotIn("<th>Statistic</th>", body)
+        self.assertIn('data-sortable="true"', body)
+        self.assertIn("cfb_tables.js", body)

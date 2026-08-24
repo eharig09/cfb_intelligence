@@ -5,8 +5,9 @@ import unittest
 
 from app import create_app
 from sports_aggregator.cfb.history import (
-    matchup_history, team_game_history, team_historical_stats, time_slot)
-from sports_aggregator.cfb.models import Game, Team
+    matchup_history, matchup_player_history, team_game_history,
+    team_historical_stats, time_slot)
+from sports_aggregator.cfb.models import Game, Player, Team
 from sports_aggregator.cfb.repository import CFBRepository
 
 
@@ -89,6 +90,41 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(time_slot("2026-09-05T23:30:00+00:00"), "Saturday — primetime")
         self.assertEqual(time_slot("2026-09-06T02:30:00+00:00"), "Saturday — late night")
 
+    def test_box_scores_are_stored_and_player_history_is_reused(self):
+        self.repository.replace_players(2026, (
+            Player("rb", 2026, "Test", "Runner", "Michigan", "RB", 2, 71, 205, 3),
+        ))
+        self.repository.store_game_team_box_scores(({
+            "id": 92, "teams": [{"teamId": 2, "team": "Wisconsin",
+                "conference": "Big Ten", "homeAway": "home", "points": 21,
+                "stats": [{"category": "totalYards", "stat": "388"}]}],
+        },))
+        self.repository.store_game_player_box_scores(({
+            "id": 92, "teams": [{"team": "Michigan", "conference": "Big Ten",
+                "homeAway": "away", "points": 20, "categories": [{
+                    "name": "rushing", "types": [{"name": "YDS", "athletes": [
+                        {"id": "rb", "name": "Test Runner", "stat": "104"}]}]}]}],
+        },))
+        packet = self.repository.game_box_score(92)
+        self.assertTrue(packet["available"])
+        self.assertEqual(packet["team_stats"][0]["numeric_value"], 388)
+        target = game(100, 2026, "2026-09-05T23:30:00+00:00",
+                      1, "Michigan", "Big Ten", None,
+                      2, "Wisconsin", "Big Ten", None)
+        target = {name: getattr(target, name) for name in target.__dataclass_fields__}
+        target["start_date"] = target["start_date"].isoformat()
+        history = matchup_player_history(self.repository, target)
+        self.assertEqual(history[0]["player"], "Test Runner")
+        self.assertEqual(history[0]["rushing"], "104 yd")
+
+    def test_partial_box_rows_require_completion_marker(self):
+        self.repository.store_game_team_box_scores(({
+            "id": 92, "teams": [{"team": "Wisconsin", "stats": [
+                {"category": "totalYards", "stat": "388"}]}]},))
+        self.assertFalse(self.repository.history_dataset_cached(2024, "team_box_scores"))
+        self.repository.mark_history_dataset(2024, "team_box_scores", 1)
+        self.assertTrue(self.repository.history_dataset_cached(2024, "team_box_scores"))
+
     def test_history_pages_render_populated_packets(self):
         target = game(100, 2026, "2026-09-05T23:30:00+00:00",
                       1, "Michigan", "Big Ten", None,
@@ -102,6 +138,9 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(preview.status_code, 200)
         self.assertIn(b"Coach Example", preview.data)
         self.assertIn(b"Recent meetings", preview.data)
+        self.assertIn(b"Box score", preview.data)
+        self.assertEqual(client.get("/college-football/games/100/box-score/").status_code, 200)
+        self.assertEqual(client.get("/api/v1/cfb/games/100/box-score").status_code, 200)
         self.assertIn(b"Season index", client.get(
             "/college-football/teams/1/history/").data)
         self.assertIn(b"Position production history", client.get(

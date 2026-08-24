@@ -18,7 +18,8 @@ from sports_aggregator.cfb.external import (
     fpi_for_game, fpi_team_season, weather_flags_by_game, weather_for_game)
 from sports_aggregator.cfb.identity import conference_color, team_identity
 from sports_aggregator.cfb.history import (
-    matchup_history, team_game_history, team_historical_stats)
+    matchup_history, matchup_player_history, team_game_history,
+    team_historical_stats, upcoming_player_opponent_history)
 from sports_aggregator.cfb.lines import game_lines, lines_by_game
 from sports_aggregator.cfb.search import search as search_entities
 from sports_aggregator.cfb.situations import game_situation
@@ -295,9 +296,43 @@ def conference_preview(slug: str):
 
 @cfb_pages.get("/college-football/teams/<int:team_id>/")
 def team_preview(team_id: int):
-    season = _season()
+    # A team link reached from a historical game used to carry that game's
+    # `season` query parameter and silently turn the whole team page into 2025.
+    # Team intelligence is always current; only the schedule switch is allowed
+    # to select a completed season. Full historical browsing lives under /history/.
+    configured = current_app.config.get("CFB_DEFAULT_SEASON")
+    season = configured or datetime.now().year
+    repository = _repository()
+    schedule_seasons = repository.team_schedule_seasons(team_id)
+    if not schedule_seasons and repository.get_team(team_id) is None:
+        abort(404)
+    latest_upcoming = next((row["season"] for row in schedule_seasons
+                            if row["upcoming"]), None)
+    current_schedule_year = max(season, latest_upcoming or season)
+    requested_schedule = request.args.get("schedule_year", type=int)
+    stored_years = {row["season"] for row in schedule_seasons}
+    if requested_schedule is not None and (requested_schedule < 1869 or
+                                             requested_schedule > datetime.now().year + 2):
+        abort(400)
+    schedule_year = requested_schedule if requested_schedule is not None else current_schedule_year
     packet = _team_packet(team_id, season)
-    return render_template("cfb_team.html", **packet, **_team_tables(packet, season))
+    selected_schedule = _label_games(repository.team_schedule(team_id, schedule_year))
+    schedule_is_upcoming = schedule_year == current_schedule_year
+    if schedule_is_upcoming:
+        selected_schedule = [game for game in selected_schedule if not game.get("completed")]
+    packet["schedule"] = selected_schedule
+    prior_year = max((year for year in stored_years if year < current_schedule_year), default=None)
+    schedule_options = [{"year": current_schedule_year,
+                         "label": f"Upcoming ({current_schedule_year})"}]
+    if prior_year is not None:
+        schedule_options.append({"year": prior_year, "label": str(prior_year)})
+    return render_template(
+        "cfb_team.html", **packet,
+        **_team_tables(packet, season, schedule_year=schedule_year,
+                       schedule_is_upcoming=schedule_is_upcoming),
+        schedule_year=schedule_year, schedule_options=schedule_options,
+        schedule_is_upcoming=schedule_is_upcoming,
+    )
 
 
 @cfb_pages.get("/college-football/teams/<int:team_id>/history/")
@@ -330,14 +365,21 @@ def team_history_stats(team_id: int):
     )
 
 
-def _team_tables(packet: dict, season: int) -> dict:
+def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
+                 schedule_is_upcoming: bool = False) -> dict:
     """Rendered tables for the team page, derived from the JSON packet."""
     movements = packet["movements"]
+    history = team_historical_stats(_repository(), packet["team"]["team_id"])
+    schedule_year = schedule_year or season
     return {
         "schedule_table": views.schedule_table(
-            packet["schedule"], packet["team"]["team_id"], season,
-            _repository().team_brands(), _repository().team_elo(season),
-            lines_by_game(_repository(), season)
+            packet["schedule"], packet["team"]["team_id"], schedule_year,
+            _repository().team_brands(), _repository().team_elo(schedule_year),
+            lines_by_game(_repository(), schedule_year),
+            caption=(f"Upcoming {schedule_year} schedule" if schedule_is_upcoming
+                     else f"{schedule_year} schedule"),
+            empty=(f"No remaining {schedule_year} games are stored." if schedule_is_upcoming
+                   else f"No {schedule_year} schedule is stored."),
         ),
         "depth_units": views.depth_chart_tables(
             packet["depth_chart"], season,
@@ -359,7 +401,9 @@ def _team_tables(packet: dict, season: int) -> dict:
             [row for row in packet["pff"]["players"]
              if row.get("roster_status") not in (None, "RETURNING")],
             season, caption="Key departures"),
-        "pff_groups_table": views.pff_position_groups_table(packet["pff"]["position_groups"]),
+        "position_philosophy_table": views.position_philosophy_table(
+            history["identity"], history["latest_production_season"]),
+        "position_philosophy_season": history["latest_production_season"],
         "draft_table": views.prospect_table(
             prospect_board(_repository(), roster_season=season, limit=10,
                            team_id=packet["team"]["team_id"]),
@@ -388,6 +432,9 @@ def player_preview(player_id: str):
             team_id=player["team_id"], limit=16)
         if story["story_id"] not in linked_ids
     ][:10] if player.get("team_id") else []
+    opponent_history = (upcoming_player_opponent_history(
+        repository, player_id, player["team_id"], season)
+        if player.get("team_id") else {"game": None, "performances": []})
     return render_template(
         "cfb_player.html", season=season, player=player,
         identity=team_identity(_repository().brand_for(player.get("team_id"))),
@@ -396,6 +443,9 @@ def player_preview(player_id: str):
             (player.get("pff") or []) + (player.get("pff_supplemental") or [])),
         stories=[{**story, "coverage_label": "Player linked"} for story in direct],
         team_stories=team_context,
+        opponent_history=opponent_history,
+        opponent_performance_table=views.opponent_performance_table(
+            opponent_history["performances"], include_player=False),
     )
 
 
@@ -434,6 +484,13 @@ def game_preview(game_id: int):
     away_identity["elo"] = elo.get(game["away_team_id"]) or {}
     home_identity["elo"] = elo.get(game["home_team_id"]) or {}
     history = matchup_history(repository, game)
+    prior_player_games = matchup_player_history(repository, game)
+    core_by_team = {
+        game["away_team_id"]: repository.team_metrics(
+            game["away_team"], season).get("core"),
+        game["home_team_id"]: repository.team_metrics(
+            game["home_team"], season).get("core"),
+    }
     return render_template(
         "cfb_game.html",
         away_brand=away_identity,
@@ -443,7 +500,7 @@ def game_preview(game_id: int):
         weather=views.weather_panel(weather_for_game(repository, game_id)),
         model_table=views.model_comparison_table(
             game, fpi_for_game(repository, game_id),
-            game_lines(repository, game_id), elo),
+            game_lines(repository, game_id), elo, core_by_team),
         lines=game_lines(repository, game_id),
         market_table=views.market_table(game_lines(repository, game_id), game),
         away_arrivals_table=views.notable_arrivals_table(
@@ -454,6 +511,22 @@ def game_preview(game_id: int):
             notable_transfers(repository, season=season,
                               team_id=game["home_team_id"], limit=6),
             season, caption=f"{game['home_team']} arrived"),
+        away_portal_in_table=views.transfer_impact_table(
+            rank_transfers(repository, season=season, team_id=game["away_team_id"],
+                           direction="in", limit=12), season,
+            caption=f"{game['away_team']} portal additions"),
+        away_portal_out_table=views.transfer_impact_table(
+            rank_transfers(repository, season=season, team_id=game["away_team_id"],
+                           direction="out", limit=12), season,
+            caption=f"{game['away_team']} portal departures", departed=True),
+        home_portal_in_table=views.transfer_impact_table(
+            rank_transfers(repository, season=season, team_id=game["home_team_id"],
+                           direction="in", limit=12), season,
+            caption=f"{game['home_team']} portal additions"),
+        home_portal_out_table=views.transfer_impact_table(
+            rank_transfers(repository, season=season, team_id=game["home_team_id"],
+                           direction="out", limit=12), season,
+            caption=f"{game['home_team']} portal departures", departed=True),
         matchup_report=matchup_report,
         matchup_table=views.matchup_watch_table(matchup_report, brands_by_school),
         player_matchup_table=views.player_matchup_table(
@@ -498,6 +571,24 @@ def game_preview(game_id: int):
         history=history,
         history_games_table=views.historical_games_table(
             history["recent"], caption=f"Recent meetings — {game['away_team']} perspective"),
+        prior_player_games=prior_player_games,
+        prior_player_games_table=views.opponent_performance_table(prior_player_games),
+    )
+
+
+@cfb_pages.get("/college-football/games/<int:game_id>/box-score/")
+def game_box_score(game_id: int):
+    packet = _repository().game_box_score(game_id)
+    if packet is None:
+        abort(404)
+    game = packet["game"]
+    game["start_label"] = _start_label(game["start_date"])
+    return render_template(
+        "cfb_box_score.html", **packet,
+        away_brand=team_identity(_repository().brand_for(game["away_team_id"])),
+        home_brand=team_identity(_repository().brand_for(game["home_team_id"])),
+        team_box_table=views.team_box_score_table(packet["team_stats"]),
+        player_box_groups=views.player_box_score_groups(packet["player_stats"]),
     )
 
 
@@ -841,6 +932,14 @@ def game_api(game_id: int):
     return jsonify(game)
 
 
+@cfb_pages.get("/api/v1/cfb/games/<int:game_id>/box-score")
+def game_box_score_api(game_id: int):
+    packet = _repository().game_box_score(game_id)
+    if packet is None:
+        abort(404)
+    return jsonify(packet)
+
+
 @cfb_pages.get("/api/v1/cfb/games/<int:game_id>/preview")
 def game_preview_api(game_id: int):
     repository = _repository()
@@ -874,6 +973,7 @@ def game_preview_api(game_id: int):
         "home_quality": repository.team_quality_snapshot(game["home_team_id"], game["season"]),
         "away_quality": repository.team_quality_snapshot(game["away_team_id"], game["season"]),
         "history": matchup_history(repository, game),
+        "prior_player_games": matchup_player_history(repository, game),
         "stories": _merge_stories(
             ("Game linked", direct_stories), ("Away-team context", away_stories),
             ("Home-team context", home_stories),

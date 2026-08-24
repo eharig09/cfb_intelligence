@@ -16,6 +16,9 @@
     .stream-label { display: flex; justify-content: space-between; gap: 8px; }
     .source { color: var(--muted); font-size: .66rem; }
     .split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .schedule-switch { display:flex; gap:5px; flex-wrap:wrap; margin:10px 0; }
+    .schedule-switch a { border:1px solid var(--line); padding:6px 10px; text-decoration:none; font-size:.72rem; font-weight:800; }
+    .schedule-switch a.active { background:var(--ink); border-color:var(--ink); color:#fff; }
     @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
 
 </style>
@@ -59,8 +62,17 @@
 <div class="layout">
     <div>
         <section class="section">
-            <h2>{{ season }} schedule</h2>
-            <div class="section-note">Results are shown from this team's perspective.</div>
+            <h2>{% if schedule_is_upcoming %}Upcoming schedule{% else %}{{ schedule_year }} schedule{% endif %}</h2>
+            <div class="section-note">
+                The team page defaults to remaining games. Completed seasons are available
+                here for quick comparison and in the full historical game log.
+            </div>
+            <nav class="schedule-switch" aria-label="Schedule season">
+                {% for option in schedule_options %}
+                <a class="{{ 'active' if option.year == schedule_year else '' }}"
+                   href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=option.year) }}">{{ option.label }}</a>
+                {% endfor %}
+            </nav>
             {{ data_table(schedule_table) }}
         </section>
 
@@ -186,8 +198,12 @@
 
         <section class="section">
             <h2>Position philosophy</h2>
-            <div class="section-note">2025 PFF usage-weighted strengths.</div>
-            {{ data_table(pff_groups_table) }}
+            <div class="section-note">
+                {{ position_philosophy_season or 'Latest stored' }} production identifies how
+                this roster distributed its work. Each row uses the statistic relevant to that
+                position; PFF is shown beside it as separate historical evidence.
+            </div>
+            {{ data_table(position_philosophy_table) }}
         </section>
     </aside>
 </div>

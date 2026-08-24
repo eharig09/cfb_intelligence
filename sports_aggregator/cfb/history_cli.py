@@ -51,15 +51,20 @@ def main(argv: list[str] | None = None) -> int:
 
     # Historical rosters are important for career/identity views, but this is a
     # single bounded HTTP request rather than the old all-conference loop.
-    try:
-        count = repository.replace_players(
-            args.year,
-            (Player.from_cfbd(item, args.year) for item in client.roster(args.year, args.force)),
-        )
-        print(f"{args.year} roster: success ({count})")
-    except Exception as exc:
-        failures.append("roster")
-        print(f"{args.year} roster: failed ({str(exc)[:180]})")
+    if (args.year < datetime.now().year and not args.force
+            and repository.history_dataset_cached(args.year, "roster")):
+        print(f"{args.year} roster: cached (SQLite)")
+    else:
+        try:
+            count = repository.replace_players(
+                args.year,
+                (Player.from_cfbd(item, args.year) for item in client.roster(args.year, args.force)),
+            )
+            repository.mark_history_dataset(args.year, "roster", count)
+            print(f"{args.year} roster: success ({count})")
+        except Exception as exc:
+            failures.append("roster")
+            print(f"{args.year} roster: failed ({str(exc)[:180]})")
 
     conferences = [
         item["conference"] for item in repository.conferences() if item.get("conference")
@@ -70,6 +75,11 @@ def main(argv: list[str] | None = None) -> int:
 
     succeeded = 0
     for conference in conferences:
+        if (args.year < datetime.now().year and not args.force
+                and repository.history_conference_stats_cached(args.year, conference)):
+            succeeded += 1
+            print(f"[--] {args.year} {conference}: cached (SQLite)")
+            continue
         command = [
             sys.executable, "-m", "sports_aggregator.cfb.cli", "sync-player-stats",
             "--year", str(args.year), "--conference", conference,
@@ -102,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
     if failures:
         print("retry needed: " + ", ".join(failures))
         return 1
+    count = repository.status(args.year)["counts"]["player_stats"]
+    repository.mark_history_dataset(args.year, "player_stats", count)
     return 0
 
 

@@ -51,6 +51,7 @@
 <p class="meta">
     {{ game.start_label }} &middot; {{ game.television or 'TV TBD' }} &middot; {{ game.venue or 'Venue TBD' }}
     {%- if game.neutral_site %} &middot; Neutral site{% endif %}
+    &middot; <a href="{{ url_for('cfb.game_box_score', game_id=game.game_id) }}">Box score</a>
 </p>
 
 <div class="scoreboard">
@@ -115,6 +116,15 @@
         {% endfor %}
     </div>
     {{ data_table(history_games_table) }}
+</section>
+
+<section class="section">
+    <h2>Players with history against this opponent</h2>
+    <div class="section-note">
+        Past box-score production for players on the current rosters who have already
+        faced this week's opponent, including games played for a prior school.
+    </div>
+    {{ data_table(prior_player_games_table) }}
 </section>
 
 <section class="section">
@@ -283,6 +293,25 @@
             {{ data_table(home_returning_table) }}
             {{ data_table(home_arrivals_table) }}
             {{ data_table(home_departed_table) }}
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <h2>Portal additions and departures</h2>
+    <div class="section-note">
+        Every stored portal move for the current roster cycle is shown. Impact remains
+        blank when prior production or a linked grade is unavailable; that means unproven,
+        not low impact.
+    </div>
+    <div class="split">
+        <div>
+            {{ data_table(away_portal_in_table) }}
+            {{ data_table(away_portal_out_table) }}
+        </div>
+        <div>
+            {{ data_table(home_portal_in_table) }}
+            {{ data_table(home_portal_out_table) }}
         </div>
     </div>
 </section>

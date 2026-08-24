@@ -199,6 +199,22 @@ class CFBDClient:
             "/coaches", {"year": year}, cache_ttl_seconds=21600, force=force
         )
 
+    def game_team_box_scores(self, year: int, week: int,
+                             force: bool = False) -> list[dict]:
+        return self.get(
+            "/games/teams",
+            {"year": year, "week": week, "seasonType": "both", "classification": "fbs"},
+            cache_ttl_seconds=31536000, force=force,
+        )
+
+    def game_player_box_scores(self, year: int, week: int,
+                               force: bool = False) -> list[dict]:
+        return self.get(
+            "/games/players",
+            {"year": year, "week": week, "seasonType": "both", "classification": "fbs"},
+            cache_ttl_seconds=31536000, force=force,
+        )
+
     def rankings(self, year: int, force: bool = False) -> list[dict]:
         return self.get("/rankings", {"year": year}, cache_ttl_seconds=1800, force=force)
 

@@ -170,6 +170,10 @@ class CFBRepositoryTests(unittest.TestCase):
 
     def test_player_stat_leaders_and_preview_routes(self):
         CFBDataSync(FakeCFBDClient(), self.repository).sync(2026)
+        historical_game = {**GAME_PAYLOAD[0], "id": 99, "season": 2025,
+                           "startDate": "2025-09-06T19:30:00Z", "completed": True,
+                           "homePoints": 21, "awayPoints": 14}
+        self.repository.replace_games(2025, (Game.from_cfbd(historical_game),))
         self.repository.replace_player_stats(2025, [
             {"season": 2025, "playerId": "p1", "player": "Alex Example",
              "team": "Michigan", "conference": "Big Ten", "position": "QB",
@@ -213,7 +217,13 @@ class CFBRepositoryTests(unittest.TestCase):
         self.assertEqual(client.get("/college-football/conferences/big-ten/").status_code, 200)
         self.assertIn(b"Conference player leaders", client.get("/college-football/conferences/big-ten/").data)
         self.assertEqual(client.get("/college-football/teams/1/").status_code, 200)
-        self.assertIn(b"2026 schedule", client.get("/college-football/teams/1/").data)
+        current_team = client.get("/college-football/teams/1/?season=2025")
+        self.assertIn(b"Upcoming schedule", current_team.data)
+        self.assertIn(b"Upcoming (2026)", current_team.data)
+        self.assertNotIn(b"W 21-14", current_team.data)
+        prior_schedule = client.get("/college-football/teams/1/?schedule_year=2025")
+        self.assertIn(b"2025 schedule", prior_schedule.data)
+        self.assertIn(b"W 21-14", prior_schedule.data)
         self.assertEqual(client.get("/college-football/teams/1/history/").status_code, 200)
         self.assertEqual(client.get("/college-football/teams/1/history/stats/").status_code, 200)
         self.assertEqual(client.get("/college-football/games/100/").status_code, 200)
@@ -221,6 +231,27 @@ class CFBRepositoryTests(unittest.TestCase):
         self.assertEqual(client.get("/api/v1/cfb/conferences/big-ten").status_code, 200)
         self.assertEqual(client.get("/api/v1/cfb/teams/1").get_json()["team"]["school"], "Michigan")
         self.assertEqual(client.get("/api/v1/cfb/games/100/preview").status_code, 200)
+
+    def test_prior_year_leader_fallback_excludes_players_not_on_current_roster(self):
+        CFBDataSync(FakeCFBDClient(), self.repository).sync(2026)
+        self.repository.replace_player_stats(2025, [
+            {"playerId": "p1", "player": "Alex Example", "team": "Michigan",
+             "conference": "Big Ten", "position": "QB", "category": "passing",
+             "statType": "YDS", "stat": 3000},
+            {"playerId": "p1", "player": "Alex Example", "team": "Michigan",
+             "conference": "Big Ten", "position": "QB", "category": "passing",
+             "statType": "ATT", "stat": 350},
+            {"playerId": "gone", "player": "Departed Star", "team": "Michigan",
+             "conference": "Big Ten", "position": "QB", "category": "passing",
+             "statType": "YDS", "stat": 4500},
+            {"playerId": "gone", "player": "Departed Star", "team": "Michigan",
+             "conference": "Big Ten", "position": "QB", "category": "passing",
+             "statType": "ATT", "stat": 500},
+        ], "Big Ten")
+        leaders = self.repository.team_player_leaders("Michigan", 2026)
+        names = [row["player"] for row in leaders["groups"]["passing"]["players"]]
+        self.assertIn("Alex Example", names)
+        self.assertNotIn("Departed Star", names)
 
     def test_dashboard_and_game_api_use_persisted_data(self):
         CFBDataSync(FakeCFBDClient(), self.repository).sync(2026)

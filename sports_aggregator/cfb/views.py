@@ -15,7 +15,8 @@ from typing import Any, Iterable, Sequence
 from flask import url_for
 
 from sports_aggregator.cfb.draft import position_abbreviation
-from sports_aggregator.cfb.statlines import leader_table, player_stat_tables
+from sports_aggregator.cfb.statlines import (
+    CATEGORY_ORDER, category_label, leader_table, player_stat_tables, sort_stat)
 from sports_aggregator.tables import Column, Table, format_value
 
 
@@ -60,13 +61,15 @@ def historical_games_table(games: Sequence[dict[str, Any]], *,
         "result": row.get("result"), "score": row.get("score"),
         "score_url": row.get("game_url"), "slot": row.get("slot"),
         "conference": row.get("opponent_conference"),
+        "box_score": "Box score", "box_score_url": row.get("box_score_url") or
+        (f"/college-football/games/{row['game_id']}/box-score/" if row.get("game_id") else None),
     } for row in games]
     return Table(
         columns=[Column("season", "Season", format="int", align="right"),
                  Column("date", "Date"), Column("opponent", "Opponent"),
                  Column("site", "Site"), Column("result", "Result", emphasis=True),
                  Column("score", "Score", align="right"), Column("slot", "Window"),
-                 Column("conference", "Opp. conf.")],
+                 Column("conference", "Opp. conf."), Column("box_score", "Detail")],
         rows=rows, caption=caption, dense=True,
         empty="No completed historical games are stored for this selection.")
 
@@ -80,8 +83,10 @@ def season_history_table(seasons: Sequence[dict[str, Any]]) -> Table:
                  Column("average_margin", "Margin", format="signed", align="right"),
                  Column("conference_wins", "Conf W", format="int", align="right"),
                  Column("conference_losses", "Conf L", format="int", align="right"),
-                 Column("offense_success_rate", "Off SR", format="rate", align="right"),
-                 Column("defense_success_rate", "Def SR", format="rate", align="right")],
+                 Column("offense_success_rate", "Off success", format="rate", align="right",
+                        title="Share of offensive plays meeting CFBD success thresholds"),
+                 Column("defense_success_rate", "Def success allowed", format="rate", align="right",
+                        title="Share of opponent plays meeting CFBD success thresholds; lower is better")],
         rows=seasons, caption="Season results and efficiency", dense=True,
         empty="Historical season summaries populate after the history backfill.")
 
@@ -125,6 +130,166 @@ def historical_team_stats_table(rows: Sequence[dict[str, Any]]) -> Table:
                  Column("turnover_margin", "TO margin", format="signed", align="right")],
         rows=list(rows), caption="Traditional team production", dense=True,
         empty="Historical team-stat totals populate after the history backfill.")
+
+
+def team_box_score_table(rows: Sequence[dict[str, Any]]) -> Table:
+    by_team: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        item = by_team.setdefault(row["team"], {
+            "team": row["team"], "score": row.get("points")})
+        item[row["category"]] = row.get("numeric_value") if row.get("numeric_value") is not None else row.get("stat_value")
+    result = []
+    for item in by_team.values():
+        conversions, attempts = item.get("thirdDownConversions"), item.get("thirdDowns")
+        item["third_down"] = item.get("thirdDownEff")
+        if item["third_down"] is None and conversions is not None and attempts is not None:
+            def display(value: Any) -> str:
+                try:
+                    number = float(value)
+                    return str(int(number)) if number.is_integer() else str(value)
+                except (TypeError, ValueError):
+                    return str(value)
+            item["third_down"] = f"{display(conversions)}/{display(attempts)}"
+        result.append(item)
+    return Table(
+        columns=[Column("team", "Team", emphasis=True),
+                 Column("score", "Score", format="int", align="right"),
+                 # Offense
+                 Column("firstDowns", "1st", format="int", align="right"),
+                 Column("totalYards", "Yards", format="int", align="right"),
+                 Column("completionAttempts", "C/ATT", align="right"),
+                 Column("netPassingYards", "Pass", format="int", align="right"),
+                 Column("rushingYards", "Rush", format="int", align="right"),
+                 Column("yardsPerPass", "Y/Pass", format="f1", align="right"),
+                 Column("yardsPerRushAttempt", "Y/Rush", format="f1", align="right"),
+                 Column("passingTDs", "Pass TD", format="int", align="right"),
+                 Column("rushingTDs", "Rush TD", format="int", align="right"),
+                 Column("third_down", "3rd down", align="right"),
+                 Column("fourthDownEff", "4th down", align="right"),
+                 Column("turnovers", "TO", format="int", align="right"),
+                 Column("totalPenaltiesYards", "Pen-Yds", align="right"),
+                 # Defense
+                 Column("tackles", "Tkl", format="num", align="right"),
+                 Column("tacklesForLoss", "TFL", format="num", align="right"),
+                 Column("sacks", "Sacks", format="num", align="right"),
+                 Column("qbHurries", "Hurries", format="num", align="right"),
+                 Column("passesDeflected", "PD", format="num", align="right"),
+                 Column("passesIntercepted", "INT", format="num", align="right"),
+                 Column("fumblesRecovered", "FR", format="num", align="right"),
+                 Column("defensiveTDs", "Def TD", format="num", align="right"),
+                 # Special teams
+                 Column("kickingPoints", "Kick pts", format="num", align="right"),
+                 Column("kickReturnYards", "KR yds", format="num", align="right"),
+                 Column("puntReturnYards", "PR yds", format="num", align="right"),
+                 Column("possessionTime", "Possession", align="right")],
+        rows=result, caption="Team box score", dense=True,
+        empty="No cached team box score is stored for this game.")
+
+
+def player_box_score_groups(rows: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault((row["team"], row["category"]), []).append(row)
+    result: dict[str, list[dict[str, Any]]] = {}
+    preferred_by_category = {
+        "passing": ("C/ATT", "YDS", "AVG", "TD", "INT", "QBR"),
+        "rushing": ("CAR", "YDS", "AVG", "TD", "LONG"),
+        "receiving": ("REC", "YDS", "AVG", "TD", "LONG"),
+        "defensive": ("TOT", "SOLO", "TFL", "SACKS", "QB HUR", "PD", "TD"),
+        "interceptions": ("INT", "YDS", "AVG", "TD"),
+        "fumbles": ("FUM", "LOST", "REC"),
+        "kicking": ("FG", "PCT", "LONG", "XP", "PTS"),
+        "punting": ("NO", "YDS", "AVG", "LONG", "In 20", "TB"),
+        "kickReturns": ("NO", "YDS", "AVG", "LONG", "TD"),
+        "puntReturns": ("NO", "YDS", "AVG", "LONG", "TD"),
+    }
+    category_rank = {name: index for index, name in enumerate(CATEGORY_ORDER)}
+    teams = list(dict.fromkeys(team for team, _category in grouped))
+    ordered = sorted(grouped.items(), key=lambda item: (
+        teams.index(item[0][0]), category_rank.get(item[0][1], 999), item[0][1]))
+    for (team, category), stats in ordered:
+        types = list(dict.fromkeys(row["stat_type"] for row in stats))
+        preferred = preferred_by_category.get(category, ())
+        types.sort(key=lambda name: (preferred.index(name) if name in preferred else 999, name))
+        athletes: dict[str, dict[str, Any]] = {}
+        for row in stats:
+            item = athletes.setdefault(row["player_id"], {
+                "player": row["player"], "player_id": row["player_id"]})
+            item[row["stat_type"]] = (row.get("numeric_value")
+                                      if row.get("numeric_value") is not None
+                                      else row.get("stat_value"))
+        athlete_rows = list(athletes.values())
+        headline = sort_stat(category)
+        if headline:
+            athlete_rows.sort(key=lambda row: -float(row.get(headline) or 0))
+        table = Table(
+            columns=[Column("player", "Player", emphasis=True)] + [
+                Column(name, name, format="num", align="right") for name in types],
+            rows=athlete_rows, caption=f"{team} — {category_label(category)}",
+            dense=True, empty="No player lines are stored for this category.")
+        result.setdefault(team, []).append({"label": category_label(category),
+                                             "table": table})
+    return result
+
+
+def opponent_performance_table(rows: Sequence[dict[str, Any]], *,
+                               include_player: bool = True) -> Table:
+    data = []
+    for row in rows:
+        data.append({
+            "player": row.get("player"), "position": row.get("position"),
+            "player_url": (_player_url(str(row["player_id"]), int(row["season"]))
+                           if row.get("player_id") and row.get("season") else None),
+            "date": row.get("date_label"), "opponent": row.get("opponent"),
+            "team": row.get("team"), "passing": row.get("passing"),
+            "rushing": row.get("rushing"), "receiving": row.get("receiving"),
+            "defense": row.get("defense"), "detail": "Box", "detail_url": row.get("game_url"),
+        })
+    columns = ([Column("player", "Player", emphasis=True), Column("position", "Pos")]
+               if include_player else []) + [
+        Column("date", "Date"), Column("team", "Played for"),
+        Column("opponent", "Opponent"), Column("passing", "Passing"),
+        Column("rushing", "Rushing"), Column("receiving", "Receiving"),
+        Column("defense", "Defense"), Column("detail", "Detail")]
+    return Table(columns=columns, rows=data, caption="Prior games against this opponent",
+                 dense=True, empty="No cached player box score against this opponent.")
+
+
+def position_philosophy_table(rows: Sequence[dict[str, Any]], season: int | None) -> Table:
+    """One meaningful production measure per position group plus its PFF evidence."""
+    specs = {
+        "QB": ("pass_yards", "Pass yards", None),
+        "RB": ("rush_yards", "Rush yards", "rush_yards_share"),
+        "WR": ("receiving_yards", "Receiving yards", "receiving_yards_share"),
+        "TE": ("receiving_yards", "Receiving yards", "receiving_yards_share"),
+        "OL": (None, "No individual production stat", None),
+        "DL": ("sacks", "Sacks", "sacks_share"),
+        "EDGE": ("sacks", "Sacks", "sacks_share"),
+        "LB": ("tackles", "Tackles", "tackles_share"),
+        "SECONDARY": ("interceptions", "Interceptions", "tackles_share"),
+    }
+    result = []
+    for row in rows:
+        group = row.get("position_group")
+        if group not in specs:
+            continue
+        metric, label, share = specs[group]
+        value = row.get(metric) if metric else None
+        result.append({
+            "group": group_label(group), "production": value,
+            "production_sub": label, "share": row.get(share) if share else None,
+            "pff_grade": row.get("pff_grade"), "pff_grade_sub": row.get("pff_detail"),
+        })
+    return Table(
+        columns=[Column("group", "Group", emphasis=True),
+                 Column("production", "Relevant production", format="big", align="right"),
+                 Column("share", "Unit share", format="pct", align="right",
+                        title="Share of the team's production in that statistic"),
+                 Column("pff_grade", "Top PFF", format="f1", align="right",
+                        title="Best stored PFF dataset grade; dataset details appear below")],
+        rows=result, caption=f"{season} production identity" if season else "Position identity",
+        note="Production and PFF remain separate evidence; no composite score is invented.",
+        dense=True, empty="No historical position production is stored.")
 
 
 # --------------------------------------------------------------------------
@@ -178,7 +343,8 @@ def _record(row: dict[str, Any], wins: str, losses: str, ties: str) -> str:
 def schedule_table(schedule: Iterable[dict[str, Any]], team_id: int, season: int,
                    brands: dict[int, dict[str, Any]] | None = None,
                    elo: dict[int, dict[str, Any]] | None = None,
-                   market: dict[int, dict[str, Any]] | None = None) -> Table:
+                   market: dict[int, dict[str, Any]] | None = None, *,
+                   caption: str | None = None, empty: str | None = None) -> Table:
     """One team season: opponent, site, broadcast, and result in one line."""
     rows = []
     for game in schedule:
@@ -235,8 +401,8 @@ def schedule_table(schedule: Iterable[dict[str, Any]], team_id: int, season: int
             Column(key="preview", label="", align="right"),
         ],
         rows=rows,
-        caption=f"{season} schedule",
-        empty=f"No {season} schedule is stored.",
+        caption=caption or f"{season} schedule",
+        empty=empty or f"No {season} schedule is stored.",
     )
 
 
@@ -1342,13 +1508,14 @@ def arrivals_table(arrivals, season):
     )
 
 
-def transfer_impact_table(transfers, season):
+def transfer_impact_table(transfers, season, *, caption="Portal impact",
+                          departed: bool = False):
     """Portal entries ranked by the evidence that they will matter."""
     rows = [{
         "player_name": row.get("player_name"),
         "player_name_url": _player_url(row.get("player_id"), season),
         "player_name_sub": row.get("impact_label"),
-        "player_name_class": "state-arrived",
+        "player_name_class": "state-departed" if departed else "state-arrived",
         "position": row.get("position"),
         "origin": row.get("origin"),
         "destination": row.get("destination") or "TBD",
@@ -1368,14 +1535,14 @@ def transfer_impact_table(transfers, season):
                          "prior production is on record"),
         ],
         rows=rows,
-        caption="Portal impact",
+        caption=caption,
         note="production first, opinion last",
         empty="No portal entries are stored for this team and season.",
         dense=True,
     )
 
 
-def model_comparison_table(game, fpi, lines, elo):
+def model_comparison_table(game, fpi, lines, elo, core=None):
     """Independent model and market views of the same game, side by side.
 
     FPI, Elo and the betting market are kept as separate rows rather than
@@ -1406,6 +1573,20 @@ def model_comparison_table(game, fpi, lines, elo):
             "home_value": str(home_elo["elo"]),
             "away_value": str(away_elo["elo"]),
             "note": f"{home_elo['elo'] - away_elo['elo']:+d} rating gap",
+        })
+    home_core = (core or {}).get(game["home_team_id"]) or {}
+    away_core = (core or {}).get(game["away_team_id"]) or {}
+    if home_core or away_core:
+        through = max(home_core.get("through_week") or 0,
+                      away_core.get("through_week") or 0)
+        rows.append({
+            "model": "CFBD CORE",
+            "detail": f"through week {through}" if through else "current rating",
+            "home_value": (f"{home_core['overall']:.1f}"
+                           if home_core.get("overall") is not None else None),
+            "away_value": (f"{away_core['overall']:.1f}"
+                           if away_core.get("overall") is not None else None),
+            "note": "overall model rating",
         })
     spread = lines.get("consensus_spread")
     if spread is not None:

@@ -242,12 +242,21 @@ it is intentionally separate from the live refresh path:
 
 ```powershell
 python -m sports_aggregator.bootstrap history --season 2026
+python -m sports_aggregator.bootstrap history --season 2026 --from-year 2000 --to-year 2025
 python -m sports_aggregator.cfb.cli sync-history --from-year 2019 --to-year 2025
 ```
 
-`sync-history` refreshes games, records, traditional team stats, advanced team
-stats, and CFBD head-coach seasons. The existing player-history workers load
-rosters and player season stats over the same window. `bootstrap status` reports
+Historical synchronization is append-only by default. Once a completed-season
+dataset is stored in SQLite, later history runs skip its CFBD request. An interrupted
+player or box-score backfill resumes its missing conference or dataset; `--force`
+is the explicit way to replace a completed snapshot. Expanding `--from-year` simply
+adds older seasons, while the normal `refresh` phase updates only moving current-season data.
+
+`sync-history` stores games, records, traditional team stats, advanced team stats,
+and CFBD head-coach seasons. The player-history workers store rosters and player
+season stats; `sync-box-scores` stores normalized team and player game lines. Team,
+game, player, and box-score pages read those SQLite tables and never call CFBD during
+a page request. `bootstrap status` reports
 both conference player-stat gaps and per-season history coverage. Kickoff-window
 splits use US Eastern broadcast time; coach-versus-opponent records are explicitly
 season-attributed because intra-season interim changes may not be game-exact.

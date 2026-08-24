@@ -65,6 +65,19 @@
         </section>
 
         <section class="section">
+            <h2>Upcoming opponent history</h2>
+            {% if opponent_history.game %}
+            <div class="section-note">
+                Prior box-score production against {{ opponent_history.opponent }} before
+                <a href="{{ url_for('cfb.game_preview', game_id=opponent_history.game.game_id) }}">the upcoming matchup</a>.
+            </div>
+            {% else %}
+            <div class="section-note">No upcoming game is stored for this player's team.</div>
+            {% endif %}
+            {{ data_table(opponent_performance_table) }}
+        </section>
+
+        <section class="section">
             <h2>Reporting on {{ player.name }}</h2>
             <div class="section-note">Stories in which this player was resolved by exact name.</div>
             {{ story_list(stories, 'No story has resolved to this player yet.') }}

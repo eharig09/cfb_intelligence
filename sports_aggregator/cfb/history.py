@@ -203,6 +203,13 @@ def team_game_history(repository: CFBRepository, team_id: int,
     if team is None:
         return {"team": None, "games": [], "seasons": [], "summary": _record([])}
     games = _completed_games(repository)
+    with closing(repository._connect()) as connection:
+        stored_seasons = {row["season"]: dict(row) for row in connection.execute(
+            """SELECT r.*,a.offense_success_rate,a.defense_success_rate,
+                      a.offense_ppa,a.defense_ppa
+               FROM team_records r LEFT JOIN team_advanced_stats a
+                 ON a.season=r.season AND a.team=r.team
+               WHERE r.team_id=?""", (team_id,))}
     rows = [_perspective(row, team_id) for row in games
             if team_id in (row["home_team_id"], row["away_team_id"])]
     seasons = sorted({row["season"] for row in rows}, reverse=True)
@@ -215,7 +222,8 @@ def team_game_history(repository: CFBRepository, team_id: int,
     by_season = []
     for year in seasons:
         year_rows = [row for row in rows if row["season"] == year]
-        by_season.append({"season": year, **_record(year_rows)})
+        by_season.append({**stored_seasons.get(year, {}),
+                          "season": year, **_record(year_rows)})
     return {"team": team, "games": selected, "seasons": seasons,
             "selected_season": season, "summary": _record(selected),
             "season_summaries": by_season,
@@ -328,6 +336,16 @@ def team_historical_stats(repository: CFBRepository, team_id: int) -> dict[str, 
         production_group = {"INTERIOR_DL": "DL"}.get(
             row["position_group"], row["position_group"])
         pff_by_group.setdefault((row["season"], production_group), []).append(row)
+    for key in pff_by_group:
+        if key not in grouped:
+            grouped[key] = {
+                "season": key[0], "position_group": key[1],
+                "pass_yards": 0.0, "rush_yards": 0.0, "receiving_yards": 0.0,
+                "touchdowns": 0.0, "receptions": 0.0, "tackles": 0.0,
+                "sacks": 0.0, "interceptions": 0.0,
+            }
+            totals.setdefault(key[0], {"rush_yards": 0, "receiving_yards": 0,
+                                       "tackles": 0, "sacks": 0})
     positions = []
     for key, row in sorted(grouped.items(), key=lambda item: (-item[0][0], item[0][1])):
         grades = pff_by_group.get(key, [])
@@ -346,3 +364,147 @@ def team_historical_stats(repository: CFBRepository, team_id: int) -> dict[str, 
             "positions": positions,
             "identity": identity, "latest_production_season": latest,
             "pff_seasons": sorted({row["season"] for row in pff}, reverse=True)}
+
+
+def _game_stat_lines(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    games: dict[tuple[int, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (row["game_id"], row["player_id"])
+        item = games.setdefault(key, {
+            "game_id": row["game_id"], "season": row["season"],
+            "start_date": row["start_date"], "player_id": row["player_id"],
+            "player": row["player"], "position": row.get("position"),
+            "team": row["box_team"], "team_id": row.get("box_team_id"),
+            "home_team_id": row["home_team_id"], "home_team": row["home_team"],
+            "away_team_id": row["away_team_id"], "away_team": row["away_team"],
+            "stats": {},
+        })
+        item["stats"][(str(row["category"]).casefold(),
+                       str(row["stat_type"]).upper())] = row["stat_value"]
+
+    def value(item: dict[str, Any], category: str, *types: str) -> str | None:
+        for stat_type in types:
+            found = item["stats"].get((category, stat_type))
+            if found not in (None, "", "0", "0.0"):
+                return str(found)
+        return None
+
+    results = []
+    for item in games.values():
+        team_id = item.get("team_id")
+        if team_id == item["home_team_id"]:
+            opponent_id, opponent = item["away_team_id"], item["away_team"]
+        else:
+            opponent_id, opponent = item["home_team_id"], item["home_team"]
+        passing = value(item, "passing", "C/ATT", "COMPLETIONS/ATTEMPTS")
+        passing_yards = value(item, "passing", "YDS")
+        passing_td = value(item, "passing", "TD")
+        passing_int = value(item, "passing", "INT")
+        rushing_att = value(item, "rushing", "CAR", "ATT")
+        rushing_yards = value(item, "rushing", "YDS")
+        rushing_td = value(item, "rushing", "TD")
+        receptions = value(item, "receiving", "REC")
+        receiving_yards = value(item, "receiving", "YDS")
+        receiving_td = value(item, "receiving", "TD")
+        tackles = value(item, "defensive", "TOT", "TACKLES")
+        sacks = value(item, "defensive", "SACKS", "SACK")
+        interceptions = (value(item, "interceptions", "INT") or
+                         value(item, "defensive", "INT"))
+        local = _local_start(item["start_date"])
+        results.append({
+            **item, "opponent_id": opponent_id, "opponent": opponent,
+            "date_label": local.strftime("%b %d, %Y"),
+            "passing": " / ".join(filter(None, (
+                passing, f"{passing_yards} yd" if passing_yards else None,
+                f"{passing_td} TD" if passing_td else None,
+                f"{passing_int} INT" if passing_int else None))) or None,
+            "rushing": " / ".join(filter(None, (
+                f"{rushing_att} car" if rushing_att else None,
+                f"{rushing_yards} yd" if rushing_yards else None,
+                f"{rushing_td} TD" if rushing_td else None))) or None,
+            "receiving": " / ".join(filter(None, (
+                f"{receptions} rec" if receptions else None,
+                f"{receiving_yards} yd" if receiving_yards else None,
+                f"{receiving_td} TD" if receiving_td else None))) or None,
+            "defense": " / ".join(filter(None, (
+                f"{tackles} tkl" if tackles else None,
+                f"{sacks} sacks" if sacks else None,
+                f"{interceptions} INT" if interceptions else None))) or None,
+            "game_url": f"/college-football/games/{item['game_id']}/box-score/",
+        })
+    return sorted(results, key=lambda item: item["start_date"], reverse=True)
+
+
+def player_vs_opponent_history(repository: CFBRepository, player_id: str,
+                               opponent_id: int, before: str) -> list[dict[str, Any]]:
+    repository.initialize()
+    with closing(repository._connect()) as connection:
+        rows = [dict(row) for row in connection.execute(
+            """SELECT b.*,b.team box_team,b.team_id box_team_id,g.season,g.start_date,
+                      g.home_team_id,g.home_team,g.away_team_id,g.away_team,
+                      p.position
+               FROM game_player_box_stats b JOIN games g ON g.game_id=b.game_id
+               LEFT JOIN players p ON p.player_id=b.player_id AND p.season=g.season
+                    AND p.team=b.team
+               WHERE b.player_id=? AND g.start_date<? AND
+                     (g.home_team_id=? OR g.away_team_id=?)""",
+            (player_id, before, opponent_id, opponent_id))]
+    return [row for row in _game_stat_lines(rows) if row["opponent_id"] == opponent_id]
+
+
+def matchup_player_history(repository: CFBRepository, game: dict[str, Any]) -> list[dict[str, Any]]:
+    repository.initialize()
+    with closing(repository._connect()) as connection:
+        roster = {row["player_id"]: dict(row) for row in connection.execute(
+            """SELECT p.player_id,p.first_name||' '||p.last_name player,p.position,t.team_id
+               FROM players p JOIN teams t ON t.school=p.team
+               WHERE p.season=? AND t.team_id IN (?,?)""",
+            (game["season"], game["home_team_id"], game["away_team_id"]))}
+        identifiers = list(roster)
+        placeholders = ",".join("?" for _ in identifiers) or "NULL"
+        rows = [dict(row) for row in connection.execute(
+            f"""SELECT b.*,b.team box_team,b.team_id box_team_id,g.season,g.start_date,
+                       g.home_team_id,g.home_team,g.away_team_id,g.away_team,
+                       p.position
+                FROM game_player_box_stats b JOIN games g ON g.game_id=b.game_id
+                LEFT JOIN players p ON p.player_id=b.player_id AND p.season=?
+                     AND p.team=b.team
+                WHERE b.player_id IN ({placeholders}) AND g.start_date<?""",
+            (game["season"], *identifiers, game["start_date"]))]
+    lines = _game_stat_lines(rows)
+    result = []
+    for row in lines:
+        current = roster.get(row["player_id"])
+        if not current:
+            continue
+        target_opponent = (game["away_team_id"] if current["team_id"] == game["home_team_id"]
+                           else game["home_team_id"])
+        if row["opponent_id"] != target_opponent:
+            continue
+        row["player"] = current["player"]
+        row["position"] = current["position"]
+        row["current_team_id"] = current["team_id"]
+        result.append(row)
+    return result
+
+
+def upcoming_player_opponent_history(repository: CFBRepository, player_id: str,
+                                     team_id: int, season: int) -> dict[str, Any]:
+    repository.initialize()
+    # Game timestamps are stored as UTC ISO strings. Keep the lexical SQLite
+    # comparison in the same offset instead of comparing UTC to Eastern text.
+    now = datetime.now(tz=ZoneInfo("UTC")).isoformat()
+    with closing(repository._connect()) as connection:
+        row = connection.execute(
+            """SELECT * FROM games WHERE season=? AND completed=0 AND start_date>=?
+               AND (home_team_id=? OR away_team_id=?) ORDER BY start_date LIMIT 1""",
+            (season, now, team_id, team_id)).fetchone()
+    if row is None:
+        return {"game": None, "performances": []}
+    game = dict(row)
+    opponent_id = (game["away_team_id"] if game["home_team_id"] == team_id
+                   else game["home_team_id"])
+    opponent = game["away_team"] if game["home_team_id"] == team_id else game["home_team"]
+    return {"game": game, "opponent_id": opponent_id, "opponent": opponent,
+            "performances": player_vs_opponent_history(
+                repository, player_id, opponent_id, game["start_date"])}
