@@ -55,5 +55,33 @@ class ContentRepositoryTests(unittest.TestCase):
         self.assertTrue({"PLAYOFF","RANKINGS","STATISTICAL_ANALYSIS"} <= topics, topics)
         self.assertGreater(len(topics), 1)
 
+    def test_multi_team_publisher_does_not_add_every_team_it_covers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "cfb.sqlite3")
+            cfb = CFBRepository(path)
+            cfb.replace_teams((
+                Team(1, "Houston", "Cougars", "HOU", "Big 12", None,
+                     "fbs", None, None, (), ("Houston", "Cougars", "Houston Cougars"),
+                     None, None),
+                Team(2, "Texas", "Longhorns", "TEX", "SEC", None,
+                     "fbs", None, None, (), ("Texas", "Longhorns", "Texas Longhorns"),
+                     None, None),
+            ))
+            graph = UnifiedSourceRegistry(path)
+            graph.upsert_entity(SourceEntityProfile(
+                name="Houston Chronicle", organization="Houston Chronicle",
+                entity_type="ORGANIZATION", source_classes=("LOCAL_OUTLET",),
+                teams=("Houston", "Texas"), entity_key="local-publisher:chronicle"))
+            repository = ContentRepository(path)
+            content_id = repository.store_article(Article(
+                title="Texas quarterback prepares for opener - Houston Chronicle",
+                url="https://chronicle.example/texas", source="Houston Chronicle",
+                publisher="Houston Chronicle",
+                source_entity_key="local-publisher:chronicle",
+            ), 2026)
+            article = next(row for row in repository.recent(5)
+                           if row["content_id"] == content_id)
+            self.assertEqual([team["school"] for team in article["teams"]], ["Texas"])
+
 
 if __name__=="__main__": unittest.main()

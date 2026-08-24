@@ -17,7 +17,7 @@ from sports_aggregator.cfb.models import normalize_alias, normalize_person_name
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.models import Article
 from sports_aggregator.social.context import (
-    allows_unscoped_match, names_staff, transfer_role)
+    allows_unscoped_match, names_staff, strip_publisher_attribution, transfer_role)
 from sports_aggregator.social.relevance import score_item
 from sports_aggregator.social.roles import determine_role
 from sports_aggregator.social.unified import UnifiedSourceRegistry
@@ -387,6 +387,13 @@ class ContentRepository:
 
     #: Confidence for a team that a transfer story names only as the origin.
     ORIGIN_CONFIDENCE = 0.55
+    AMBIGUOUS_BARE_TEAM_ALIASES = {
+        "army", "buffalo", "charlotte", "houston", "liberty", "marshall",
+        "miami", "navy", "rice", "temple", "troy",
+    }
+    SCOPED_PROGRAM_ALIASES = {
+        "Houston": re.compile(r"(?<![A-Za-z])UH(?![A-Za-z])"),
+    }
 
     def _team_candidates(self, connection: sqlite3.Connection, text: str,
                          source_entity_id: int | None = None,
@@ -403,7 +410,9 @@ class ContentRepository:
         by_alias, short_by_alias = self._alias_index(connection)
 
         hits = [alias for alias, team_ids in by_alias.items()
-                if len(team_ids) == 1 and f" {alias} " in normalized]
+                if len(team_ids) == 1 and f" {alias} " in normalized
+                and (alias not in self.AMBIGUOUS_BARE_TEAM_ALIASES
+                     or re.search(rf"\b{re.escape(alias)}\s+football\b", normalized))]
         # Drop an alias fully contained in a longer one that also matched, so
         # "Ohio" does not compete with "Ohio State" in the same sentence.
         hits = [alias for alias in hits if not any(
@@ -470,13 +479,19 @@ class ContentRepository:
                 item["method"] = "list_mention"
                 item["confidence"] = 0.3
 
-        if source_entity_id is not None:
-            for row in connection.execute(
-                """SELECT t.team_id FROM source_entity_teams setm
+        if source_entity_id is not None and not found:
+            scoped = list(connection.execute(
+                """SELECT t.team_id,t.school FROM source_entity_teams setm
                    JOIN teams t ON t.school=setm.team WHERE setm.source_entity_id=?""",
                 (source_entity_id,),
-            ):
-                found.setdefault(row["team_id"], (0.65, "source_team_scope"))
+            ))
+            explicit_scoped = [row for row in scoped
+                               if self.SCOPED_PROGRAM_ALIASES.get(row["school"])
+                               and self.SCOPED_PROGRAM_ALIASES[row["school"]].search(text)]
+            if len(explicit_scoped) == 1:
+                found[explicit_scoped[0]["team_id"]] = (0.9, "scoped_program_alias")
+            elif len(scoped) == 1:
+                found[scoped[0]["team_id"]] = (0.65, "source_team_scope")
         return [(team_id, *values) for team_id, values in found.items()]
 
     def _player_candidates(self, connection: sqlite3.Connection, text: str, season: int,
@@ -731,14 +746,20 @@ class ContentRepository:
         self._games_by_season = {}
         with closing(self._connect()) as connection:
             rows = connection.execute(
-                """SELECT content_id,source_entity_id,title,body_text,summary,published_at
+                """SELECT content_id,source_entity_id,title,body_text,summary,publisher_name,
+                          published_at
                    FROM content_items ORDER BY content_id""").fetchall()
             counts = {"items": 0, "teams": 0, "players": 0, "games": 0, "conferences": 0}
             for row in rows:
-                text = " ".join(filter(None, (row["title"], row["body_text"], row["summary"])))
+                title = strip_publisher_attribution(row["title"], row["publisher_name"])
+                text = " ".join(filter(None, (
+                    title,
+                    strip_publisher_attribution(row["body_text"], row["publisher_name"]),
+                    strip_publisher_attribution(row["summary"], row["publisher_name"]),
+                )))
                 self._link_entities(connection, row["content_id"], text,
                                     row["source_entity_id"], season,
-                                    title=row["title"], published_at=row["published_at"])
+                                    title=title, published_at=row["published_at"])
                 counts["items"] += 1
             connection.commit()
             for table, key in (("content_teams", "teams"), ("content_players", "players"),
@@ -1120,7 +1141,10 @@ class ContentRepository:
     def store_article(self, article: Article, season: int) -> int:
         self.initialize(); now = datetime.now(timezone.utc).isoformat()
         published = article.published_at.isoformat() if article.published_at else now
-        text = " ".join(filter(None, (article.title, article.summary)))
+        publisher = article.publisher or article.source
+        evidence_title = strip_publisher_attribution(article.title, publisher)
+        text = " ".join(filter(None, (
+            evidence_title, strip_publisher_attribution(article.summary, publisher))))
         with closing(self._connect()) as connection:
             entity = connection.execute(
                 "SELECT source_entity_id FROM source_entities WHERE entity_key=?",
@@ -1167,7 +1191,7 @@ class ContentRepository:
             teams = [(team_id, 1.0, "provider_entity") for team_id in article.team_ids]
             if not teams:
                 teams = self._team_candidates(connection, text, entity_id,
-                                              title=article.title)
+                                              title=evidence_title)
             team_ids = {item[0] for item in teams}
             connection.executemany("INSERT INTO content_teams VALUES(?,?,?,?)",
                                    [(content_id,*item) for item in teams])
@@ -1175,7 +1199,7 @@ class ContentRepository:
                        for player_id in article.player_ids]
             if not players:
                 players = self._player_candidates(connection, text, season, team_ids,
-                                                  title=article.title)
+                                                  title=evidence_title)
             connection.executemany("INSERT INTO content_players VALUES(?,?,?,?,?)",
                                    [(content_id,*item) for item in players])
             games = [(game_id, 1.0, "provider_entity") for game_id in article.game_ids]

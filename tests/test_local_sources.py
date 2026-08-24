@@ -39,6 +39,19 @@ class LocalSourceResearchTests(unittest.TestCase):
         self.assertTrue(article_matches_team(
             "Michigan basketball player transfers to football as a wide receiver", team))
 
+    def test_publisher_name_is_not_team_evidence(self):
+        team = {"team": "Houston", "aliases": [
+            "Houston football", "Houston Cougars football", "UH football"]}
+        self.assertFalse(article_matches_team(
+            "Texas dismisses linebacker from football team - Houston Chronicle",
+            team, publisher="Houston Chronicle"))
+        self.assertTrue(article_matches_team(
+            "UH football notes: a kicking front-runner - Houston Chronicle",
+            team, publisher="Houston Chronicle"))
+        self.assertFalse(article_matches_team(
+            "Top Houston high school football players - Houston Chronicle",
+            team, publisher="Houston Chronicle"))
+
     def test_weak_cross_state_opponent_coverage_is_removed(self):
         def source(count):
             return {"name": "Home Paper", "domain": "paper.test", "priority": 1,

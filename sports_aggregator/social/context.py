@@ -60,6 +60,24 @@ COLLEGE_CONTEXT = _boundary_pattern(COLLEGE_TERMS)
 STAFF_CONTEXT = _boundary_pattern(STAFF_TERMS)
 
 
+def strip_publisher_attribution(text: str | None, publisher: str | None) -> str:
+    """Remove a feed's trailing publisher credit from matching evidence.
+
+    Google News titles use ``Headline - Houston Chronicle``. The publisher is
+    provenance, not a team mention; leaving it in the evidence linked every
+    Longhorns or Rice story from that paper to the Houston Cougars.
+    """
+    value = str(text or "")
+    name = str(publisher or "").strip()
+    if not value or not name:
+        return value
+    flexible_name = re.escape(name).replace(r"\ ", r"\s+")
+    return re.sub(
+        rf"\s*(?:[-\u2013\u2014|]\s*){flexible_name}(?=\s|$)", " ", value,
+        flags=re.I,
+    ).strip()
+
+
 def is_pro_context(text: str) -> bool:
     return bool(PRO_CONTEXT.search(text))
 

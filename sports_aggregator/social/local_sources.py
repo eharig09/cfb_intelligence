@@ -27,6 +27,8 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 
+from sports_aggregator.social.context import strip_publisher_attribution
+
 
 GOOGLE_NEWS = "https://news.google.com/rss/search"
 USER_AGENT = "sports-news-aggregator/1.0 local-source-research"
@@ -80,11 +82,16 @@ TV_DOMAIN = re.compile(r"(?:^|\.)(?:w|k)[a-z]{2,4}(?:tv)?\.(?:com|net)$", re.I)
 OFFICIAL_NAME = re.compile(r"\b(?:athletics|official athletic|university athletics)\b", re.I)
 
 AMBIGUOUS_ALIASES = {
+    "Houston": ("Houston Cougars football", "University of Houston football", "UH football"),
     "Miami": ("Miami Hurricanes football", "Miami FL Hurricanes football"),
     "Miami (OH)": ("Miami RedHawks football", "Miami Ohio football"),
     "USC": ("USC football", "USC Trojans football", "Southern California Trojans football"),
     "UTSA": ("UTSA Roadrunners football", "Texas San Antonio football"),
     "UMass": ("UMass Minutemen football", "Massachusetts Minutemen football"),
+}
+PROGRAM_QUALIFIER_SCHOOLS = set(AMBIGUOUS_ALIASES) | {
+    "Army", "Buffalo", "Charlotte", "Liberty", "Marshall", "Navy", "Rice",
+    "Temple", "Troy",
 }
 FOOTBALL_HEADLINE = re.compile(
     r"\b(?:football|quarterback|\bqb\b|running back|receiver|tight end|offensive|"
@@ -195,27 +202,39 @@ def _search_text(value: str | None) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", folded.casefold()))
 
 
-def _headline_mentions_team(headline: str, team: dict[str, Any], aliases: list[str]) -> bool:
+def _headline_mentions_team(headline: str, team: dict[str, Any], aliases: list[str],
+                            publisher: str | None = None) -> bool:
+    headline = strip_publisher_attribution(headline, publisher)
     if is_clearly_other_sport(headline):
         return False
     if not FOOTBALL_HEADLINE.search(headline):
         return False
     text = f" {_search_text(headline)} "
-    phrases = {_search_text(team.get("school")), _search_text(team.get("mascot"))}
+    school = str(team.get("school") or "")
+    phrases = {_search_text(team.get("mascot"))}
+    if school not in PROGRAM_QUALIFIER_SCHOOLS:
+        phrases.add(_search_text(school))
     abbreviation = _search_text(team.get("abbreviation"))
     if len(abbreviation) >= 3:
         phrases.add(abbreviation)
-    phrases.update(_search_text(alias).removesuffix(" football").strip() for alias in aliases)
+    for alias in aliases:
+        normalized = _search_text(alias)
+        phrases.add(normalized)
+        without_football = normalized.removesuffix(" football").strip()
+        if len(without_football.split()) >= 2:
+            phrases.add(without_football)
     return any(phrase and f" {phrase} " in text for phrase in phrases)
 
 
-def article_matches_team(text: str, team: dict[str, Any]) -> bool:
+def article_matches_team(text: str, team: dict[str, Any],
+                         publisher: str | None = None) -> bool:
     """Apply the same team-and-football evidence floor during ingestion."""
     inventory_shape = {
         "school": team.get("team") or team.get("school"),
         "mascot": team.get("mascot"), "abbreviation": team.get("abbreviation"),
     }
-    return _headline_mentions_team(text, inventory_shape, list(team.get("aliases") or ()))
+    return _headline_mentions_team(
+        text, inventory_shape, list(team.get("aliases") or ()), publisher=publisher)
 
 
 def _team_inventory(database_path: str | Path, classification: str) -> list[dict[str, Any]]:
@@ -264,7 +283,9 @@ def research_team(team: dict[str, Any], *, days: int = 365,
             continue
         matching = [item for item in results
                     if item["domain"] == candidate["domain"]
-                    and _headline_mentions_team(item["headline"], team, aliases)]
+                    and _headline_mentions_team(
+                        item["headline"], team, aliases,
+                        publisher=candidate["publisher"])]
         # One isolated mention does not establish that an outlet regularly
         # covers the program; it is commonly an opponent, wire story, or event
         # listing. Two recent domain-constrained results is the promotion floor.

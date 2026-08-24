@@ -162,7 +162,10 @@ def main(argv=None) -> int:
         combined={}; team_ids={}
         for team,source,articles in fetched:
             for article in articles:
-                if not article_matches_team(f"{article.title} {article.summary}", team):
+                if not article_matches_team(
+                    f"{article.title} {article.summary}", team,
+                    publisher=article.publisher or source["name"],
+                ):
                     continue
                 combined.setdefault(article.identity,article)
                 team_ids.setdefault(article.identity,set()).add(int(team["team_id"]))
