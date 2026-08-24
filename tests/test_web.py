@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from app import create_app
+from app import _legacy_dashboards_default, create_app
 from sports_aggregator.catalog import get_league
 from sports_aggregator.models import Article
 from sports_aggregator.service import AggregationResult
@@ -55,6 +55,12 @@ class WebTests(unittest.TestCase):
         # Assert on the page's structure rather than its copy, which is edited often.
         self.assertIn(b"College Football Today", page.data)
         self.assertIn(b"Source Streams", page.data)
+
+    def test_render_defaults_to_lightweight_cfb_runtime(self):
+        with patch.dict(os.environ, {"RENDER": "true"}, clear=True):
+            self.assertFalse(_legacy_dashboards_default())
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(_legacy_dashboards_default())
 
     def test_api_discovery_payload_and_limit(self):
         discovery = self.client.get("/api/v1/leagues")

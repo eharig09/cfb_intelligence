@@ -31,6 +31,17 @@ def _env_flag(name: str, default: bool) -> bool:
     return os.getenv(name, fallback).strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _legacy_dashboards_default() -> bool:
+    """Keep heavyweight baseball analytics out of constrained Render workers.
+
+    Importing the legacy Reds stack loads pandas, NumPy, matplotlib, seaborn,
+    scikit-learn and pybaseball. Local development keeps the historical default;
+    Render advertises itself with ``RENDER=true`` and defaults to the lightweight
+    CFB application unless an operator explicitly opts back in.
+    """
+    return not _env_flag("RENDER", False)
+
+
 def create_app(test_config: dict | None = None) -> Flask:
     """Application factory used by local, production, and test entry points."""
     app = Flask(__name__)
@@ -38,7 +49,8 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.config.from_mapping(
         CACHE_TYPE="flask_caching.backends.simplecache.SimpleCache",
         CACHE_DEFAULT_TIMEOUT=3600,
-        REGISTER_LEGACY_DASHBOARDS=_env_flag("REGISTER_LEGACY_DASHBOARDS", True),
+        REGISTER_LEGACY_DASHBOARDS=_env_flag(
+            "REGISTER_LEGACY_DASHBOARDS", _legacy_dashboards_default()),
         CFB_DEFAULT_SEASON=int(os.getenv("CFB_DEFAULT_SEASON", "0")) or None,
         CFB_DISPLAY_TIMEZONE=os.getenv("CFB_DISPLAY_TIMEZONE", "America/New_York"),
         CFB_REFRESH_TOKEN=os.getenv("CFB_REFRESH_TOKEN", ""),

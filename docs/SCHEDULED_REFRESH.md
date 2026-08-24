@@ -65,6 +65,10 @@ inside this same instance so it can update SQLite; limiting the resident web pro
 prevents Gunicorn workers plus an ingestion subprocess from exceeding the service's
 memory allocation. If memory alerts continue during a specific bootstrap step,
 inspect the refresh log for the last `[ ] step` marker before increasing the instance.
+The application also detects Render's built-in `RENDER=true` variable and defaults
+legacy dashboards off even when an existing dashboard-managed service has not synced
+the Blueprint environment values. `REGISTER_LEGACY_DASHBOARDS=1` remains an explicit
+override, but should not be used on the 512 MB instance.
 
 The default `CFB_SQLITE_BUSY_TIMEOUT_MS=60000` lets a refresh writer wait for a
 short concurrent transaction. Write transactions reserve their WAL writer slot
