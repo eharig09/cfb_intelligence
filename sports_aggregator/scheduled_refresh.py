@@ -30,6 +30,41 @@ def _acquire_lock(path: Path, started: datetime, stale_hours: float) -> bool:
     return True
 
 
+def _degraded_steps(log_path: Path) -> list[dict[str, str]]:
+    """Return bootstrap steps that failed even though the phase stayed non-fatal.
+
+    Bootstrap prints a ``[ ] step-name: description`` line before each command and
+    a ``[!!] failed`` or ``[!!] timeout`` result line afterward. A zero process
+    exit code with one of those result markers means an optional step failed. That
+    should not abort the data refresh, but it must not be reported as fully healthy.
+    """
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+
+    current_step = "unknown"
+    degraded: list[dict[str, str]] = []
+    for raw in lines:
+        line = raw.strip()
+        if line.startswith("[ ] "):
+            heading = line[4:]
+            current_step = heading.split(":", 1)[0].strip() or "unknown"
+            continue
+        if not line.startswith("[!!]"):
+            continue
+        remainder = line[4:].strip()
+        status = remainder.split(" ", 1)[0].strip().casefold()
+        if status not in {"failed", "timeout"}:
+            continue
+        degraded.append({
+            "step": current_step,
+            "status": status,
+            "message": remainder[:240],
+        })
+    return degraded
+
+
 def run_scheduled_refresh(
     season: int,
     *,
@@ -67,13 +102,22 @@ def run_scheduled_refresh(
             completed = runner(command, cwd=str(root), stdout=log,
                                stderr=subprocess.STDOUT, text=True)
         finished = datetime.now(timezone.utc)
+        degraded_steps = _degraded_steps(log_path) if completed.returncode == 0 else []
+        if completed.returncode != 0:
+            status = "failed"
+        elif degraded_steps:
+            status = "degraded"
+        else:
+            status = "success"
         report = {
-            "status": "success" if completed.returncode == 0 else "failed",
+            "status": status,
             "season": season, "started_at": started.isoformat(),
             "finished_at": finished.isoformat(),
             "seconds": round((finished - started).total_seconds(), 1),
             "exit_code": completed.returncode,
             "log": str(log_path.relative_to(root)),
+            "degraded_steps": degraded_steps,
+            "degraded_count": len(degraded_steps),
         }
         history = instance / "scheduled_refresh_history.jsonl"
         with history.open("a", encoding="utf-8") as handle:

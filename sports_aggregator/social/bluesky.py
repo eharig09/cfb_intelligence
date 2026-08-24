@@ -40,14 +40,45 @@ class BlueskyIdentityClient:
             return IdentityResolution(handle, None, None, None, "resolution_failed", str(exc))
 
     def author_feed(self, did: str, limit: int = 20) -> list[dict]:
-        response = self.session.get(
-            f"{self.base_url}/xrpc/app.bsky.feed.getAuthorFeed",
-            params={"actor": did, "limit": min(max(limit, 1), 100),
-                    "filter": "posts_no_replies"},
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        payload = response.json(); feed = payload.get("feed") if isinstance(payload, dict) else None
-        if not isinstance(feed, list):
-            raise ValueError("Bluesky author feed returned an invalid payload")
-        return feed
+        """Return a recovery window of authored posts, including replies/threads.
+
+        The old implementation fetched a single page and explicitly requested
+        ``posts_no_replies``. That could permanently miss useful reporter thread
+        updates whenever more than the CLI limit was published between refreshes.
+        Keep at least a 50-item recovery window and follow cursors when needed.
+        """
+        target = min(max(int(limit or 0), 50), 250)
+        feed_items: list[dict] = []
+        cursor: str | None = None
+
+        while len(feed_items) < target:
+            page_size = min(100, target - len(feed_items))
+            params = {
+                "actor": did,
+                "limit": page_size,
+                # Include replies so reporter threads and follow-up details are
+                # available to the intelligence pipeline.
+                "filter": "posts_with_replies",
+            }
+            if cursor:
+                params["cursor"] = cursor
+
+            response = self.session.get(
+                f"{self.base_url}/xrpc/app.bsky.feed.getAuthorFeed",
+                params=params,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            page = payload.get("feed") if isinstance(payload, dict) else None
+            if not isinstance(page, list):
+                raise ValueError("Bluesky author feed returned an invalid payload")
+            if not page:
+                break
+
+            feed_items.extend(page)
+            cursor = str(payload.get("cursor") or "") if isinstance(payload, dict) else ""
+            if not cursor:
+                break
+
+        return feed_items[:target]
