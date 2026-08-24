@@ -67,7 +67,9 @@ def main(argv=None) -> int:
         report=StoryRepository(repository.path).rebuild(); print(" ".join(f"{key}={value}" for key,value in report.items()))
         return 0
     if args.command=="status":
-        items=repository.recent(min(max(args.limit,1),100)); print(f"content_items={len(items)}")
+        report = repository.summary()
+        report["recent_items_returned"] = len(repository.recent(min(max(args.limit, 1), 100)))
+        print(json.dumps(report, indent=2, sort_keys=True))
         return 0
     if args.command=="ingest-reddit":
         from sports_aggregator.social.team_reddit import load_registry

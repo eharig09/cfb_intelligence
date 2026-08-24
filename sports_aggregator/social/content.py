@@ -6,11 +6,13 @@ from collections import defaultdict
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
 from urllib.parse import urlparse
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sports_aggregator.cfb.identity import readable_accent
 from sports_aggregator.cfb.models import normalize_alias, normalize_person_name
@@ -20,6 +22,7 @@ from sports_aggregator.social.context import (
     allows_unscoped_match, names_staff, strip_publisher_attribution, transfer_role)
 from sports_aggregator.social.relevance import score_item
 from sports_aggregator.social.roles import determine_role
+from sports_aggregator.social.sport import CLASSIFIER_VERSION, classify_cfb_eligibility
 from sports_aggregator.social.unified import UnifiedSourceRegistry
 
 
@@ -81,6 +84,14 @@ CREATE TABLE IF NOT EXISTS content_tag_evidence (
  confidence REAL NOT NULL, PRIMARY KEY(content_id,kind,target,matched_text),
  FOREIGN KEY(content_id) REFERENCES content_items(content_id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS content_sport_decisions (
+ content_id INTEGER PRIMARY KEY, sport TEXT NOT NULL, decision TEXT NOT NULL,
+ eligible INTEGER NOT NULL, confidence REAL NOT NULL, method TEXT NOT NULL,
+ evidence_json TEXT NOT NULL, classifier_version TEXT NOT NULL, decided_at TEXT NOT NULL,
+ FOREIGN KEY(content_id) REFERENCES content_items(content_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_content_sport_eligibility
+ ON content_sport_decisions(eligible,decision);
 CREATE TABLE IF NOT EXISTS content_relevance (
  content_id INTEGER PRIMARY KEY, score REAL NOT NULL, topic TEXT,
  importance REAL NOT NULL, recency REAL NOT NULL, expertise REAL NOT NULL,
@@ -273,7 +284,7 @@ def display_text(item: dict[str, Any], limit: int = 180) -> str:
     return body if len(body) <= limit else body[: limit - 1].rstrip() + "\u2026"
 
 
-def display_timestamp(value: str | None) -> str:
+def display_timestamp(value: str | None, *, now: datetime | None = None) -> str:
     """Publication time as a short, readable label rather than a raw ISO string."""
     if not value:
         return "undated"
@@ -283,7 +294,10 @@ def display_timestamp(value: str | None) -> str:
         return str(value)[:10]
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    delta = datetime.now(timezone.utc) - parsed
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    delta = current.astimezone(timezone.utc) - parsed
     hours = delta.total_seconds() / 3600
     if hours < 1:
         return "just now"
@@ -292,6 +306,64 @@ def display_timestamp(value: str | None) -> str:
     if hours < 24 * 7:
         return f"{int(hours // 24)}d ago"
     return parsed.strftime("%b %d")
+
+
+SOURCE_PRESENTATION = {
+    "rss": ("📰", "Article", False, "Opens an article"),
+    "bluesky": ("🦋", "Bluesky", False, "Opens a social post"),
+    "reddit": ("💬", "Reddit", False, "Opens a community post"),
+    "youtube": ("▶️", "Video", True, "Plays video with sound"),
+    "podcast": ("🎧", "Podcast", True, "Plays audio"),
+}
+
+
+def linked_piece_metadata(item: dict[str, Any], *, now: datetime | None = None,
+                          timezone_name: str | None = None) -> dict[str, Any]:
+    """Presentation metadata shared by every external content link.
+
+    Emoji are accompanied by text so the source type remains understandable to
+    screen readers and fonts without a particular glyph. Exact local time and
+    relative age are separate because they answer different reader questions.
+    """
+    platform = str(item.get("platform") or "").casefold()
+    icon, source_type, makes_sound, interaction = SOURCE_PRESENTATION.get(
+        platform, ("🔗", "Link", False, "Opens an external link"))
+    published_at = item.get("published_at")
+    exact = "Undated"
+    machine = ""
+    if published_at:
+        try:
+            parsed = datetime.fromisoformat(str(published_at).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            zone = ZoneInfo(timezone_name or os.getenv(
+                "CFB_DISPLAY_TIMEZONE", "America/New_York"))
+            local = parsed.astimezone(zone)
+            clock = local.strftime("%I:%M %p %Z").lstrip("0")
+            exact = f"{local.strftime('%b %d, %Y')} · {clock}"
+            machine = parsed.isoformat()
+        except (ValueError, TypeError, KeyError):
+            exact = str(published_at)[:16]
+    return {
+        "source_icon": icon,
+        "source_type_label": source_type,
+        "makes_sound": makes_sound,
+        "interaction_label": interaction,
+        "published_exact": exact,
+        "published_relative": display_timestamp(published_at, now=now),
+        "published_datetime": machine,
+        "source_display_name": (item.get("source_entity_name")
+                                or item.get("source_name")
+                                or item.get("publisher_name")
+                                or item.get("author_name")
+                                or source_type),
+    }
+
+
+def label_linked_piece(item: dict[str, Any]) -> dict[str, Any]:
+    """Mutate and return a repository result with common link metadata."""
+    item.update(linked_piece_metadata(item))
+    return item
 
 
 def source_role(classes: set[str]) -> str:
@@ -662,7 +734,10 @@ class ContentRepository:
     def _link_entities(self, connection: sqlite3.Connection, content_id: int, text: str,
                        entity_id: int | None, season: int,
                        title: str | None = None,
-                       published_at: str | datetime | None = None) -> set[int]:
+                       published_at: str | datetime | None = None,
+                       provider_team_ids: tuple[int, ...] = (),
+                       provider_player_ids: tuple[str, ...] = (),
+                       provider_game_ids: tuple[int, ...] = ()) -> set[int]:
         """Attach topic, team, player, and game candidates to one content row.
 
         Every ingestion path uses this, so a Reddit submission and a Bluesky post
@@ -671,21 +746,56 @@ class ContentRepository:
         """
         for table in ("content_topics", "content_teams", "content_players", "content_games"):
             connection.execute(f"DELETE FROM {table} WHERE content_id=?", (content_id,))
+        topics = classify_topics(text)
         connection.executemany("INSERT INTO content_topics VALUES(?,?,?,?)",
-                               [(content_id, *item) for item in classify_topics(text)])
+                               [(content_id, *item) for item in topics])
         connection.execute("DELETE FROM content_tag_evidence WHERE content_id=?", (content_id,))
-        teams = self._team_candidates(connection, text, entity_id, title=title)
+        if provider_team_ids:
+            self._last_evidence = [{
+                "kind": "team", "target": str(team_id), "matched_text": "provider entity",
+                "location": "provider", "method": "provider_entity", "confidence": 1.0,
+            } for team_id in provider_team_ids]
+            teams = [(team_id, 1.0, "provider_entity") for team_id in provider_team_ids]
+        else:
+            teams = self._team_candidates(connection, text, entity_id, title=title)
+
+        source_specialties = tuple(row[0] for row in connection.execute(
+            "SELECT specialty FROM source_entity_specialties WHERE source_entity_id=?",
+            (entity_id,),
+        )) if entity_id is not None else ()
+        decision = classify_cfb_eligibility(
+            text, title=title or "", team_candidates=teams,
+            provider_team_ids=provider_team_ids,
+            provider_player_ids=provider_player_ids,
+            provider_game_ids=provider_game_ids,
+            source_specialties=source_specialties,
+        )
+        connection.execute(
+            """INSERT OR REPLACE INTO content_sport_decisions
+               VALUES(?,?,?,?,?,?,?,?,?)""",
+            (content_id, decision.sport, decision.decision, int(decision.eligible),
+             decision.confidence, decision.method, json.dumps(decision.evidence),
+             CLASSIFIER_VERSION, datetime.now(timezone.utc).isoformat()),
+        )
+        connection.execute("DELETE FROM content_conferences WHERE content_id=?", (content_id,))
+        if not decision.eligible:
+            # Candidate generation is allowed to inform the sport decision, but
+            # rejected and review items must not leak those candidates into the
+            # reader-facing entity graph.
+            self._last_evidence = []
+            return set()
+
         team_ids = {item[0] for item in teams}
         # Only confidently-resolved teams may drive player and game resolution;
         # a passing mention in a ranking post should not schedule a game link.
         confident_ids = {item[0] for item in teams if item[1] >= 0.75}
         connection.executemany("INSERT INTO content_teams VALUES(?,?,?,?)",
                                [(content_id, *item) for item in teams])
-        connection.executemany(
-            "INSERT INTO content_players VALUES(?,?,?,?,?)",
-            [(content_id, *item)
-             for item in self._player_candidates(connection, text, season, team_ids,
-                                                  title=title)])
+        players = ([(season, player_id, 1.0, "provider_entity")
+                    for player_id in provider_player_ids] if provider_player_ids else
+                   self._player_candidates(connection, text, season, team_ids, title=title))
+        connection.executemany("INSERT INTO content_players VALUES(?,?,?,?,?)",
+                               [(content_id, *item) for item in players])
         # Evidence is written once, after every resolver has contributed to it.
         # Writing it straight after team resolution silently discarded every
         # player match, because those are appended later in this same method.
@@ -694,12 +804,11 @@ class ContentRepository:
             [(content_id, item["kind"], item["target"], item["matched_text"],
               item["location"], item["method"], item["confidence"])
              for item in self._last_evidence])
-        connection.executemany(
-            "INSERT INTO content_games VALUES(?,?,?,?)",
-            [(content_id, *item)
-             for item in self._game_candidates(connection, confident_ids, season,
-                                                text, published_at)])
-        connection.execute("DELETE FROM content_conferences WHERE content_id=?", (content_id,))
+        games = ([(game_id, 1.0, "provider_entity") for game_id in provider_game_ids]
+                 if provider_game_ids else
+                 self._game_candidates(connection, confident_ids, season, text, published_at))
+        connection.executemany("INSERT INTO content_games VALUES(?,?,?,?)",
+                               [(content_id, *item) for item in games])
         connection.executemany(
             "INSERT OR IGNORE INTO content_conferences VALUES(?,?,?,?)",
             [(content_id, *item)
@@ -749,8 +858,18 @@ class ContentRepository:
                 """SELECT content_id,source_entity_id,title,body_text,summary,publisher_name,
                           published_at
                    FROM content_items ORDER BY content_id""").fetchall()
-            counts = {"items": 0, "teams": 0, "players": 0, "games": 0, "conferences": 0}
+            counts = {"items": 0, "eligible": 0, "review": 0, "rejected": 0,
+                      "teams": 0, "players": 0, "games": 0, "conferences": 0}
             for row in rows:
+                provider_teams = tuple(inner[0] for inner in connection.execute(
+                    "SELECT team_id FROM content_teams WHERE content_id=? AND method='provider_entity'",
+                    (row["content_id"],)))
+                provider_players = tuple(inner[0] for inner in connection.execute(
+                    "SELECT player_id FROM content_players WHERE content_id=? AND method='provider_entity'",
+                    (row["content_id"],)))
+                provider_games = tuple(inner[0] for inner in connection.execute(
+                    "SELECT game_id FROM content_games WHERE content_id=? AND method='provider_entity'",
+                    (row["content_id"],)))
                 title = strip_publisher_attribution(row["title"], row["publisher_name"])
                 text = " ".join(filter(None, (
                     title,
@@ -759,9 +878,18 @@ class ContentRepository:
                 )))
                 self._link_entities(connection, row["content_id"], text,
                                     row["source_entity_id"], season,
-                                    title=title, published_at=row["published_at"])
+                                    title=title, published_at=row["published_at"],
+                                    provider_team_ids=provider_teams,
+                                    provider_player_ids=provider_players,
+                                    provider_game_ids=provider_games)
                 counts["items"] += 1
             connection.commit()
+            counts["eligible"] = connection.execute(
+                "SELECT COUNT(*) FROM content_sport_decisions WHERE eligible=1").fetchone()[0]
+            counts["review"] = connection.execute(
+                "SELECT COUNT(*) FROM content_sport_decisions WHERE decision='REVIEW'").fetchone()[0]
+            counts["rejected"] = connection.execute(
+                "SELECT COUNT(*) FROM content_sport_decisions WHERE decision='REJECT'").fetchone()[0]
             for table, key in (("content_teams", "teams"), ("content_players", "players"),
                                ("content_games", "games"), ("content_conferences", "conferences")):
                 counts[key] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
@@ -1184,31 +1312,14 @@ class ContentRepository:
                 "SELECT content_id FROM content_items WHERE platform='rss' AND platform_content_id=?",
                 (article.identity,),
             ).fetchone()[0]
-            for table in ("content_topics","content_teams","content_players","content_games","content_links"):
-                connection.execute(f"DELETE FROM {table} WHERE content_id=?", (content_id,))
-            connection.executemany("INSERT INTO content_topics VALUES(?,?,?,?)",
-                                   [(content_id,*item) for item in classify_topics(text)])
-            teams = [(team_id, 1.0, "provider_entity") for team_id in article.team_ids]
-            if not teams:
-                teams = self._team_candidates(connection, text, entity_id,
-                                              title=evidence_title)
-            team_ids = {item[0] for item in teams}
-            connection.executemany("INSERT INTO content_teams VALUES(?,?,?,?)",
-                                   [(content_id,*item) for item in teams])
-            players = [(season, player_id, 1.0, "provider_entity")
-                       for player_id in article.player_ids]
-            if not players:
-                players = self._player_candidates(connection, text, season, team_ids,
-                                                  title=evidence_title)
-            connection.executemany("INSERT INTO content_players VALUES(?,?,?,?,?)",
-                                   [(content_id,*item) for item in players])
-            games = [(game_id, 1.0, "provider_entity") for game_id in article.game_ids]
-            if not games:
-                confident_ids = {item[0] for item in teams if item[1] >= 0.75}
-                games = self._game_candidates(connection, confident_ids, season,
-                                              text, published)
-            connection.executemany("INSERT INTO content_games VALUES(?,?,?,?)",
-                                   [(content_id,*item) for item in games])
+            connection.execute("DELETE FROM content_links WHERE content_id=?", (content_id,))
+            self._link_entities(
+                connection, content_id, text, entity_id, season,
+                title=evidence_title, published_at=published,
+                provider_team_ids=tuple(article.team_ids),
+                provider_player_ids=tuple(article.player_ids),
+                provider_game_ids=tuple(article.game_ids),
+            )
             connection.execute("INSERT INTO content_links VALUES(?,?,'ORIGINAL')",
                                (content_id, article.original_url or article.url))
             connection.commit()
@@ -1226,18 +1337,23 @@ class ContentRepository:
         self.initialize()
         with closing(self._connect()) as connection:
             rows=connection.execute("""SELECT c.*,e.name source_entity_name,
-              COALESCE(r.score,0) relevance_score,r.topic relevance_topic,r.factors_json
+              COALESCE(r.score,0) relevance_score,r.topic relevance_topic,r.factors_json,
+              sd.sport,sd.decision sport_decision,sd.eligible cfb_eligible,
+              sd.confidence sport_confidence,sd.method sport_method,
+              sd.evidence_json sport_evidence_json,sd.classifier_version
               FROM content_items c LEFT JOIN source_entities e USING(source_entity_id)
               LEFT JOIN content_relevance r ON r.content_id=c.content_id
+              LEFT JOIN content_sport_decisions sd ON sd.content_id=c.content_id
               ORDER BY published_at DESC LIMIT ?""",(limit,)).fetchall(); result=[]
             for row in rows:
                 item=dict(row); content_id=item["content_id"]; item.pop("raw_json",None)
                 item["relevance_factors"]=json.loads(item.pop("factors_json") or "[]")
+                item["sport_evidence"] = json.loads(item.pop("sport_evidence_json") or "[]")
                 item["topics"]=[r[0] for r in connection.execute("SELECT topic FROM content_topics WHERE content_id=? ORDER BY topic",(content_id,))]
                 item["teams"]=[dict(r) for r in connection.execute("""SELECT ct.*,t.school FROM content_teams ct JOIN teams t USING(team_id) WHERE content_id=?""",(content_id,))]
                 item["players"]=[dict(r) for r in connection.execute("SELECT * FROM content_players WHERE content_id=?",(content_id,))]
                 item["games"]=[dict(r) for r in connection.execute("SELECT * FROM content_games WHERE content_id=?",(content_id,))]
-                result.append(item)
+                result.append(label_linked_piece(item))
         return result
 
     #: Reader-facing stream definitions. Each is a source *type*, not a vendor:
@@ -1308,6 +1424,8 @@ class ContentRepository:
         """Counts for the dashboard header: how much has been ingested and linked."""
         self.initialize()
         with closing(self._connect()) as connection:
+            sport_counts = dict(connection.execute(
+                "SELECT decision,COUNT(*) FROM content_sport_decisions GROUP BY decision"))
             return {
                 "total": connection.execute("SELECT COUNT(*) FROM content_items").fetchone()[0],
                 "platforms": connection.execute(
@@ -1318,6 +1436,9 @@ class ContentRepository:
                     "SELECT COUNT(*) FROM content_players").fetchone()[0],
                 "game_links": connection.execute(
                     "SELECT COUNT(*) FROM content_games").fetchone()[0],
+                "cfb_eligible": sport_counts.get("ACCEPT", 0),
+                "sport_review": sport_counts.get("REVIEW", 0),
+                "sport_rejected": sport_counts.get("REJECT", 0),
             }
 
     def source_streams(self, *, limit: int = 8, days: int = 10) -> list[dict[str, Any]]:
@@ -1339,9 +1460,11 @@ class ContentRepository:
                         c.source_role,e.name source_entity_name,
                         COALESCE(r.score,0) score,r.topic
                         FROM content_items c
+                        JOIN content_sport_decisions sd ON sd.content_id=c.content_id
                         LEFT JOIN source_entities e USING(source_entity_id)
                         LEFT JOIN content_relevance r ON r.content_id=c.content_id
-                        WHERE c.platform IN ({placeholders}) AND c.published_at>=?
+                        WHERE sd.eligible=1 AND c.platform IN ({placeholders})
+                        AND c.published_at>=?
                         ORDER BY COALESCE(r.score,0) DESC,c.published_at DESC LIMIT ?""",
                     (*platforms, cutoff, limit)).fetchall()
                 items = []
@@ -1358,9 +1481,11 @@ class ContentRepository:
                         team["accent"] = readable_accent(team.get("color"))
                     item["headline"] = display_text(item, limit=110)
                     item["published_label"] = display_timestamp(item.get("published_at"))
-                    items.append(item)
+                    items.append(label_linked_piece(item))
                 total = connection.execute(
-                    f"SELECT COUNT(*) FROM content_items WHERE platform IN ({placeholders})",
+                    f"""SELECT COUNT(*) FROM content_items c
+                         JOIN content_sport_decisions sd USING(content_id)
+                         WHERE sd.eligible=1 AND c.platform IN ({placeholders})""",
                     platforms).fetchone()[0]
                 streams.append({"key": key, "label": label, "description": description,
                                 "total": total, "items": items})
@@ -1383,8 +1508,9 @@ class ContentRepository:
                    c.content_type,c.source_role,e.name source_entity_name,
                    r.score,r.topic,r.factors_json
                    FROM content_items c JOIN content_relevance r USING(content_id)
+                   JOIN content_sport_decisions sd USING(content_id)
                    LEFT JOIN source_entities e USING(source_entity_id)
-                   WHERE c.published_at>=? AND r.score>=?
+                   WHERE sd.eligible=1 AND c.published_at>=? AND r.score>=?
                    ORDER BY r.score DESC,c.published_at DESC LIMIT ?""",
                 (cutoff, min_score, limit)).fetchall()
             items = []
@@ -1434,7 +1560,7 @@ class ContentRepository:
                         evidence["label"] = schools.get(evidence["target"], evidence["target"])
                     else:
                         evidence["label"] = evidence["target"]
-                items.append(item)
+                items.append(label_linked_piece(item))
         return items
 
     def for_game(self, game_id: int, team_ids: tuple[int, int], limit: int = 30) -> dict[str,list[dict]]:
@@ -1445,10 +1571,12 @@ class ContentRepository:
                    COALESCE(cg.game_match_score,0.45) relevance,
                    COALESCE(r.score,0) relevance_score,r.factors_json
                    FROM content_items c LEFT JOIN source_entities e USING(source_entity_id)
+                   JOIN content_sport_decisions sd ON sd.content_id=c.content_id
                    LEFT JOIN content_relevance r ON r.content_id=c.content_id
                    LEFT JOIN content_games cg ON cg.content_id=c.content_id AND cg.game_id=?
                    LEFT JOIN content_teams ct ON ct.content_id=c.content_id
-                   WHERE c.published_at>=? AND (cg.game_match_score>=0.75 OR ct.team_id IN (?,?))
+                   WHERE sd.eligible=1 AND c.published_at>=?
+                   AND (cg.game_match_score>=0.75 OR ct.team_id IN (?,?))
                    ORDER BY relevance DESC,relevance_score DESC,c.published_at DESC LIMIT ?""",
                 (game_id,cutoff,team_ids[0],team_ids[1],limit)).fetchall(); items=[]
             for row in rows:
@@ -1459,7 +1587,7 @@ class ContentRepository:
                 item["headline"]=display_text(item)
                 item["published_label"]=display_timestamp(item.get("published_at"))
                 item["relevance_factors"]=json.loads(item.pop("factors_json") or "[]")
-                items.append(item)
+                items.append(label_linked_piece(item))
         layers={"reported":[],"official":[],"analyzed":[],"scouted":[],"watched":[],"discussed":[],"other":[]}
         for item in items:
             topics=set(item["topics"]); role=item["source_role"]

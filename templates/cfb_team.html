@@ -20,6 +20,11 @@
     .schedule-switch a { border:1px solid var(--line); padding:6px 10px; text-decoration:none; font-size:.72rem; font-weight:800; }
     .schedule-switch a.active { background:var(--ink); border-color:var(--ink); color:#fff; }
     @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+    @media (max-width: 559px) {
+        .hero { gap: 9px; padding-left: 10px; border-left-width: 5px; align-items: flex-start; }
+        .logo { width: 46px; height: 46px; }
+        .schedule-switch a { flex: 1 1 auto; text-align: center; }
+    }
 
 </style>
 {% endblock %}

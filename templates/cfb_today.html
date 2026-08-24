@@ -1,5 +1,5 @@
 {% extends "_layout.html" %}
-{% from "_tables.html" import data_table, source_streams, tabbed_tables, tabs_script %}
+{% from "_tables.html" import data_table, linked_piece_meta, source_streams, tabbed_tables, tabs_script %}
 
 {% block title %}College Football Today | Sports News Aggregator{% endblock %}
 
@@ -56,9 +56,9 @@
         .panel-head { align-items: flex-start; }
         .panel-head span { max-width: 48%; text-align: right; line-height: 1.35; }
         .panel-body { max-height: 24rem; }
-        .conference-strip { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px;
-                            overscroll-behavior-inline: contain; }
-        .conference-chip { flex: 0 0 auto; }
+        .conference-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+                            overflow: visible; padding-bottom: 5px; }
+        .conference-chip { min-width: 0; text-align: center; }
     }
 </style>
 {% endblock %}
@@ -121,7 +121,7 @@
                     {%- for team in item.teams[:3] %}
                     <span class="stream-team" {% if team.accent %}style="--row-team:{{ team.accent }}"{% endif %}>{{ team.school }}</span>
                     {%- endfor %}
-                    <span>{{ item.source_entity_name or item.publisher_name }} &middot; {{ item.platform }}</span>
+                    {{ linked_piece_meta(item) }}
                 </div>
                 <details>
                     <summary>Why this ranks &amp; what it references</summary>

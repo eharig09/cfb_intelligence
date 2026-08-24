@@ -179,14 +179,15 @@ def _search_stories(connection, query: str, limit: int) -> list[dict[str, Any]]:
                c.published_at,c.source_role,e.name source_name,
                COALESCE(r.score,0) relevance
                FROM content_items c
+               JOIN content_sport_decisions sd USING(content_id)
                LEFT JOIN source_entities e USING(source_entity_id)
                LEFT JOIN content_relevance r ON r.content_id=c.content_id
-               WHERE c.title LIKE ? OR c.body_text LIKE ?
+               WHERE sd.eligible=1 AND (c.title LIKE ? OR c.body_text LIKE ?)
                ORDER BY COALESCE(r.score,0) DESC,c.published_at DESC LIMIT ?""",
             (pattern, pattern, limit)).fetchall()
     except Exception:
         return []
-    from sports_aggregator.social.content import display_text, display_timestamp
+    from sports_aggregator.social.content import display_text, display_timestamp, label_linked_piece
     results = []
     for row in rows:
         item = dict(row)
@@ -194,5 +195,5 @@ def _search_stories(connection, query: str, limit: int) -> list[dict[str, Any]]:
         item["published_label"] = display_timestamp(item.get("published_at"))
         item.pop("body_text", None)
         item["reason"] = "text contains the query"
-        results.append(item)
+        results.append(label_linked_piece(item))
     return results

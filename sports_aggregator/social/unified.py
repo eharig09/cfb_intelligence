@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import re
 import sqlite3
@@ -14,6 +15,7 @@ from sports_aggregator.social.models import (
     SourceEndpointProfile,
     SourceEntityProfile,
 )
+from sports_aggregator.social.media_catalog import catalog_sources, proposed_classes
 
 
 UNIFIED_SCHEMA = """
@@ -83,6 +85,18 @@ CREATE TABLE IF NOT EXISTS source_candidates (
  discovery_method TEXT NOT NULL, validation_status TEXT NOT NULL DEFAULT 'SOURCE_CANDIDATE',
  validation_score REAL, validation_notes TEXT NOT NULL DEFAULT '',
  last_checked_at TEXT, UNIQUE(name,discovery_method)
+);
+CREATE TABLE IF NOT EXISTS media_source_profiles (
+ candidate_id INTEGER PRIMARY KEY, source_key TEXT NOT NULL UNIQUE,
+ team TEXT, conference TEXT, coverage TEXT,
+ platform_json TEXT NOT NULL DEFAULT '[]', tags_json TEXT NOT NULL DEFAULT '[]',
+ priority INTEGER NOT NULL DEFAULT 3, youtube_url TEXT, podcast_url TEXT,
+ podcast_page_url TEXT, website TEXT, active_status TEXT,
+ last_verified_active TEXT, subscriber_count INTEGER, episode_frequency TEXT,
+ original_reporting INTEGER, program_access INTEGER, reporting_evidence TEXT,
+ content_focus TEXT, notes TEXT, catalog_status TEXT NOT NULL,
+ updated_at TEXT NOT NULL,
+ FOREIGN KEY(candidate_id) REFERENCES source_candidates(candidate_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS model_sources (
  model_source_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -303,25 +317,83 @@ class UnifiedSourceRegistry:
         return promoted
 
     def seed_media_candidates(self) -> int:
-        candidates = (
-            ("Cover 3 Podcast", "SHOW", "PODCAST,YOUTUBE_SHOW"),
-            ("Split Zone Duo", "SHOW", "PODCAST,YOUTUBE_SHOW"),
-            ("Joel Klatt Show", "SHOW", "PODCAST,YOUTUBE_SHOW"),
-            ("Josh Pate's College Football Show", "SHOW", "PODCAST,YOUTUBE_SHOW"),
-            ("College Football Nerds", "SHOW", "YOUTUBE_SHOW,MODEL"),
-            ("The Solid Verbal", "SHOW", "PODCAST,YOUTUBE_SHOW"),
-            ("Andy Staples", "PERSON", "NATIONAL_ANALYST,PODCAST,YOUTUBE_SHOW"),
-            ("College Football Enquirer", "SHOW", "PODCAST,YOUTUBE_SHOW"),
-        )
-        self.initialize()
+        """Idempotently import the versioned media research catalog.
+
+        Candidate identity remains separate from endpoint identity.  A catalog
+        record can supply an exact researched feed, but it is still resolved and
+        title-checked before becoming an ingestible endpoint.
+        """
+        records = catalog_sources()
+        self.initialize(); now = _now()
         with closing(self._connect()) as connection:
-            connection.executemany(
-                """INSERT OR IGNORE INTO source_candidates(name,proposed_entity_type,
-                   proposed_classes,discovery_method) VALUES(?,?,?,'USER_CURATED_EXTENSION')""",
-                candidates,
-            )
+            for record in records:
+                class_set = set(proposed_classes(record))
+                if record["source"] == "College Football Nerds":
+                    class_set.add("MODEL")
+                if record["source"] == "Andy Staples":
+                    class_set.add("NATIONAL_ANALYST")
+                row = connection.execute(
+                    """SELECT candidate_id,proposed_classes,proposed_entity_type
+                       FROM source_candidates WHERE name=? ORDER BY candidate_id LIMIT 1""",
+                    (record["source"],),
+                ).fetchone()
+                if row is None:
+                    status = "SOURCE_CANDIDATE" if {"PODCAST", "YOUTUBE_SHOW"} & class_set \
+                        else "CATALOG_ONLY"
+                    entity_type = "PERSON" if record["source"] == "Andy Staples" else "SHOW"
+                    classes = ",".join(sorted(class_set))
+                    connection.execute(
+                        """INSERT INTO source_candidates(name,proposed_entity_type,
+                           proposed_classes,discovery_method,validation_status)
+                           VALUES(?, ?, ?, 'USER_CURATED_MEDIA_CATALOG', ?)""",
+                        (record["source"], entity_type, classes, status),
+                    )
+                    candidate_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+                else:
+                    candidate_id = row[0]
+                    class_set.update(item for item in (row["proposed_classes"] or "").split(",")
+                                     if item)
+                    classes = ",".join(sorted(class_set))
+                    connection.execute(
+                        """UPDATE source_candidates SET proposed_classes=?,
+                           discovery_method=CASE WHEN discovery_method='USER_CURATED_EXTENSION'
+                             THEN discovery_method ELSE 'USER_CURATED_MEDIA_CATALOG' END
+                           WHERE candidate_id=?""",
+                        (classes, candidate_id),
+                    )
+                def flag(value):
+                    return None if value is None else int(bool(value))
+                connection.execute(
+                    """INSERT INTO media_source_profiles VALUES(
+                         ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(candidate_id) DO UPDATE SET
+                         source_key=excluded.source_key,team=excluded.team,
+                         conference=excluded.conference,coverage=excluded.coverage,
+                         platform_json=excluded.platform_json,tags_json=excluded.tags_json,
+                         priority=excluded.priority,youtube_url=excluded.youtube_url,
+                         podcast_url=excluded.podcast_url,
+                         podcast_page_url=excluded.podcast_page_url,website=excluded.website,
+                         active_status=excluded.active_status,
+                         last_verified_active=excluded.last_verified_active,
+                         subscriber_count=excluded.subscriber_count,
+                         episode_frequency=excluded.episode_frequency,
+                         original_reporting=excluded.original_reporting,
+                         program_access=excluded.program_access,
+                         reporting_evidence=excluded.reporting_evidence,
+                         content_focus=excluded.content_focus,notes=excluded.notes,
+                         catalog_status=excluded.catalog_status,updated_at=excluded.updated_at""",
+                    (candidate_id, record["source_key"], record["team"], record["conference"],
+                     record["coverage"], json.dumps(record["platform"], separators=(",", ":")),
+                     json.dumps(record["tags"], separators=(",", ":")), record["priority"],
+                     record["youtube_url"], record["podcast_url"], record["podcast_page_url"],
+                     record["website"], record["active_status"], record["last_verified_active"],
+                     record["subscriber_count"], record["episode_frequency"],
+                     flag(record["original_reporting"]), flag(record["program_access"]),
+                     record["reporting_evidence"], record["content_focus"], record["notes"],
+                     record["status"], now),
+                )
             connection.commit()
-        return len(candidates)
+        return len(records)
 
     def seed_configured_endpoints(self) -> int:
         """Attach endpoints already used or verified elsewhere in this application."""

@@ -1,3 +1,22 @@
+{% macro linked_piece_meta(item, show_source=true) %}
+<span class="linked-piece-meta" title="{{ item.interaction_label or 'Opens an external link' }}">
+    <span class="piece-kind">
+        <span class="piece-icon" aria-hidden="true">{{ item.source_icon or '🔗' }}</span>
+        <span>{{ item.source_type_label or item.platform or 'Link' }}</span>
+    </span>
+    {%- if show_source and (item.source_display_name or item.source_name or item.source_entity_name or item.publisher_name) %}
+    <span class="piece-source">{{ item.source_display_name or item.source_name or item.source_entity_name or item.publisher_name }}</span>
+    {%- endif %}
+    {%- if item.makes_sound %}
+    <span class="piece-sound" title="This link plays sound"><span aria-hidden="true">🔊</span> Sound</span>
+    {%- endif %}
+    {%- if item.published_exact %}
+    <time datetime="{{ item.published_datetime or item.published_at }}">{{ item.published_exact }}</time>
+    {%- endif %}
+    {%- if item.published_relative %}<span class="piece-age">{{ item.published_relative }}</span>{%- endif %}
+</span>
+{% endmacro %}
+
 {#
   One renderer for every statistical table in the application.
 
@@ -24,14 +43,17 @@
 
 {% macro data_table(table, extra_class='') %}
     {%- if table.rows %}
-    <div class="table-wrap" role="region" tabindex="0"
-         aria-label="{{ table.caption or 'Scrollable data table' }}">
+    {%- set mobile_cards = (table.columns | length) <= 9 %}
+    <div class="table-wrap {{ 'mobile-cards' if mobile_cards else 'mobile-scroll' }}"
+         role="region" tabindex="0"
+         aria-label="{{ table.caption or ('Data table' if mobile_cards else 'Scrollable data table') }}">
         {%- if table.caption or table.note %}
         <div class="table-caption">
             <strong>{{ table.caption or '' }}</strong>
             {%- if table.note %}<span>{{ table.note }}</span>{% endif %}
         </div>
         {%- endif %}
+        {%- if not mobile_cards %}<div class="mobile-scroll-note" aria-hidden="true">Swipe to see all columns &rarr;</div>{%- endif %}
         <table class="data{{ ' dense' if table.dense }}{{ ' ' ~ extra_class if extra_class }}">
             <thead>
                 <tr>
@@ -56,6 +78,7 @@
                         {{- ' emphasis' if column.emphasis }}
                         {{- ' is-empty' if text == '—' }}
                         {{- ' ' ~ row.get(column.key ~ '_class') if row.get(column.key ~ '_class') }}"
+                        data-label="{{ column.label }}"
                         data-sort-value="{{ row.get(column.key ~ '_sort', row.get(column.key)) if row.get(column.key) is not none else '' }}">
                         {%- set logo = row.get(column.key ~ '_logo') %}
                         {%- set color = row.get(column.key ~ '_color') %}
@@ -75,7 +98,8 @@
             <tfoot>
                 <tr>
                     {%- for column in table.columns %}
-                    <td class="col-{{ column.align }}{{ ' num' if column.numeric }}">
+                    <td class="col-{{ column.align }}{{ ' num' if column.numeric }}"
+                        data-label="{{ column.label }}">
                         {{- table.total_row.get(column.key) | cell(column.format) -}}
                     </td>
                     {%- endfor %}
@@ -173,7 +197,7 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
                     {%- endfor %}
                 </span>
                 {%- endif %}
-                <span class="stream-source">{{ item.source_entity_name or item.publisher_name }}</span>
+                {{ linked_piece_meta(item) }}
             </div>
         </article>
         {%- else %}
@@ -198,7 +222,7 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
                  {% if story.accent %}style="--story-team:{{ story.accent }}"{% endif %}>
             <div class="story-entry-top">
                 <span class="story-type">{{ story.story_type | replace('_', ' ') | lower }}</span>
-                <span class="story-source">{{ story.source_name }}</span>
+                <span>{{ story.story_score | cell('f1') }}</span>
             </div>
             <a href="{{ story.url }}" target="_blank" rel="noopener">{{ story.title }}</a>
             <div class="story-entry-meta">
@@ -210,6 +234,7 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
                 </a>
                 {%- endfor %}
                 <span>{{ story.sources | length }} source{{ '' if story.sources | length == 1 else 's' }}</span>
+                {{ linked_piece_meta(story) }}
             </div>
         </article>
         {%- endfor %}

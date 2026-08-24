@@ -408,6 +408,14 @@ class BootstrapTests(unittest.TestCase):
         self.assertLess(order.index("bluesky"), order.index("cluster"))
         self.assertLess(order.index("cluster"), order.index("score"))
 
+    def test_media_catalog_is_ready_before_validation_and_ingestion(self):
+        for phase in ("initial", "refresh"):
+            order = [step.name for step in steps(2026) if phase in step.phases]
+            self.assertLess(order.index("media-seed"), order.index("media-validate"))
+            self.assertLess(order.index("media-validate"), order.index("youtube"))
+            self.assertLess(order.index("media-validate"), order.index("podcasts"))
+            self.assertLess(order.index("podcasts"), order.index("retag"))
+
     def test_identity_derivations_follow_their_inputs(self):
         initial = [step.name for step in steps(2026) if "initial" in step.phases]
         self.assertLess(initial.index("cfbd-sync"), initial.index("cfbd-current-player-stats"))

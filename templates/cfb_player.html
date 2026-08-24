@@ -14,14 +14,21 @@
     .story { margin-bottom: 9px; }
     .story a { text-decoration: none; }
     .story-head { display: flex; justify-content: space-between; gap: 10px; }
-    @media (max-width: 760px) { .logo { display: none; } }
+    @media (max-width: 760px) {
+        .logo { display: none; }
+        .hero { grid-template-columns: minmax(0, 1fr); padding-left: 14px; border-left-width: 5px; }
+    }
+    @media (max-width: 559px) {
+        .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .facts .fact:last-child { grid-column: 1 / -1; }
+    }
 </style>
 {% endblock %}
 
 {% block body_attrs %} style="--team:{{ identity.accent }};--team-fill:{{ identity.fill }};--team-on-fill:{{ identity.on_fill }};--conference:{{ identity.conference_color }}"{% endblock %}
 
 {% block breadcrumb %}
-<a href="{{ url_for('cfb.team_preview', team_id=player.team_id, season=season) if player.team_id else url_for('cfb.today', season=season) }}">&larr; {{ player.team }}</a>
+<a href="{{ url_for('cfb.team_preview', team_id=player.team_id) if player.team_id else url_for('cfb.today') }}">&larr; {{ player.team }}</a>
 <span class="tagline">Player intelligence</span>
 {% endblock %}
 

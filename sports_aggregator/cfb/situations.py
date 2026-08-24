@@ -276,29 +276,31 @@ def availability_reports(repository: CFBRepository, game: dict[str, Any],
     with closing(repository._connect()) as connection:
         try:
             rows = connection.execute(
-                f"""SELECT DISTINCT c.content_id,c.title,c.body_text,c.canonical_url,
-                    c.published_at,c.source_role,ct.confidence,t.school,t.color,
+                f"""SELECT DISTINCT c.content_id,c.platform,c.content_type,c.title,c.body_text,
+                    c.canonical_url,c.published_at,c.source_role,c.publisher_name,c.author_name,
+                    ct.confidence,t.school,t.color,
                     e.name source_name,tp.topic
                     FROM content_items c
+                    JOIN content_sport_decisions sd USING(content_id)
                     JOIN content_topics tp ON tp.content_id=c.content_id
                     JOIN content_teams ct ON ct.content_id=c.content_id
                     JOIN teams t ON t.team_id=ct.team_id
                     LEFT JOIN source_entities e USING(source_entity_id)
-                    WHERE tp.topic IN ({placeholders}) AND ct.team_id IN (?,?)
+                    WHERE sd.eligible=1 AND tp.topic IN ({placeholders}) AND ct.team_id IN (?,?)
                     AND ct.confidence>=0.75 AND c.published_at>=?
                     ORDER BY c.published_at DESC LIMIT ?""",
                 (*AVAILABILITY_TOPICS, game["home_team_id"], game["away_team_id"],
                  cutoff, limit)).fetchall()
         except Exception:
             return []
-    from sports_aggregator.social.content import display_text, display_timestamp
+    from sports_aggregator.social.content import display_text, display_timestamp, label_linked_piece
     reports = []
     for row in rows:
         item = dict(row)
         item["headline"] = display_text(item, limit=120)
         item["published_label"] = display_timestamp(item.get("published_at"))
         item.pop("body_text", None)
-        reports.append(item)
+        reports.append(label_linked_piece(item))
     return reports
 
 

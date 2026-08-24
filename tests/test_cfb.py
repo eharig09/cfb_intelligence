@@ -266,6 +266,8 @@ class CFBRepositoryTests(unittest.TestCase):
         self.assertEqual(dashboard.status_code, 200)
         self.assertIn(b"Michigan", dashboard.data)
         self.assertIn(b"Games to Watch", dashboard.data)
+        historical_query = client.get("/college-football/?season=2025")
+        self.assertIn(b"2026", historical_query.data)
         game = client.get("/api/v1/cfb/games/100")
         self.assertEqual(game.status_code, 200)
         self.assertEqual(game.get_json()["television"], "ABC")

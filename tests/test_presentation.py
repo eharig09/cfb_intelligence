@@ -3,6 +3,7 @@ import re
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timezone
 
 from app import create_app
 from sports_aggregator.cfb.draft import DRAFT_POSITION_ABBREVIATIONS, position_abbreviation
@@ -13,7 +14,7 @@ from sports_aggregator.cfb.identity import (
 from sports_aggregator.cfb.models import Player, Team
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.social.content import (
-    ContentRepository, display_text, display_timestamp,
+    ContentRepository, display_text, display_timestamp, linked_piece_metadata,
 )
 
 
@@ -48,6 +49,19 @@ class DisplayTextTests(unittest.TestCase):
     def test_timestamps_render_as_relative_labels(self):
         self.assertEqual(display_timestamp(None), "undated")
         self.assertNotIn("T", display_timestamp("2026-08-22T17:15:22+00:00"))
+
+    def test_link_metadata_shows_source_exact_time_age_and_sound(self):
+        metadata = linked_piece_metadata({
+            "platform": "podcast", "source_name": "Saturday Show",
+            "published_at": "2026-08-24T17:15:00+00:00",
+        }, now=datetime(2026, 8, 24, 19, 15, tzinfo=timezone.utc),
+           timezone_name="America/New_York")
+        self.assertEqual(metadata["source_icon"], "🎧")
+        self.assertEqual(metadata["source_type_label"], "Podcast")
+        self.assertTrue(metadata["makes_sound"])
+        self.assertEqual(metadata["published_exact"], "Aug 24, 2026 · 1:15 PM EDT")
+        self.assertEqual(metadata["published_relative"], "2h ago")
+        self.assertEqual(metadata["source_display_name"], "Saturday Show")
 
 
 class IdentityTests(unittest.TestCase):
@@ -180,7 +194,9 @@ class ResponsiveTests(unittest.TestCase):
 
     def test_phone_navigation_and_tabs_do_not_squeeze_content(self):
         self.assertIn(".site-header .nav { flex-wrap: wrap", self.css)
-        self.assertIn(".tabs { flex-wrap: nowrap; overflow-x: auto", self.css)
+        self.assertIn(".tabs { display: grid; grid-template-columns: repeat(2", self.css)
+        self.assertIn(".table-wrap.mobile-cards", self.css)
+        self.assertIn("overflow: visible", self.css)
         self.assertIn("width: max-content", self.css)
 
 

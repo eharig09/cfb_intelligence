@@ -11,6 +11,8 @@ from sports_aggregator.social.content import ContentRepository, video_content_ty
 from sports_aggregator.social.media import (
     MediaRegistry, name_agreement, score_channel, score_podcast,
 )
+from sports_aggregator.social.media_catalog import load_catalog
+from sports_aggregator.social.unified import UnifiedSourceRegistry
 
 
 NOW = datetime(2026, 8, 23, 12, 0, tzinfo=timezone.utc)
@@ -67,6 +69,15 @@ class ChannelValidationTests(unittest.TestCase):
         self.assertEqual(result["blockers"], [])
         self.assertTrue(any("subscribers" in reason for reason in result["reasons"]))
 
+    def test_a_small_researched_channel_is_not_rejected_for_audience_size(self):
+        result = score_channel(
+            "Local Team Film Room",
+            channel("Local Team Film Room", 420, 12),
+            curated_identity=True,
+        )
+        self.assertTrue(result["promotable"])
+        self.assertNotIn("under 5,000 subscribers", result["blockers"])
+
     def test_a_feed_with_almost_no_episodes_is_blocked(self):
         result = score_podcast("Cover 3 Podcast", {
             "name": "Cover 3 Podcast", "artist": "CBS", "feed_url": "https://example.com/f.xml",
@@ -104,6 +115,57 @@ class VideoClassificationTests(unittest.TestCase):
 
     def test_an_unmatched_title_falls_back_to_analysis(self):
         self.assertEqual(video_content_type("Why Alabama is different"), "VIDEO_ANALYSIS")
+
+
+class MediaCatalogTests(unittest.TestCase):
+    def test_catalog_preserves_seed_sources_and_deduplicates_enrichment(self):
+        catalog = load_catalog()
+        names = [record["source"] for record in catalog["sources"]]
+        self.assertEqual(len(names), len(set(name.casefold() for name in names)))
+        self.assertIn("Hike's Peak", names)
+        self.assertIn("The Monarchists", names)
+        self.assertIn("Cover 3 Podcast", names)
+        hikes_peak = next(record for record in catalog["sources"]
+                          if record["source"] == "Hike's Peak")
+        self.assertTrue(hikes_peak["program_access"])
+        self.assertEqual(hikes_peak["priority"], 5)
+
+    def test_catalog_seeding_persists_scope_and_exact_feed(self):
+        handle, path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        try:
+            unified = UnifiedSourceRegistry(path)
+            seeded = unified.seed_media_candidates()
+            candidates = MediaRegistry(path).pending_candidates("podcast")
+            monarchists = next(row for row in candidates if row["name"] == "The Monarchists")
+            self.assertGreaterEqual(seeded, 80)
+            self.assertEqual(monarchists["team"], "Old Dominion")
+            self.assertEqual(
+                monarchists["podcast_url"], "https://feeds.captivate.fm/the-monarchists/"
+            )
+            self.assertIn("intel", monarchists["tags"])
+            registry = MediaRegistry(path)
+            registry.record_attempt(monarchists["candidate_id"], "podcast", "review", "test")
+            self.assertNotIn(
+                monarchists["candidate_id"],
+                {row["candidate_id"] for row in registry.pending_candidates("podcast")},
+            )
+            self.assertIn(
+                monarchists["candidate_id"],
+                {row["candidate_id"] for row in registry.pending_candidates("podcast", force=True)},
+            )
+            registry.promote_podcast(monarchists, {
+                "promotable": True, "score": 0.9,
+                "channel_id": monarchists["podcast_url"],
+            }, "The Monarchists")
+            entity = next(row for row in unified.list_entities()
+                          if row["name"] == "The Monarchists")
+            self.assertEqual(entity["teams"], ["Old Dominion"])
+            self.assertEqual(entity["conferences"], ["Sun Belt"])
+            self.assertEqual(entity["priority"], 5)
+            self.assertIn("intel", entity["specialties"])
+        finally:
+            os.unlink(path)
 
 
 class TeamResolutionTests(unittest.TestCase):
@@ -310,12 +372,15 @@ class SourceStreamTests(unittest.TestCase):
         endpoint = {"endpoint_id": None, "source_entity_id": None, "platform_id": "UC1",
                     "name": "Split Zone Duo", "classes": set()}
         self.repository.store_youtube_video(endpoint, {
-            "video_id": "vid1", "title": "Ohio State preview", "description": "",
+            "video_id": "vid1", "title": "Ohio State college football preview", "description": "",
             "published_at": NOW, "url": "https://www.youtube.com/watch?v=vid1",
             "duration": "PT30M"}, 2026)
         streams = {stream["key"]: stream for stream in self.repository.source_streams()}
         self.assertEqual(streams["video"]["total"], 1)
         self.assertEqual(streams["video"]["items"][0]["content_type"], "GAME_PREVIEW")
+        self.assertEqual(streams["video"]["items"][0]["source_icon"], "▶️")
+        self.assertTrue(streams["video"]["items"][0]["makes_sound"])
+        self.assertIn("2026", streams["video"]["items"][0]["published_exact"])
 
     def test_a_podcast_episode_without_a_date_is_skipped(self):
         endpoint = {"endpoint_id": None, "source_entity_id": None, "name": "Show", "classes": set()}

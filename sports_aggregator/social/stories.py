@@ -13,7 +13,7 @@ import sqlite3
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sports_aggregator.cfb.identity import conference_color, readable_accent
-from sports_aggregator.social.content import ContentRepository
+from sports_aggregator.social.content import ContentRepository, label_linked_piece
 
 
 STORY_SCHEMA = """
@@ -290,29 +290,68 @@ def _build_clusters(items: list[dict]) -> list[tuple[str, str, list[dict]]]:
             f"{item['platform']}:{item['platform_content_id']}".encode()).hexdigest()[:24]
         clusters.append((f"item:{digest}", "SINGLE_ITEM", [item]))
 
-    # Agglomerate the strongest pair first. Requiring cross-source evidence
-    # prevents a run of similar videos from one channel becoming a false story.
-    while True:
-        best_pair = None
-        best_score = 0.0
-        best_method = None
-        for left_index, (_, _, left_group) in enumerate(clusters):
-            for right_index in range(left_index + 1, len(clusters)):
-                right_group = clusters[right_index][2]
-                if len(left_group) + len(right_group) > MAX_CLUSTER_SIZE:
-                    continue
-                score, method = _best_cross_source_match(left_group, right_group)
-                if method and score > best_score:
-                    best_pair = left_index, right_index
-                    best_score, best_method = score, method
-        if best_pair is None:
-            break
-        left_index, right_index = best_pair
-        key, _, group = clusters[left_index]
-        group.extend(clusters[right_index][2])
-        clusters[left_index] = (key, best_method or "SHARED_TEAM_TOPIC", group)
-        clusters.pop(right_index)
-    return clusters
+    # Generate possible comparisons from shared subject/topic buckets. The old
+    # rebuild repeatedly compared every cluster with every other cluster after
+    # each merge, which became effectively cubic at a few thousand items. These
+    # buckets are lossless with respect to ``_similarity``: a valid match must
+    # share at least one team/player/game and one topic, so unrelated pairs never
+    # need a wording comparison.
+    candidate_buckets: dict[tuple, set[int]] = defaultdict(set)
+    for cluster_index, (_, _, group) in enumerate(clusters):
+        for item in group:
+            for topic in item["topics"]:
+                for game in item["games"]:
+                    candidate_buckets[("game", game, topic)].add(cluster_index)
+                for player in item["players"]:
+                    candidate_buckets[("player", player, topic)].add(cluster_index)
+                for team in item["teams"]:
+                    candidate_buckets[("team", team, topic)].add(cluster_index)
+
+    candidate_pairs: set[tuple[int, int]] = set()
+    for indexes in candidate_buckets.values():
+        ordered = sorted(indexes)
+        for position, left_index in enumerate(ordered):
+            candidate_pairs.update(
+                (left_index, right_index) for right_index in ordered[position + 1:]
+            )
+
+    edges = []
+    for left_index, right_index in candidate_pairs:
+        score, method = _best_cross_source_match(
+            clusters[left_index][2], clusters[right_index][2])
+        if method:
+            edges.append((score, left_index, right_index, method))
+    edges.sort(reverse=True)
+
+    # Kruskal-style union applies the strongest supported merge first, matching
+    # the previous agglomerative intent while evaluating each possible edge only
+    # once. The size cap still prevents a generic subject from swallowing a feed.
+    parent = list(range(len(clusters)))
+    sizes = [len(cluster[2]) for cluster in clusters]
+    keys = [cluster[0] for cluster in clusters]
+    methods = [cluster[1] for cluster in clusters]
+    groups = [list(cluster[2]) for cluster in clusters]
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    for _, left_index, right_index, method in edges:
+        left_root, right_root = find(left_index), find(right_index)
+        if left_root == right_root or sizes[left_root] + sizes[right_root] > MAX_CLUSTER_SIZE:
+            continue
+        # Keep the earlier seed as the stable story key.
+        if right_root < left_root:
+            left_root, right_root = right_root, left_root
+        parent[right_root] = left_root
+        sizes[left_root] += sizes[right_root]
+        groups[left_root].extend(groups[right_root])
+        methods[left_root] = method
+
+    return [(keys[index], methods[index], groups[index])
+            for index in range(len(clusters)) if find(index) == index]
 
 
 class StoryRepository:
@@ -330,8 +369,10 @@ class StoryRepository:
     def rebuild(self,lookback_days: int=21) -> dict:
         self.initialize(); cutoff=(datetime.now(timezone.utc)-timedelta(days=lookback_days)).isoformat()
         with closing(self._connect()) as connection:
-            rows=connection.execute("""SELECT c.*,COALESCE(e.reliability_score,2) reliability_score
+            rows=connection.execute("""SELECT c.*,COALESCE(e.reliability_score,2) reliability_score,
+              sd.eligible cfb_eligible,sd.decision sport_decision
               FROM content_items c LEFT JOIN source_entities e USING(source_entity_id)
+              LEFT JOIN content_sport_decisions sd USING(content_id)
               WHERE c.published_at>=? ORDER BY c.published_at""",(cutoff,)).fetchall()
             items=[]
             for row in rows:
@@ -346,7 +387,13 @@ class StoryRepository:
                 item["games"]={r[0] for r in connection.execute("SELECT game_id FROM content_games WHERE content_id=? AND game_match_score>=0.75",(cid,))}
                 item["tokens"]=_tokens(f"{item['title']} {item['body_text']}"); items.append(item)
 
-            items = [item for item in items if _is_cfb_relevant(item)]
+            # Persisted sport decisions are authoritative. The legacy fallback
+            # keeps a direct cluster command safe during a rolling deployment;
+            # the normal refresh runs ``retag`` first and removes that ambiguity.
+            items = [item for item in items
+                     if (bool(item["cfb_eligible"])
+                         if item.get("cfb_eligible") is not None
+                         else _is_cfb_relevant(item))]
 
             clusters = _build_clusters(items)
 
@@ -418,14 +465,20 @@ class StoryRepository:
                 item=dict(row); sid=item["story_id"]
                 item["title"] = item["headline_canonical"]
                 item["cluster_basis"] = item["clustering_method"]
-                item["sources"]=[dict(r) for r in connection.execute("""SELECT si.source_role,si.role_confidence,
-                  si.is_primary,c.canonical_url,c.original_url,c.body_text,c.title,c.published_at,e.name source_name
+                item["sources"]=[label_linked_piece(dict(r)) for r in connection.execute("""SELECT si.source_role,si.role_confidence,
+                  si.is_primary,c.platform,c.content_type,c.canonical_url,c.original_url,
+                  c.body_text,c.title,c.published_at,c.publisher_name,c.author_name,
+                  e.name source_name
                   FROM story_items si JOIN content_items c USING(content_id)
                   LEFT JOIN source_entities e USING(source_entity_id) WHERE si.story_id=?
                   ORDER BY si.is_primary DESC,c.published_at""",(sid,))]
                 primary = item["sources"][0] if item["sources"] else {}
                 item["url"] = primary.get("original_url") or primary.get("canonical_url")
-                item["source_name"] = primary.get("source_name") or "Source"
+                item["source_name"] = primary.get("source_display_name") or "Source"
+                for key in ("platform", "source_icon", "source_type_label", "makes_sound",
+                            "interaction_label", "published_at", "published_exact",
+                            "published_relative", "published_datetime", "source_display_name"):
+                    item[key] = primary.get(key)
                 item["teams"]=[dict(r) for r in connection.execute(
                   """SELECT t.team_id,t.school,t.conference,t.color,t.logos_json
                      FROM story_teams st JOIN teams t USING(team_id) WHERE story_id=?""",(sid,))]

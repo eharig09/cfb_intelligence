@@ -41,6 +41,32 @@ class FormatTests(unittest.TestCase):
         self.assertFalse(Table(columns=[Column("a", "A")]))
         self.assertTrue(Table(columns=[Column("a", "A")], rows=[{"a": 1}]))
 
+    def test_compact_tables_render_as_labeled_mobile_cards(self):
+        app = create_app({"TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False})
+        template = app.jinja_env.from_string(
+            '{% from "_tables.html" import data_table %}{{ data_table(table) }}')
+        with app.test_request_context():
+            html = template.render(table=Table(
+                columns=[Column("team", "Team"), Column("record", "Record")],
+                rows=[{"team": "Michigan", "record": "10-2"}],
+            ))
+        self.assertIn("mobile-cards", html)
+        self.assertIn('data-label="Team"', html)
+        self.assertIn('data-label="Record"', html)
+
+    def test_wide_stat_tables_keep_a_local_swipe_region(self):
+        app = create_app({"TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False})
+        template = app.jinja_env.from_string(
+            '{% from "_tables.html" import data_table %}{{ data_table(table) }}')
+        columns = [Column(f"stat_{index}", f"S{index}") for index in range(10)]
+        with app.test_request_context():
+            html = template.render(table=Table(
+                columns=columns,
+                rows=[{column.key: index for index, column in enumerate(columns)}],
+            ))
+        self.assertIn("mobile-scroll", html)
+        self.assertIn("Swipe to see all columns", html)
+
 
 class StatLineTests(unittest.TestCase):
     def test_long_form_rows_collapse_into_one_row_per_season(self):
@@ -131,9 +157,13 @@ class ViewTableTests(unittest.TestCase):
         self.assertEqual(table.rows[0]["result"], "W 30-17")
         self.assertEqual(table.rows[0]["result_class"], "win")
         self.assertEqual(table.rows[0]["site"], "vs")
+        self.assertEqual(table.rows[0]["detail"], "Box score")
+        self.assertTrue(table.rows[0]["detail_url"].endswith("/box-score/"))
         self.assertEqual(table.rows[1]["result"], "L 14-21")
         self.assertEqual(table.rows[1]["site"], "at")
         self.assertEqual(table.rows[2]["result_class"], "pending")
+        self.assertEqual(table.rows[2]["detail"], "Preview")
+        self.assertFalse(table.rows[2]["detail_url"].endswith("/box-score/"))
 
     def test_standings_render_records_as_records_not_separate_columns(self):
         standings = [{

@@ -65,6 +65,43 @@ class Article:
             return "Date unavailable"
         return self.published_at.strftime("%b %d, %Y · %I:%M %p UTC")
 
+    @property
+    def source_icon(self) -> str:
+        kind = self.source_type.casefold()
+        if kind in {"youtube", "video"}:
+            return "▶️"
+        if kind in {"podcast", "audio"}:
+            return "🎧"
+        if kind in {"reddit", "community"}:
+            return "💬"
+        if kind in {"bluesky", "social"}:
+            return "🦋"
+        return "📰"
+
+    @property
+    def source_label(self) -> str:
+        return {"youtube": "Video", "video": "Video", "podcast": "Podcast",
+                "audio": "Podcast", "reddit": "Reddit", "community": "Community",
+                "bluesky": "Bluesky", "social": "Social post"}.get(
+                    self.source_type.casefold(), "Article")
+
+    @property
+    def makes_sound(self) -> bool:
+        return self.source_type.casefold() in {"youtube", "video", "podcast", "audio"}
+
+    @property
+    def published_relative(self) -> str:
+        if self.published_at is None:
+            return "undated"
+        hours = max(0, (datetime.now(timezone.utc) - self.published_at).total_seconds() / 3600)
+        if hours < 1:
+            return "just now"
+        if hours < 24:
+            return f"{int(hours)}h ago"
+        if hours < 24 * 7:
+            return f"{int(hours // 24)}d ago"
+        return self.published_at.strftime("%b %d")
+
     def to_dict(self) -> dict[str, str | None]:
         return {
             "title": self.title,
@@ -74,6 +111,11 @@ class Article:
             "author": self.author,
             "summary": self.summary,
             "source_type": self.source_type,
+            "source_icon": self.source_icon,
+            "source_label": self.source_label,
+            "makes_sound": self.makes_sound,
+            "published_label": self.published_label,
+            "published_relative": self.published_relative,
             "reliability": self.reliability,
             "publisher": self.publisher or self.source,
             "original_url": self.original_url or self.url,

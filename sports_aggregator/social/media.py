@@ -65,7 +65,8 @@ def name_agreement(candidate: str, channel_title: str) -> float:
     return overlap * 0.6
 
 
-def score_channel(candidate_name: str, channel: dict[str, Any]) -> dict[str, Any]:
+def score_channel(candidate_name: str, channel: dict[str, Any], *,
+                  curated_identity: bool = False) -> dict[str, Any]:
     """Score one search result against the candidate, with reasons."""
     agreement = name_agreement(candidate_name, channel.get("title", ""))
     subscribers = int(channel.get("subscribers") or 0)
@@ -84,10 +85,15 @@ def score_channel(candidate_name: str, channel: dict[str, Any]) -> dict[str, Any
     blockers = []
     if agreement < 0.85:
         blockers.append("channel title does not clearly match the candidate")
-    if subscribers < MIN_SUBSCRIBERS:
+    # Search-only discovery still needs an audience/history corroborator because
+    # names are easy to impersonate.  A researched stable URL does not: small
+    # local channels are judged on identity, activity and access evidence.
+    if subscribers < MIN_SUBSCRIBERS and not curated_identity:
         blockers.append(f"under {MIN_SUBSCRIBERS:,} subscribers")
-    if videos < MIN_VIDEOS:
-        blockers.append(f"under {MIN_VIDEOS} uploads")
+    minimum_videos = 5 if curated_identity else MIN_VIDEOS
+    if videos < minimum_videos:
+        blockers.append(f"under {minimum_videos} uploads")
+    threshold = 0.55 if curated_identity else PROMOTION_SCORE
     return {
         "channel_id": channel.get("channel_id"),
         "title": channel.get("title"),
@@ -98,7 +104,7 @@ def score_channel(candidate_name: str, channel: dict[str, Any]) -> dict[str, Any
         "score": round(score, 3),
         "reasons": reasons,
         "blockers": blockers,
-        "promotable": not blockers and score >= PROMOTION_SCORE,
+        "promotable": not blockers and score >= threshold,
     }
 
 
@@ -172,6 +178,11 @@ CREATE TABLE IF NOT EXISTS media_candidate_matches (
  evidence_json TEXT NOT NULL, checked_at TEXT NOT NULL,
  PRIMARY KEY(candidate_id,platform,platform_id)
 );
+CREATE TABLE IF NOT EXISTS media_validation_attempts (
+ candidate_id INTEGER NOT NULL, platform TEXT NOT NULL, status TEXT NOT NULL,
+ notes TEXT NOT NULL DEFAULT '', checked_at TEXT NOT NULL,
+ PRIMARY KEY(candidate_id,platform)
+);
 CREATE TABLE IF NOT EXISTS content_clusters (
  cluster_id INTEGER PRIMARY KEY AUTOINCREMENT,
  cluster_key TEXT NOT NULL UNIQUE, title TEXT NOT NULL,
@@ -192,7 +203,7 @@ class MediaRegistry:
         self.path = Path(database_path)
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, timeout=20)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
@@ -202,13 +213,94 @@ class MediaRegistry:
         with closing(self._connect()) as connection:
             connection.executescript(MEDIA_SCHEMA)
 
-    def pending_candidates(self) -> list[dict[str, Any]]:
+    def pending_candidates(self, platform: str | None = None, *,
+                           force: bool = False, retry_after_days: int = 7) -> list[dict[str, Any]]:
         self.initialize()
         with closing(self._connect()) as connection:
-            return [dict(row) for row in connection.execute(
-                """SELECT * FROM source_candidates
-                   WHERE validation_status IN ('SOURCE_CANDIDATE','NEEDS_REVIEW')
-                   ORDER BY candidate_id""")]
+            rows = connection.execute(
+                """SELECT c.*,p.source_key,p.team,p.conference,p.coverage,
+                          p.platform_json,p.tags_json,p.priority catalog_priority,
+                          p.youtube_url,p.podcast_url,p.podcast_page_url,p.website,
+                          p.active_status,p.last_verified_active,p.subscriber_count,
+                          p.episode_frequency,p.original_reporting,p.program_access,
+                          p.reporting_evidence,p.content_focus,p.notes,p.catalog_status
+                   FROM source_candidates c
+                   LEFT JOIN media_source_profiles p USING(candidate_id)
+                   WHERE c.validation_status IN ('SOURCE_CANDIDATE','NEEDS_REVIEW','PROMOTED')
+                   ORDER BY c.candidate_id""").fetchall()
+            result = []
+            for row in rows:
+                item = dict(row)
+                item["platforms"] = json.loads(item.pop("platform_json") or "[]")
+                item["tags"] = json.loads(item.pop("tags_json") or "[]")
+                if platform:
+                    entity_key = f"show:{_normalize(item['name']).replace(' ', '-')}"
+                    exists = connection.execute(
+                        """SELECT 1 FROM source_endpoints ep JOIN source_entities e
+                           USING(source_entity_id) WHERE e.entity_key=? AND ep.platform=?
+                           AND ep.active=1 AND ep.verification_status='verified'""",
+                        (entity_key, platform),
+                    ).fetchone()
+                    if exists:
+                        continue
+                    attempt = connection.execute(
+                        """SELECT checked_at FROM media_validation_attempts
+                           WHERE candidate_id=? AND platform=?""",
+                        (item["candidate_id"], platform),
+                    ).fetchone()
+                    if attempt and not force:
+                        checked = datetime.fromisoformat(attempt["checked_at"])
+                        age = datetime.now(timezone.utc) - checked.astimezone(timezone.utc)
+                        if age.days < max(retry_after_days, 1):
+                            continue
+                result.append(item)
+            return result
+
+    def record_attempt(self, candidate_id: int, platform: str,
+                       status: str, notes: str = "") -> None:
+        self.initialize(); now = datetime.now(timezone.utc).isoformat()
+        with closing(self._connect()) as connection:
+            connection.execute(
+                """INSERT INTO media_validation_attempts VALUES(?,?,?,?,?)
+                   ON CONFLICT(candidate_id,platform) DO UPDATE SET
+                   status=excluded.status,notes=excluded.notes,checked_at=excluded.checked_at""",
+                (candidate_id, platform, status, notes[:1000], now),
+            )
+            connection.commit()
+
+    @staticmethod
+    def _enrich_entity(connection: sqlite3.Connection, entity_id: int,
+                       candidate: dict[str, Any], classes: Iterable[str]) -> None:
+        tags = set(candidate.get("tags") or [])
+        priority = int(candidate.get("catalog_priority") or 2)
+        reporting = 4 if candidate.get("original_reporting") else (2 if "intel" in tags else 1)
+        access = 4 if candidate.get("program_access") else (2 if candidate.get("team") else 1)
+        analytics = 4 if "analysis" in tags else 1
+        national = 4 if not candidate.get("team") and not candidate.get("conference") else 1
+        g5 = 5 if candidate.get("conference") in {
+            "American Athletic", "Conference USA", "Mid-American", "Mountain West",
+            "Pac-12", "Sun Belt",
+        } or "G6" in (candidate.get("coverage") or "") else 1
+        connection.execute(
+            """UPDATE source_entities SET priority=max(priority,?),
+                 reporting_score=max(reporting_score,?),team_access_score=max(team_access_score,?),
+                 analytics_score=max(analytics_score,?),national_score=max(national_score,?),
+                 g5_score=max(g5_score,?),updated_at=? WHERE source_entity_id=?""",
+            (priority, reporting, access, analytics, national, g5,
+             datetime.now(timezone.utc).isoformat(), entity_id),
+        )
+        for source_class in classes:
+            connection.execute("INSERT OR IGNORE INTO source_entity_classes VALUES(?,?)",
+                               (entity_id, source_class))
+        for specialty in sorted(tags | {item for item in (candidate.get("content_focus") or "").split(", ") if item}):
+            connection.execute("INSERT OR IGNORE INTO source_entity_specialties VALUES(?,?)",
+                               (entity_id, specialty))
+        if candidate.get("team"):
+            connection.execute("INSERT OR REPLACE INTO source_entity_teams VALUES(?,?,1.0)",
+                               (entity_id, candidate["team"]))
+        if candidate.get("conference"):
+            connection.execute("INSERT OR REPLACE INTO source_entity_conferences VALUES(?,?,1.0)",
+                               (entity_id, candidate["conference"]))
 
     def record_matches(self, candidate_id: int, platform: str,
                        matches: Iterable[dict[str, Any]]) -> None:
@@ -252,10 +344,7 @@ class MediaRegistry:
             entity_id = connection.execute(
                 "SELECT source_entity_id FROM source_entities WHERE entity_key=?",
                 (entity_key,)).fetchone()[0]
-            for source_class in classes:
-                connection.execute(
-                    "INSERT OR IGNORE INTO source_entity_classes VALUES(?,?)",
-                    (entity_id, source_class))
+            self._enrich_entity(connection, entity_id, candidate, classes)
             endpoint_key = f"youtube:channel:{match['channel_id']}"
             connection.execute(
                 """INSERT INTO source_endpoints(source_entity_id,endpoint_key,platform,
@@ -309,8 +398,7 @@ class MediaRegistry:
                     "SELECT source_entity_id FROM source_entities WHERE entity_key=?",
                     (entity_key,)).fetchone()
             entity_id = row[0]
-            connection.execute("INSERT OR IGNORE INTO source_entity_classes VALUES(?,'PODCAST')",
-                               (entity_id,))
+            self._enrich_entity(connection, entity_id, candidate, ("PODCAST",))
             endpoint_key = f"podcast:feed:{_normalize(name).replace(' ', '-')}"
             connection.execute(
                 """INSERT INTO source_endpoints(source_entity_id,endpoint_key,platform,
@@ -325,6 +413,7 @@ class MediaRegistry:
                  now, now, now, feed_title or name, now))
             connection.execute(
                 """UPDATE source_candidates SET validation_score=?,
+                   validation_status='PROMOTED',
                    validation_notes=validation_notes||' | podcast feed validated',
                    last_checked_at=? WHERE candidate_id=?""",
                 (match["score"], now, candidate["candidate_id"]))
@@ -380,13 +469,27 @@ class MediaRegistry:
         self.initialize()
         with closing(self._connect()) as connection:
             candidates = [dict(row) for row in connection.execute(
-                "SELECT * FROM source_candidates ORDER BY validation_status,name")]
+                """SELECT c.*,p.source_key,p.team,p.conference,p.coverage,
+                          p.platform_json,p.tags_json,p.priority catalog_priority,
+                          p.youtube_url,p.podcast_url,p.podcast_page_url,p.website,
+                          p.active_status,p.last_verified_active,p.subscriber_count,
+                          p.episode_frequency,p.original_reporting,p.program_access,
+                          p.reporting_evidence,p.content_focus,p.notes,p.catalog_status
+                   FROM source_candidates c LEFT JOIN media_source_profiles p USING(candidate_id)
+                   ORDER BY c.validation_status,c.name""")]
             matches = [dict(row) for row in connection.execute(
                 """SELECT m.*,c.name candidate_name FROM media_candidate_matches m
                    JOIN source_candidates c USING(candidate_id)
                    ORDER BY m.candidate_id,m.score DESC""")]
+            attempts = [dict(row) for row in connection.execute(
+                """SELECT a.*,c.name candidate_name FROM media_validation_attempts a
+                   JOIN source_candidates c USING(candidate_id)
+                   ORDER BY a.checked_at DESC,c.name""")]
         for match in matches:
             match["evidence"] = json.loads(match.pop("evidence_json") or "{}")
-        return {"candidates": candidates, "matches": matches,
+        for candidate in candidates:
+            candidate["platforms"] = json.loads(candidate.pop("platform_json") or "[]")
+            candidate["tags"] = json.loads(candidate.pop("tags_json") or "[]")
+        return {"candidates": candidates, "matches": matches, "attempts": attempts,
                 "youtube_endpoints": self.youtube_endpoints(),
                 "podcast_endpoints": self.podcast_endpoints()}

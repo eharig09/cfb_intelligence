@@ -123,6 +123,10 @@ Presentation is its own boundary rather than template logic:
   unscoped player match is blocked by professional-football vocabulary and by a
   coaching title beside the name, because shared names across levels were the
   main source of wrong links.
+- `sports_aggregator/social/sport.py` persists an explainable sport decision
+  before incoming team, player, or game candidates become accepted links.
+  Explicit other-sport and NFL items are rejected; uncertain items remain stored
+  for editorial review but cannot enter CFB pages or story clusters.
 - `sports_aggregator/cfb/identity.py` derives a contrast-checked accent for each
   team from its CFBD color and holds the editorial conference palette. Team
   colors are chosen for helmets, so a near-white one is darkened only as far as
@@ -333,11 +337,21 @@ submission that links out credits the external publisher, keeping the subreddit
 only as the discovery endpoint.
 
 `retag` re-runs topic and entity resolution over stored content without
-re-fetching any source, so a tagging-rule change reaches the whole archive:
+re-fetching any source, so a tagging-rule change reaches the whole archive. It
+now runs the persisted sport gate first. `ACCEPT` items can receive entity links;
+`REJECT` and `REVIEW` items keep their text and decision evidence but have their
+team, player, game, and conference links cleared:
 
 ```powershell
 python -m sports_aggregator.social.content_cli retag --season 2026
 ```
+
+`content_cli status` reports `cfb_eligible`, `sport_rejected`, and
+`sport_review`. Use `review-export --review-mode triage` to inspect uncertain
+sport decisions alongside borderline entity links. The older
+`prune-local-non-football` command remains available as an explicit cleanup tool,
+but scheduled refreshes no longer delete those rows because retained rejections
+are needed for classifier evaluation.
 
 Game links are evidence-based. Two resolved opponents uniquely identify their
 scheduled meeting; a one-team item must also contain game language, and
@@ -367,10 +381,24 @@ matches are promoted. Search rank never decides identity — a query for "Split 
 Duo" returns a four-subscriber channel above the real show, and one for "Joel Klatt
 Show" returns a channel with no videos.
 
-Of the eight seeded show candidates, six YouTube channels and five podcast feeds
-passed validation on 2026-08-23. Andy Staples (who publishes on the On3 channel)
-and College Football Enquirer (a Yahoo Sports programme) have no dedicated channel
-and remain in review rather than being attached to a parent brand.
+The versioned [CFB media registry](data/media/cfb_media_registry.json) now preserves
+the original researched seed list and the application's earlier national candidates,
+adds verified team/conference discoveries, stores access and original-reporting
+evidence, and records unresolved team gaps. `media-seed` runs before validation on
+both initial builds and refreshes. Ambiguous identities are retried weekly rather
+than on every scheduled refresh, and an exact researched channel can qualify without
+the search-only 5,000-subscriber corroborator. See
+[docs/CFB_MEDIA_REGISTRY.md](docs/CFB_MEDIA_REGISTRY.md).
+
+```powershell
+python -m sports_aggregator.social.media_cli seed
+python -m sports_aggregator.social.media_cli validate-all
+python -m sports_aggregator.social.media_cli validate-all --force
+```
+
+Andy Staples (who publishes on the On3 channel) and College Football Enquirer (a
+Yahoo Sports programme) must not be attached to a parent-brand channel merely
+because it ranks highly in search.
 
 To run only the lightweight shared league platform while legacy pages are being
 migrated:

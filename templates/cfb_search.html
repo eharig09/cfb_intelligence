@@ -1,4 +1,5 @@
 {% extends "_layout.html" %}
+{% from "_tables.html" import linked_piece_meta %}
 
 {% block title %}{% if results.query %}{{ results.query }} &middot; {% endif %}Search | College Football{% endblock %}
 
@@ -23,11 +24,19 @@
     .result-name { font-weight: 700; font-size: .92rem; }
     .result-why { color: var(--muted); font-size: .66rem; margin-top: 2px; }
     .result-aside { color: var(--muted); font-size: .7rem; white-space: nowrap; }
+    @media (max-width: 559px) {
+        .search-form { gap: 5px; }
+        .search-form button { padding-inline: 13px; }
+        .result { align-items: flex-start; flex-wrap: wrap; gap: 7px 9px; }
+        .result-body { flex-basis: calc(100% - 38px); }
+        .result-aside { flex: 1 1 100%; padding-left: 37px; white-space: normal; }
+        .result-why .linked-piece-meta { display: flex; margin-top: 3px; }
+    }
 </style>
 {% endblock %}
 
 {% block breadcrumb %}
-<a href="{{ url_for('cfb.today', season=results.season or season) }}">&larr; College Football Today</a>
+<a href="{{ url_for('cfb.today') }}">&larr; College Football Today</a>
 <span class="tagline">Search</span>
 {% endblock %}
 
@@ -51,7 +60,7 @@
 <section class="result-group">
     <h2>Teams</h2>
     {% for team in results.teams %}
-    <a class="result" href="{{ url_for('cfb.team_preview', team_id=team.team_id, season=results.season) }}"
+    <a class="result" href="{{ url_for('cfb.team_preview', team_id=team.team_id) }}"
        {% if team.accent %}style="--row-team:{{ team.accent }}"{% endif %}>
         {% if team.logo %}<img src="{{ team.logo }}" alt="" loading="lazy">{% endif %}
         <span class="result-body">
@@ -88,7 +97,7 @@
 <section class="result-group">
     <h2>Games</h2>
     {% for game in results.games %}
-    <a class="result" href="{{ url_for('cfb.game_preview', game_id=game.game_id) }}">
+    <a class="result" href="{{ url_for('cfb.game_box_score' if game.completed else 'cfb.game_preview', game_id=game.game_id) }}">
         <span class="result-body">
             <span class="result-name">{{ game.away_team }} at {{ game.home_team }}</span>
             <span class="result-why">{{ game.reason }}</span>
@@ -107,8 +116,7 @@
         <span class="result-body">
             <span class="result-name">{{ story.headline }}</span>
             <span class="result-why">
-                {{ story.source_name or story.platform }} &middot; {{ story.published_label }}
-                &middot; {{ story.reason }}
+                {{ linked_piece_meta(story) }} &middot; {{ story.reason }}
             </span>
         </span>
         <span class="result-aside">{{ story.relevance | cell('f1') }}</span>

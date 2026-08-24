@@ -1,5 +1,5 @@
 {% extends "_layout.html" %}
-{% from "_tables.html" import data_table, tabbed_tables, tabs_script %}
+{% from "_tables.html" import data_table, linked_piece_meta, tabbed_tables, tabs_script %}
 
 {% block title %}{{ conference.conference }} | College Football{% endblock %}
 
@@ -20,7 +20,7 @@
 {% block body_attrs %} style="--team:{{ conference_color }};--conference:{{ conference_color }}"{% endblock %}
 
 {% block breadcrumb %}
-<a href="{{ url_for('cfb.today', season=season) }}">&larr; College Football Today</a>
+<a href="{{ url_for('cfb.today') }}">&larr; College Football Today</a>
 <span class="tagline">Conference intelligence</span>
 {% endblock %}
 
@@ -78,7 +78,10 @@
                 <article class="card">
                     <div class="label">{{ story.cluster_basis | replace('_', ' ') }}</div>
                     <a href="{{ story.url }}" target="_blank" rel="noopener"><strong>{{ story.title }}</strong></a>
-                    <div class="meta">{{ story.sources | length }} linked source{% if story.sources | length != 1 %}s{% endif %} &middot; {{ story.source_name }}</div>
+                    <div class="meta">
+                        {{ story.sources | length }} linked source{% if story.sources | length != 1 %}s{% endif %}
+                        {{ linked_piece_meta(story) }}
+                    </div>
                 </article>
                 {% endfor %}
             </div>

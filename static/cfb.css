@@ -68,13 +68,16 @@ img { max-width: 100%; }
 .header-search input:focus { outline: 2px solid var(--team); width: 12rem; }
 @media (min-width: 860px) { .header-search input { width: 12rem; } }
 
-main { padding: 20px var(--pad) 52px; }
+main { padding: 20px var(--pad) 52px; width: 100%; min-width: 0; }
+main > *, .layout > *, .split > *, aside { min-width: 0; }
+code { overflow-wrap: anywhere; }
 
 .eyebrow, .label {
     color: var(--rust); font-weight: 900; text-transform: uppercase;
     letter-spacing: .12em; font-size: .66rem;
 }
 h1 { font: 700 clamp(1.75rem, 6vw, 3.2rem)/1.02 Georgia, serif; margin: 6px 0 8px; }
+h1, h2, h3 { overflow-wrap: anywhere; }
 .dek { color: var(--muted); font: .92rem/1.5 Georgia, serif; max-width: 68ch; }
 .meta { color: var(--muted); font-size: .72rem; line-height: 1.5; }
 
@@ -132,6 +135,7 @@ h1 { font: 700 clamp(1.75rem, 6vw, 3.2rem)/1.02 Georgia, serif; margin: 6px 0 8p
 .table-wrap {
     background: var(--paper);
     border: 1px solid var(--line);
+    width: 100%; max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     margin-bottom: 12px;
@@ -139,6 +143,7 @@ h1 { font: 700 clamp(1.75rem, 6vw, 3.2rem)/1.02 Georgia, serif; margin: 6px 0 8p
     scrollbar-gutter: stable;
 }
 .table-wrap:focus-visible { outline: 3px solid var(--team); outline-offset: 2px; }
+.mobile-scroll-note { display: none; }
 
 .table-caption {
     display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px;
@@ -234,6 +239,20 @@ table.data td.state-departed .sub { color: var(--red); }
 .state-key .is-returning { background: var(--line-strong); }
 
 /* ---------- source streams ---------- */
+
+.linked-piece-meta {
+    display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px 6px;
+    color: var(--muted); font-size: .63rem; line-height: 1.35;
+    font-variant-numeric: tabular-nums;
+}
+.linked-piece-meta > * { display: inline-flex; align-items: center; gap: 3px; }
+.linked-piece-meta > * + *::before { content: "·"; color: var(--line-strong); margin-right: 3px; }
+.piece-kind { color: var(--ink); font-weight: 800; }
+.piece-icon { font-size: .8rem; line-height: 1; }
+.piece-source { font-weight: 700; }
+.piece-sound { color: var(--rust); font-weight: 800; }
+.piece-age { white-space: nowrap; }
+.linked-piece-meta time { white-space: nowrap; }
 
 .stream-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); align-items: start; }
 .stream-column { background: var(--paper); border: 1px solid var(--line); min-width: 0; }
@@ -352,13 +371,74 @@ table.data th[data-sortable="true"]:focus-visible { outline: 2px solid var(--rus
     h1 { font-size: clamp(1.65rem, 9vw, 2.3rem); }
     .team-bar { border-left-width: 4px; padding-left: 10px; }
     .table-caption { padding: 7px 9px; }
-    table.data { font-size: .8rem; }
+    table.data { font-size: .78rem; }
     table.data thead th, table.data tbody td { padding: 7px 7px; }
+
+    /* Most app tables are comparisons, schedules, or short leaderboards. On a
+       phone each record becomes a labeled card, preserving every value without
+       forcing the whole page sideways. Very wide stat matrices retain a local
+       swipe region below instead of widening the document. */
+    .table-wrap.mobile-cards {
+        overflow: visible; border: 0; background: transparent;
+        scrollbar-gutter: auto;
+    }
+    .mobile-cards .table-caption { border: 1px solid var(--line); }
+    .mobile-cards table.data,
+    .mobile-cards table.data tbody,
+    .mobile-cards table.data tfoot { display: block; width: 100%; min-width: 0; }
+    .mobile-cards table.data thead {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+    .mobile-cards table.data tbody { display: grid; gap: 8px; }
+    .mobile-cards table.data tbody tr,
+    .mobile-cards table.data tfoot tr {
+        display: block; width: 100%; background: var(--paper);
+        border: 1px solid var(--line); border-left: 4px solid var(--line-strong);
+    }
+    .mobile-cards table.data tbody tr:hover { background: var(--paper); }
+    .mobile-cards table.data tbody td,
+    .mobile-cards table.data tfoot td {
+        display: grid; grid-template-columns: minmax(5.25rem, .72fr) minmax(0, 1.28fr);
+        gap: 8px; width: 100%; padding: 6px 9px; text-align: right;
+        white-space: normal; overflow-wrap: anywhere; word-break: normal;
+        border-bottom: 1px solid var(--line);
+    }
+    .mobile-cards table.data td.col-left.emphasis { white-space: normal; }
+    .mobile-cards table.data tbody td:last-child,
+    .mobile-cards table.data tfoot td:last-child { border-bottom: 0; }
+    .mobile-cards table.data td::before {
+        content: attr(data-label); color: var(--muted); font-size: .58rem;
+        font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+        text-align: left; align-self: start; padding-top: 1px;
+    }
+    .mobile-cards table.data td .team-cell {
+        justify-self: end; justify-content: flex-end; min-width: 0;
+    }
+    .mobile-cards table.data td .team-cell a,
+    .mobile-cards table.data td .team-cell > span {
+        white-space: normal; overflow: visible; text-overflow: clip; text-align: right;
+    }
+    .mobile-cards table.data td .sub {
+        grid-column: 2; text-align: right; overflow-wrap: anywhere;
+    }
+    .mobile-cards table.data tfoot { margin-top: 8px; }
+    .mobile-cards table.data tfoot tr { border-left-color: var(--ink); }
+
+    .mobile-scroll-note {
+        display: block; position: sticky; left: 0; width: fit-content;
+        padding: 5px 8px; color: var(--muted); font-size: .6rem;
+        background: #f0e8db; border-right: 1px solid var(--line);
+    }
+    .mobile-scroll table.data { font-size: .74rem; }
+    .mobile-scroll table.data thead th,
+    .mobile-scroll table.data tbody td { padding: 6px; }
     .section { margin-top: 20px; }
-    .tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 3px;
-            overscroll-behavior-inline: contain; scroll-snap-type: x proximity; }
-    .tabs button { flex: 0 0 auto; scroll-snap-align: start; }
+    .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+            overflow: visible; padding-bottom: 3px; }
+    .tabs button { min-width: 0; white-space: normal; line-height: 1.2; }
     .story-entry-top, .stream-entry-top { align-items: flex-start; }
+    .linked-piece-meta { gap: 2px 5px; }
     .story-source { max-width: 45%; text-align: right; }
     .facts { margin-inline: calc(-1 * var(--pad)); }
     .fact { min-width: 0; }

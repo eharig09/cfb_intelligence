@@ -1,5 +1,5 @@
 {% extends "_layout.html" %}
-{% from "_tables.html" import data_table, story_list, tabbed_tables, tabs_script %}
+{% from "_tables.html" import data_table, linked_piece_meta, story_list, tabbed_tables, tabs_script %}
 
 {% block title %}{{ game.away_team }} at {{ game.home_team }} | Game Preview{% endblock %}
 
@@ -37,7 +37,7 @@
 {% block body_attrs %} style="--team:{{ home_brand.accent }};--conference:{{ home_brand.conference_color }}"{% endblock %}
 
 {% block breadcrumb %}
-<a href="{{ url_for('cfb.today', season=game.season) }}">&larr; College Football Today</a>
+<a href="{{ url_for('cfb.today') }}">&larr; College Football Today</a>
 <span class="tagline">Week {{ game.week }} preview</span>
 {% endblock %}
 
@@ -64,7 +64,7 @@
         <div class="team-head">
             {% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ team_name }} logo">{% endif %}
             <div>
-                <div class="team-name"><a href="{{ url_for('cfb.team_preview', team_id=team_id, season=game.season) }}">{{ team_name }} &rarr;</a></div>
+                <div class="team-name"><a href="{{ url_for('cfb.team_preview', team_id=team_id) }}">{{ team_name }} &rarr;</a></div>
                 <div class="meta">
                     {% if brand.conference %}<span class="conference-tag">{{ brand.conference }}</span>{% endif %}
                     {%- if record %} {{ record.wins }}&ndash;{{ record.losses }} &middot; {{ record.conference_wins }}&ndash;{{ record.conference_losses }} conf
@@ -222,7 +222,8 @@
                 {% for item in situation.availability[:4] %}
                 <li>
                     <a href="{{ item.canonical_url }}" target="_blank" rel="noopener">{{ item.headline }}</a>
-                    <span class="meta">{{ item.school }} &middot; {{ item.published_label }}</span>
+                    <span class="meta">{{ item.school }}</span>
+                    {{ linked_piece_meta(item) }}
                 </li>
                 {% endfor %}
             </ul>
@@ -365,13 +366,10 @@
             <article class="content-item">
                 <div class="content-item-top">
                     <span class="content-kind">{{ item.content_type | replace('_', ' ') | lower }}</span>
-                    <span class="content-when">{{ item.published_label }}</span>
+                    <span class="content-when">{{ item.published_relative }}</span>
                 </div>
                 <a href="{{ item.canonical_url }}" target="_blank" rel="noopener">{{ item.headline }}</a>
-                <div class="content-meta">
-                    <strong>{{ item.source_entity_name or item.publisher_name }}</strong>
-                    &middot; {{ item.relevance_label }}
-                </div>
+                <div class="content-meta">{{ linked_piece_meta(item) }} &middot; {{ item.relevance_label }}</div>
                 {% for topic in item.topics[:3] %}<span class="chip">{{ topic | replace('_', ' ') | lower }}</span>{% endfor %}
             </article>
             {% endfor %}

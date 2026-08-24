@@ -4,7 +4,7 @@
 {% block title %}{{ team.school }} Historical Game Log{% endblock %}
 {% block body_attrs %} style="--team:{{ identity.accent }};--conference:{{ identity.conference_color }}"{% endblock %}
 {% block breadcrumb %}
-<a href="{{ url_for('cfb.team_preview', team_id=team.team_id, season=season) }}">&larr; {{ team.school }}</a>
+<a href="{{ url_for('cfb.team_preview', team_id=team.team_id) }}">&larr; {{ team.school }}</a>
 <span class="tagline">Historical game log</span>
 {% endblock %}
 

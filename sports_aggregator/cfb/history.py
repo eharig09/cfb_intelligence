@@ -145,7 +145,7 @@ def matchup_history(repository: CFBRepository, game: dict[str, Any],
         recent.append({
             **row, "date_label": local.strftime("%b %d, %Y"),
             "score": f"{row['points_for']}-{row['points_against']}",
-            "game_url": f"/college-football/games/{row['game_id']}/",
+            "game_url": f"/college-football/games/{row['game_id']}/box-score/",
         })
     coverage = sorted({row["season"] for row in all_games})
     return {
@@ -218,7 +218,7 @@ def team_game_history(repository: CFBRepository, team_id: int,
         local = _local_start(row["start_date"])
         row["date_label"] = local.strftime("%b %d, %Y")
         row["score"] = f"{row['points_for']}-{row['points_against']}"
-        row["game_url"] = f"/college-football/games/{row['game_id']}/"
+        row["game_url"] = f"/college-football/games/{row['game_id']}/box-score/"
     by_season = []
     for year in seasons:
         year_rows = [row for row in rows if row["season"] == year]

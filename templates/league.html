@@ -57,8 +57,12 @@
             <article>
                 <h2><a href="{{ article.url }}" target="_blank" rel="noopener noreferrer">{{ article.title }}</a></h2>
                 <div class="meta">
-                    <span class="source">{{ article.source }}</span> · {{ article.published_label }}
-                    {% if article.author %} · {{ article.author }}{% endif %}
+                    <span aria-hidden="true">{{ article.source_icon }}</span>
+                    <strong>{{ article.source_label }}</strong> &middot;
+                    <span class="source">{{ article.source }}</span> &middot; {{ article.published_label }}
+                    &middot; {{ article.published_relative }}
+                    {% if article.makes_sound %} &middot; <strong>🔊 Sound</strong>{% endif %}
+                    {% if article.author %} &middot; {{ article.author }}{% endif %}
                 </div>
                 {% if article.summary %}<p class="summary">{{ article.summary }}</p>{% endif %}
             </article>

@@ -32,11 +32,16 @@ def height_label(inches: Any) -> str | None:
 
 
 def _team_url(team_id: Any, season: int) -> str | None:
-    return url_for("cfb.team_preview", team_id=team_id, season=season) if team_id else None
+    return url_for("cfb.team_preview", team_id=team_id) if team_id else None
 
 
 def _player_url(player_id: Any, season: int) -> str | None:
     return url_for("cfb.player_preview", player_id=player_id, season=season) if player_id else None
+
+
+def _game_detail_url(game: dict[str, Any]) -> str:
+    endpoint = "cfb.game_box_score" if game.get("completed") else "cfb.game_preview"
+    return url_for(endpoint, game_id=game["game_id"])
 
 
 def brand_cell(row: dict[str, Any], key: str, brand: dict[str, Any] | None) -> None:
@@ -368,8 +373,8 @@ def schedule_table(schedule: Iterable[dict[str, Any]], team_id: int, season: int
             "television": game.get("television"),
             "result": result,
             "result_class": result_class,
-            "preview": "Preview",
-            "preview_url": url_for("cfb.game_preview", game_id=game["game_id"]),
+            "detail": "Box score" if game.get("completed") else "Preview",
+            "detail_url": _game_detail_url(game),
         }
         # The stored spread is from the home side, so it is flipped for a road
         # game to read from this team's perspective.
@@ -398,7 +403,7 @@ def schedule_table(schedule: Iterable[dict[str, Any]], team_id: int, season: int
             Column(key="total", label="O/U", format="f1", title="Consensus total"),
             Column(key="television", label="TV", align="left"),
             Column(key="result", label="Result", align="right"),
-            Column(key="preview", label="", align="right"),
+            Column(key="detail", label="", align="right"),
         ],
         rows=rows,
         caption=caption or f"{season} schedule",
@@ -420,8 +425,8 @@ def games_table(games: Iterable[dict[str, Any]], caption: str,
             "home_team": game["home_team"],
             "television": game.get("television"),
             "venue": game.get("venue"),
-            "preview": "Preview",
-            "preview_url": url_for("cfb.game_preview", game_id=game["game_id"]),
+            "detail": "Box score" if game.get("completed") else "Preview",
+            "detail_url": _game_detail_url(game),
         }
         entry["away_elo"] = ((elo or {}).get(game.get("away_team_id")) or {}).get("elo")
         entry["home_elo"] = ((elo or {}).get(game.get("home_team_id")) or {}).get("elo")
@@ -437,7 +442,7 @@ def games_table(games: Iterable[dict[str, Any]], caption: str,
             Column(key="home_team", label="Home", align="left", emphasis=True),
             Column(key="home_elo", label="Elo", format="int", title="CFBD pregame Elo"),
             Column(key="television", label="TV", align="left"),
-            Column(key="preview", label="", align="right"),
+            Column(key="detail", label="", align="right"),
         ],
         rows=rows,
         caption=caption,
@@ -1208,8 +1213,15 @@ def developments_table(items: Sequence[dict[str, Any]], season: int,
             "team": primary,
             "team_url": _team_url(teams[0]["team_id"], season) if teams else None,
             "team_sub": ", ".join(row["school"] for row in teams[1:3]) or None,
-            "source": item.get("source_entity_name") or item.get("publisher_name"),
-            "source_sub": item.get("platform"),
+            "source": " ".join(filter(None, (
+                item.get("source_icon"), item.get("source_type_label"),
+                item.get("source_display_name") or item.get("source_entity_name")
+                or item.get("publisher_name"),
+            ))),
+            "source_sub": " · ".join(filter(None, (
+                "🔊 Sound" if item.get("makes_sound") else None,
+                item.get("published_exact"), item.get("published_relative"),
+            ))) or None,
             "role": (item.get("source_role") or "").replace("_", " ").title(),
             "topic": (item.get("topic") or "—").replace("_", " ").title(),
             "score": item.get("score"),

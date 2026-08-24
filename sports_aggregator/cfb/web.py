@@ -48,6 +48,11 @@ def _season() -> int:
     return year
 
 
+def _current_season() -> int:
+    """Configured live season, unaffected by historical navigation parameters."""
+    return current_app.config.get("CFB_DEFAULT_SEASON") or datetime.now().year
+
+
 def _reporting():
     return current_app.extensions["league_aggregation_service"].aggregate(
         get_league("college-football")
@@ -220,7 +225,7 @@ def _nearest_week_games(games: list[dict]) -> tuple[int | None, list[dict]]:
 
 @cfb_pages.get("/college-football/")
 def today():
-    season = _season()
+    season = _current_season()
     repository = _repository()
     upcoming = repository.upcoming_games(season, limit=80)
     nearest_week, week_games = _nearest_week_games(upcoming)
@@ -300,8 +305,7 @@ def team_preview(team_id: int):
     # `season` query parameter and silently turn the whole team page into 2025.
     # Team intelligence is always current; only the schedule switch is allowed
     # to select a completed season. Full historical browsing lives under /history/.
-    configured = current_app.config.get("CFB_DEFAULT_SEASON")
-    season = configured or datetime.now().year
+    season = _current_season()
     repository = _repository()
     schedule_seasons = repository.team_schedule_seasons(team_id)
     if not schedule_seasons and repository.get_team(team_id) is None:

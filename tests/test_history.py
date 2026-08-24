@@ -80,6 +80,8 @@ class HistoryTests(unittest.TestCase):
         log = team_game_history(self.repository, 1)
         self.assertEqual(log["summary"]["record"], "1-1")
         self.assertEqual(log["unique_opponents"], 1)
+        self.assertTrue(all(row["game_url"].endswith("/box-score/")
+                            for row in log["games"]))
         stats = team_historical_stats(self.repository, 1)
         rb = next(row for row in stats["positions"] if row["position_group"] == "RB")
         self.assertEqual(rb["rush_yards"], 1200)

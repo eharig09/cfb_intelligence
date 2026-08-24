@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from sports_aggregator.cfb.models import Team
 from sports_aggregator.cfb.repository import CFBRepository
@@ -92,6 +93,18 @@ class StoryRepositoryTests(unittest.TestCase):
         self.assertEqual(len(clusters), 4)
         self.assertTrue(all(method == "SINGLE_ITEM" for _, method, _ in clusters))
 
+    def test_unrelated_subjects_do_not_enter_pairwise_similarity_work(self):
+        items = []
+        for index in range(100):
+            item = self.cluster_item(
+                index, source=index, url="", text=f"Team {index} injury update")
+            item["teams"] = {index}
+            items.append(item)
+        with patch("sports_aggregator.social.stories._best_cross_source_match") as compare:
+            clusters = _build_clusters(items)
+        self.assertEqual(len(clusters), 100)
+        compare.assert_not_called()
+
     def test_exact_external_url_clusters_and_roles_earliest_report_as_candidate(self):
         with tempfile.TemporaryDirectory() as directory:
             path=os.path.join(directory,"cfb.sqlite3"); cfb=CFBRepository(path)
@@ -118,6 +131,9 @@ class StoryRepositoryTests(unittest.TestCase):
             self.assertEqual(story["sources"][0]["source_role"],"ORIGINAL_REPORT_CANDIDATE")
             self.assertEqual(story["title"], "Michigan injury update https://paper.example/story")
             self.assertEqual(story["url"], "https://paper.example/story")
+            self.assertEqual(story["source_icon"], "🦋")
+            self.assertFalse(story["makes_sound"])
+            self.assertIn("2026", story["published_exact"])
 
 
 if __name__=="__main__": unittest.main()

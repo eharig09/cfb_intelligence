@@ -38,7 +38,8 @@ CREATE INDEX IF NOT EXISTS idx_content_reviews_reviewer
 REVIEW_FIELDS = (
     "content_id", "platform", "published_at", "source_name", "title", "excerpt", "url",
     "review_reason",
-    "predicted_relevant", "predicted_topics", "predicted_role", "role_confidence",
+    "predicted_relevant", "sport_decision", "sport_confidence", "sport_method",
+    "sport_evidence", "predicted_topics", "predicted_role", "role_confidence",
     "relevance_score", "predicted_team_ids", "predicted_teams",
     "predicted_player_keys", "predicted_players",
     "label_relevant", "label_topics", "label_role", "label_team_ids",
@@ -154,10 +155,14 @@ class ContentReviewRepository:
                 """SELECT c.*,COALESCE(e.name,c.publisher_name,c.author_name,'Source') source_name,
                    COALESCE(cr.role,c.source_role) predicted_role,
                    COALESCE(cr.confidence,0.0) role_confidence,
-                   COALESCE(rel.score,0.0) relevance_score
+                   COALESCE(rel.score,0.0) relevance_score,
+                   sd.sport,sd.decision sport_decision,sd.eligible cfb_eligible,
+                   sd.confidence sport_confidence,sd.method sport_method,
+                   sd.evidence_json sport_evidence_json
                    FROM content_items c LEFT JOIN source_entities e USING(source_entity_id)
                    LEFT JOIN content_roles cr USING(content_id)
                    LEFT JOIN content_relevance rel USING(content_id)
+                   LEFT JOIN content_sport_decisions sd USING(content_id)
                    ORDER BY c.published_at DESC,c.content_id DESC"""
             ).fetchall()
             result = []
@@ -190,7 +195,10 @@ class ContentReviewRepository:
                 text = " ".join(filter(None, (item["title"], item["body_text"], item["summary"])))
                 result.append({
                     **item,
-                    "predicted_relevant": _is_cfb_relevant(relevance_item),
+                    "predicted_relevant": (bool(item["cfb_eligible"])
+                                           if item.get("cfb_eligible") is not None
+                                           else _is_cfb_relevant(relevance_item)),
+                    "sport_evidence": json.loads(item.get("sport_evidence_json") or "[]"),
                     "topics": topics, "teams": teams, "players": players, "games": games,
                     "excerpt": " ".join(text.split())[:800],
                     "url": item.get("original_url") or item.get("canonical_url") or "",
@@ -202,6 +210,10 @@ class ContentReviewRepository:
         """Name high-value exceptions instead of asking editors to read everything."""
         reasons = []
         relevant = bool(item["predicted_relevant"])
+        if item.get("sport_decision") == "REVIEW":
+            reasons.append("sport needs review")
+        if item.get("sport_decision") == "REJECT" and (item["topics"] or item["teams"]):
+            reasons.append("sport rejection conflicts with tags")
         if relevant and float(item.get("role_confidence") or 0) < 0.72:
             reasons.append("low role confidence")
         if relevant and not item["topics"]:
@@ -258,6 +270,10 @@ class ContentReviewRepository:
             "title": item["title"], "excerpt": item["excerpt"], "url": item["url"],
             "review_reason": item.get("review_reason") or "stratified audit",
             "predicted_relevant": int(item["predicted_relevant"]),
+            "sport_decision": item.get("sport_decision") or "LEGACY",
+            "sport_confidence": item.get("sport_confidence") or "",
+            "sport_method": item.get("sport_method") or "",
+            "sport_evidence": "|".join(item.get("sport_evidence") or ()),
             "predicted_topics": "|".join(sorted(item["topics"])),
             "predicted_role": item["predicted_role"],
             "role_confidence": item["role_confidence"],
