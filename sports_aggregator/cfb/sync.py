@@ -67,6 +67,8 @@ class CFBDataSync:
             ("records", lambda: self.repository.replace_records(
                 season, (item for item in _as_list("records", self.client.records(season, force))
                          if item.get("classification") == "fbs"))),
+            ("coaches", lambda: self.repository.replace_coach_seasons(
+                season, _as_list("coaches", self.client.coaches(season, force)))),
             ("rankings", lambda: self.repository.replace_rankings(
                 season, flatten_rankings(_as_list("rankings", self.client.rankings(season, force))))),
             ("team_stats", lambda: self.repository.replace_team_stats(

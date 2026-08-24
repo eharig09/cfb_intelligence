@@ -52,6 +52,81 @@ def brand_cell(row: dict[str, Any], key: str, brand: dict[str, Any] | None) -> N
         row[f"{key}_color"] = brand["color"]
 
 
+def historical_games_table(games: Sequence[dict[str, Any]], *,
+                           caption: str = "Game log") -> Table:
+    rows = [{
+        "season": row.get("season"), "date": row.get("date_label"),
+        "opponent": row.get("opponent"), "site": row.get("site"),
+        "result": row.get("result"), "score": row.get("score"),
+        "score_url": row.get("game_url"), "slot": row.get("slot"),
+        "conference": row.get("opponent_conference"),
+    } for row in games]
+    return Table(
+        columns=[Column("season", "Season", format="int", align="right"),
+                 Column("date", "Date"), Column("opponent", "Opponent"),
+                 Column("site", "Site"), Column("result", "Result", emphasis=True),
+                 Column("score", "Score", align="right"), Column("slot", "Window"),
+                 Column("conference", "Opp. conf.")],
+        rows=rows, caption=caption, dense=True,
+        empty="No completed historical games are stored for this selection.")
+
+
+def season_history_table(seasons: Sequence[dict[str, Any]]) -> Table:
+    return Table(
+        columns=[Column("season", "Season", format="int", align="right"),
+                 Column("record", "Record", emphasis=True),
+                 Column("ppg_for", "PPG", format="f1", align="right"),
+                 Column("ppg_against", "Opp PPG", format="f1", align="right"),
+                 Column("average_margin", "Margin", format="signed", align="right"),
+                 Column("conference_wins", "Conf W", format="int", align="right"),
+                 Column("conference_losses", "Conf L", format="int", align="right"),
+                 Column("offense_success_rate", "Off SR", format="rate", align="right"),
+                 Column("defense_success_rate", "Def SR", format="rate", align="right")],
+        rows=seasons, caption="Season results and efficiency", dense=True,
+        empty="Historical season summaries populate after the history backfill.")
+
+
+def position_history_table(rows: Sequence[dict[str, Any]], *, latest_only: bool = False) -> Table:
+    data = [{**row, "pff_grade_sub": (
+        row.get("pff_detail") or (f"{row['pff_samples']} samples" if row.get("pff_samples") else None))}
+            for row in rows]
+    prefix = ([] if latest_only else [Column("season", "Season", format="int", align="right")])
+    shares = ([Column("rush_yards_share", "Rush share", format="pct", align="right"),
+               Column("receiving_yards_share", "Rec share", format="pct", align="right"),
+               Column("tackles_share", "Tkl share", format="pct", align="right"),
+               Column("sacks_share", "Sack share", format="pct", align="right")]
+              if latest_only else [])
+    columns = prefix + [
+        Column("position_group", "Group", emphasis=True),
+        Column("pass_yards", "Pass yds", format="int", align="right"),
+        Column("rush_yards", "Rush yds", format="int", align="right"),
+        Column("receiving_yards", "Rec yds", format="int", align="right"),
+        Column("touchdowns", "TD", format="int", align="right"),
+        Column("receptions", "Rec", format="int", align="right"),
+        Column("tackles", "Tkl", format="f1", align="right"),
+        Column("sacks", "Sacks", format="f1", align="right"),
+        Column("interceptions", "INT", format="int", align="right"),
+    ] + shares + [Column("pff_grade", "Top PFF", format="f1", align="right")]
+    return Table(columns=columns, rows=data,
+                 caption="Latest position identity" if latest_only else "Position production by season",
+                 dense=True, empty="No position-level player production is stored.")
+
+
+def historical_team_stats_table(rows: Sequence[dict[str, Any]]) -> Table:
+    return Table(
+        columns=[Column("season", "Season", format="int", align="right"),
+                 Column("games", "GP", format="int", align="right"),
+                 Column("yards_per_game", "YPG", format="f1", align="right"),
+                 Column("pass_yards_per_game", "Pass YPG", format="f1", align="right"),
+                 Column("rush_yards_per_game", "Rush YPG", format="f1", align="right"),
+                 Column("opponent_yards_per_game", "Opp YPG", format="f1", align="right"),
+                 Column("sacks", "Sacks", format="f1", align="right"),
+                 Column("tackles_for_loss", "TFL", format="f1", align="right"),
+                 Column("turnover_margin", "TO margin", format="signed", align="right")],
+        rows=list(rows), caption="Traditional team production", dense=True,
+        empty="Historical team-stat totals populate after the history backfill.")
+
+
 # --------------------------------------------------------------------------
 # Standings and schedules
 # --------------------------------------------------------------------------

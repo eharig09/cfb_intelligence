@@ -78,6 +78,46 @@
 </div>
 
 <section class="section">
+    <h2>Matchup history</h2>
+    <div class="section-note">
+        Derived from completed games stored for {{ history.coverage.from or 'an unavailable start year' }}
+        through {{ history.coverage.through or 'an unavailable end year' }}. Coach records use
+        CFBD team-season attribution; kickoff windows use US Eastern time.
+    </div>
+    <div class="facts">
+        <div class="fact"><b>{{ history.meetings }}</b><span>Meetings stored</span></div>
+        <div class="fact"><b>{{ history.away_record.record }}</b><span>{{ game.away_team }} series</span></div>
+        <div class="fact"><b>{{ history.home_record.record }}</b><span>{{ game.home_team }} series</span></div>
+        <div class="fact"><b>{{ history.away_record.ppg_for | cell('f1') }}</b><span>{{ game.away_team }} PPG</span></div>
+        <div class="fact"><b>{{ history.home_record.ppg_for | cell('f1') }}</b><span>{{ game.home_team }} PPG</span></div>
+        <div class="fact"><b>{{ history.away_record.streak or '—' }}</b><span>{{ game.away_team }} series streak</span></div>
+    </div>
+    <div class="split">
+        {% for team_name, team_id, context in [(game.away_team, game.away_team_id, history.away_context), (game.home_team, game.home_team_id, history.home_context)] %}
+        <article class="situation-card">
+            <h3><a href="{{ url_for('cfb.team_history', team_id=team_id, season=game.season) }}">{{ team_name }} historical splits &rarr;</a></h3>
+            <p>
+                <strong>{{ context.slot.record }}</strong> in {{ context.slot.label | lower }} games
+                ({{ context.slot.ppg_for | cell('f1') }}&ndash;{{ context.slot.ppg_against | cell('f1') }} PPG).
+            </p>
+            <p><strong>{{ context.site.record }}</strong> in this series when playing
+               {{ context.site.label | lower }}.</p>
+            <p>
+                <strong>{{ context.conference.record }}</strong> vs {{ context.conference.conference or 'opponent conference unavailable' }}
+                ({{ context.conference.ppg_for | cell('f1') }}&ndash;{{ context.conference.ppg_against | cell('f1') }} PPG).
+            </p>
+            {% if context.coach %}
+            <p><strong>{{ context.coach.name }}:</strong> {{ context.coach.record }} vs this opponent,
+               {{ context.coach.ppg_for | cell('f1') }}&ndash;{{ context.coach.ppg_against | cell('f1') }} PPG.</p>
+            {% else %}<p class="meta">No synchronized coach-season attribution.</p>{% endif %}
+            <div class="meta">{{ context.unique_opponents }} unique opponents in stored history.</div>
+        </article>
+        {% endfor %}
+    </div>
+    {{ data_table(history_games_table) }}
+</section>
+
+<section class="section">
     <h2>{{ game.season }} team quality</h2>
     <div class="section-note">
         Current-season CFBD advanced metrics, each formatted to its own scale. Preseason

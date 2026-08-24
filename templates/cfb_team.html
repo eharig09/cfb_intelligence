@@ -37,6 +37,11 @@
             {% if team.conference %}<a class="conference-tag" href="{{ url_for('cfb.conference_preview', slug=team.conference | lower | replace(' ', '-'), season=season) }}">{{ team.conference }}</a>{% endif %}
             {{ team.mascot or '' }} &middot; {{ team.venue_name or 'Venue TBD' }}
         </div>
+        <div class="meta" style="margin-top:8px">
+            <a href="{{ url_for('cfb.team_history', team_id=team.team_id, season=season) }}">Historical game log</a>
+            &middot;
+            <a href="{{ url_for('cfb.team_history_stats', team_id=team.team_id, season=season) }}">Historical stats &amp; identity</a>
+        </div>
     </div>
     {% if team.logos %}<img class="logo" src="{{ team.logos[0] }}" alt="{{ team.school }} logo">{% endif %}
 </section>

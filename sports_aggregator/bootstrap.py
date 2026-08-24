@@ -5,8 +5,8 @@ Phases:
 * initial  -- complete normal app update: structured data, live ingestion and
               downstream processing; never historical player-stat backfills.
 * refresh  -- current-season/live update; never prior-season history.
-* history  -- historical player-stat backfill, isolated one season per process
-              and one conference per child process.
+* history  -- historical games/team/coach context plus player-stat backfill,
+              isolated one season per process.
 * status   -- compact freshness/coverage report.
 * plan     -- show the steps without running them.
 
@@ -59,6 +59,9 @@ def steps(season: int) -> list[Step]:
         Step("cfbd-roster-context", "Prior roster, portal, draft and returning production",
              ["sports_aggregator.cfb.cli", "sync-roster-context", "--year", year],
              ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
+        Step("cfbd-prior-history", "Prior-season games, records, team stats and coaches",
+             ["sports_aggregator.cfb.cli", "sync-history", "--year", str(season - 1)],
+             ("initial",), requires_env=("CFBD_API_KEY",)),
         Step("cfbd-prior-player-stats", "Prior-season roster and production baseline",
              ["sports_aggregator.cfb.history_cli", "--year", str(season - 1)],
              ("initial",), requires_env=("CFBD_API_KEY",)),
@@ -137,6 +140,12 @@ def steps(season: int) -> list[Step]:
 
     for historical_year in range(season - 7, season - 1):
         plan.append(Step(
+            f"game-history-{historical_year}",
+            f"Games, records, team stats and coaches for {historical_year}",
+            ["sports_aggregator.cfb.cli", "sync-history", "--year", str(historical_year)],
+            ("history",), requires_env=("CFBD_API_KEY",),
+        ))
+        plan.append(Step(
             f"history-{historical_year}",
             f"Player statistics and roster history for {historical_year}",
             ["sports_aggregator.cfb.history_cli", "--year", str(historical_year)],
@@ -204,6 +213,7 @@ def status_report(season: int) -> dict[str, Any]:
     for name, produce in (
         ("cfbd", lambda: repository.status(season)),
         ("stat_coverage", lambda: repository.stat_coverage()),
+        ("history_coverage", lambda: repository.history_coverage()),
         ("secondary", lambda: import_status(repository, limit=12)),
         ("content", lambda: ContentRepository(database).summary()),
     ):

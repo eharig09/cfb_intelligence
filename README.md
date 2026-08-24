@@ -16,10 +16,16 @@ The active application factory is `app.create_app`. It exposes:
 - `/college-football/teams/<team_id>/` — full team schedule, roster, production,
   news, experience-first depth board, arrivals/departures, and prior-season
   player/position-group context
+- `/college-football/teams/<team_id>/history/` - season index and filterable
+  completed-game log with results, kickoff windows, opponent conferences, and PPG
+- `/college-football/teams/<team_id>/history/stats/` - historical records,
+  efficiency, traditional team production, and position-group identity alongside
+  transparent PFF context
 - `/college-football/players/<player_id>/` — player career path, season statistics,
   confirmed PFF grades, transfer/draft events, and player/team reporting
 - `/college-football/games/<game_id>/` — full matchup preview with current CFBD
-  metrics, PFF unit comparisons, players to know, and attributed story clusters
+  metrics, series/coach/time-window/conference history, PFF unit comparisons,
+  players to know, and attributed story clusters
 - `/api/v1/leagues` — machine-readable league discovery
 - `/api/v1/leagues/college-football/articles` — normalized article API
 - `/api/v1/cfb/status` — structured-data freshness and row counts
@@ -30,6 +36,8 @@ The active application factory is `app.create_app`. It exposes:
 - `/api/v1/cfb/teams` and `/api/v1/cfb/rankings` — canonical discovery data
 - `/api/v1/cfb/conferences` and `/api/v1/cfb/conferences/<slug>` — conference discovery and view packets
 - `/api/v1/cfb/teams/<team_id>` — team preview packet
+- `/api/v1/cfb/teams/<team_id>/history` and `/history/stats` — historical game
+  and production packets
 - `/api/v1/cfb/players/<player_id>` — player identity, statistics, career, and stories
 - `/api/v1/cfb/games/<game_id>/preview` — full game preview packet
 - `/api/v1/cfb/teams/resolve?q=...` — exact normalized alias candidates
@@ -193,6 +201,7 @@ python -m sports_aggregator.bootstrap plan --season 2026
 python -m sports_aggregator.bootstrap initial --season 2026
 python -m sports_aggregator.bootstrap refresh --season 2026
 python -m sports_aggregator.bootstrap status --season 2026
+python -m sports_aggregator.bootstrap history --season 2026
 ```
 
 On Windows, register lock-safe refreshes for 6:00 AM, noon, 6:00 PM, and
@@ -213,7 +222,7 @@ persistent disk and a shared `CFB_REFRESH_TOKEN`; deployment details are in
 [`docs/SCHEDULED_REFRESH.md`](docs/SCHEDULED_REFRESH.md#render).
 
 `initial` builds canonical teams/games/current rosters first, then current and
-prior-season player production, models, roster lifecycle, PFF, transfer identity
+prior-season games, coaches and production, models, roster lifecycle, PFF, transfer identity
 links, draft data, weather, source registries, ingestion, retagging, clustering,
 and relevance scores. `refresh` updates every moving current-season source in the
 same dependency order. National RSS is followed by verified team-scoped local RSS,
@@ -226,13 +235,22 @@ legitimately publish zero rows before games are played. The prior-season baselin
 remains available until current production appears, and a failed/empty refresh does
 not erase the last successful snapshot.
 
-Backfill prior seasons so a player page shows a full career rather than one year.
-Careers span roughly five seasons, so a current senior was a freshman well outside
-the active window:
+Backfill prior seasons so team and matchup history pages have canonical results,
+coach attribution, traditional/advanced team stats, and player position production.
+The orchestrated `history` phase runs each historical season in its own process;
+it is intentionally separate from the live refresh path:
 
 ```powershell
-python -m sports_aggregator.cfb.cli backfill --year 2026 --from-year 2019 --to-year 2024
+python -m sports_aggregator.bootstrap history --season 2026
+python -m sports_aggregator.cfb.cli sync-history --from-year 2019 --to-year 2025
 ```
+
+`sync-history` refreshes games, records, traditional team stats, advanced team
+stats, and CFBD head-coach seasons. The existing player-history workers load
+rosters and player season stats over the same window. `bootstrap status` reports
+both conference player-stat gaps and per-season history coverage. Kickoff-window
+splits use US Eastern broadcast time; coach-versus-opponent records are explicitly
+season-attributed because intra-season interim changes may not be game-exact.
 
 A team promoted from FCS has no history in any FBS-filtered dataset. `sync-promoted`
 finds those teams and fetches their prior seasons from the conference they actually

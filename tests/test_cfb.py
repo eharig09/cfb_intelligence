@@ -9,7 +9,7 @@ import unittest
 from app import create_app
 from sports_aggregator.catalog import get_league
 from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError
-from sports_aggregator.cfb.models import Player
+from sports_aggregator.cfb.models import Game, Player
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.sync import CFBDataSync
 from sports_aggregator.cfb.web import _nearest_week_games
@@ -86,6 +86,12 @@ class FakeCFBDClient:
             {"teamId": 1, "team": "Michigan", "classification": "fbs", "conference": "Big Ten", "division": None, "expectedWins": 10.2, "total": {"games": 1, "wins": 1, "losses": 0, "ties": 0}, "conferenceGames": {"games": 1, "wins": 1, "losses": 0, "ties": 0}},
             {"teamId": 2, "team": "Wisconsin", "classification": "fbs", "conference": "Big Ten", "division": None, "expectedWins": 8.1, "total": {"games": 1, "wins": 1, "losses": 0, "ties": 0}, "conferenceGames": {"games": 1, "wins": 1, "losses": 0, "ties": 0}},
         ]
+    def coaches(self, year, _force=False):
+        return [{"id": 11, "firstName": "Test", "lastName": "Coach",
+                 "seasons": [{"teamId": 1, "school": "Michigan",
+                              "conference": "Big Ten", "year": year,
+                              "games": 1, "wins": 1, "losses": 0, "ties": 0,
+                              "winPercentage": 1.0}]}]
     def rankings(self, _year, _force=False): return RANKING_PAYLOAD
     def team_stats(self, _year, _force=False):
         return [{"season": 2026, "team": "Michigan", "conference": "Big Ten", "statName": "yardsPerRush", "statValue": 5.4}]
@@ -155,6 +161,8 @@ class CFBRepositoryTests(unittest.TestCase):
         self.assertEqual(rankings["poll"], "AP Top 25")
         game = self.repository.get_game(100)
         self.assertEqual(game["television"], "ABC")
+        self.repository.replace_games(2026, (Game.from_cfbd(item) for item in GAME_PAYLOAD))
+        self.assertEqual(self.repository.get_game(100)["television"], "ABC")
         self.assertEqual(game["records"]["Michigan"]["wins"], 1)
         self.assertAlmostEqual(game["advanced_metrics"]["Wisconsin"]["offense_success_rate"], .45)
         standings = self.repository.conference_standings("Big Ten", 2026)
@@ -206,6 +214,8 @@ class CFBRepositoryTests(unittest.TestCase):
         self.assertIn(b"Conference player leaders", client.get("/college-football/conferences/big-ten/").data)
         self.assertEqual(client.get("/college-football/teams/1/").status_code, 200)
         self.assertIn(b"2026 schedule", client.get("/college-football/teams/1/").data)
+        self.assertEqual(client.get("/college-football/teams/1/history/").status_code, 200)
+        self.assertEqual(client.get("/college-football/teams/1/history/stats/").status_code, 200)
         self.assertEqual(client.get("/college-football/games/100/").status_code, 200)
         self.assertIn(b"Matchups to watch", client.get("/college-football/games/100/").data)
         self.assertEqual(client.get("/api/v1/cfb/conferences/big-ten").status_code, 200)

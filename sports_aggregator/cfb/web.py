@@ -17,6 +17,8 @@ from sports_aggregator.cfb.prospects import (
 from sports_aggregator.cfb.external import (
     fpi_for_game, fpi_team_season, weather_flags_by_game, weather_for_game)
 from sports_aggregator.cfb.identity import conference_color, team_identity
+from sports_aggregator.cfb.history import (
+    matchup_history, team_game_history, team_historical_stats)
 from sports_aggregator.cfb.lines import game_lines, lines_by_game
 from sports_aggregator.cfb.search import search as search_entities
 from sports_aggregator.cfb.situations import game_situation
@@ -298,6 +300,36 @@ def team_preview(team_id: int):
     return render_template("cfb_team.html", **packet, **_team_tables(packet, season))
 
 
+@cfb_pages.get("/college-football/teams/<int:team_id>/history/")
+def team_history(team_id: int):
+    selected = request.args.get("year", type=int)
+    packet = team_game_history(_repository(), team_id, selected)
+    if packet["team"] is None:
+        abort(404)
+    return render_template(
+        "cfb_team_history.html", **packet, season=_season(),
+        identity=team_identity(_repository().brand_for(team_id)),
+        game_log_table=views.historical_games_table(packet["games"]),
+        season_table=views.season_history_table(packet["season_summaries"]),
+    )
+
+
+@cfb_pages.get("/college-football/teams/<int:team_id>/history/stats/")
+def team_history_stats(team_id: int):
+    packet = team_historical_stats(_repository(), team_id)
+    if packet["team"] is None:
+        abort(404)
+    position_identity = packet.pop("identity")
+    return render_template(
+        "cfb_team_history_stats.html", **packet, season=_season(),
+        identity=team_identity(_repository().brand_for(team_id)),
+        season_table=views.season_history_table(packet["seasons"]),
+        team_stats_table=views.historical_team_stats_table(packet["team_stats"]),
+        position_table=views.position_history_table(packet["positions"]),
+        identity_table=views.position_history_table(position_identity, latest_only=True),
+    )
+
+
 def _team_tables(packet: dict, season: int) -> dict:
     """Rendered tables for the team page, derived from the JSON packet."""
     movements = packet["movements"]
@@ -401,6 +433,7 @@ def game_preview(game_id: int):
     elo = repository.team_elo(season)
     away_identity["elo"] = elo.get(game["away_team_id"]) or {}
     home_identity["elo"] = elo.get(game["home_team_id"]) or {}
+    history = matchup_history(repository, game)
     return render_template(
         "cfb_game.html",
         away_brand=away_identity,
@@ -462,6 +495,9 @@ def game_preview(game_id: int):
         home_pff=home_pff, away_pff=away_pff,
         home_leaders=home_leaders, away_leaders=away_leaders,
         home_quality=home_quality, away_quality=away_quality,
+        history=history,
+        history_games_table=views.historical_games_table(
+            history["recent"], caption=f"Recent meetings — {game['away_team']} perspective"),
     )
 
 
@@ -735,6 +771,22 @@ def team_api(team_id: int):
     return jsonify(_team_packet(team_id, _season()))
 
 
+@cfb_pages.get("/api/v1/cfb/teams/<int:team_id>/history")
+def team_history_api(team_id: int):
+    packet = team_game_history(_repository(), team_id, request.args.get("year", type=int))
+    if packet["team"] is None:
+        abort(404)
+    return jsonify(packet)
+
+
+@cfb_pages.get("/api/v1/cfb/teams/<int:team_id>/history/stats")
+def team_history_stats_api(team_id: int):
+    packet = team_historical_stats(_repository(), team_id)
+    if packet["team"] is None:
+        abort(404)
+    return jsonify(packet)
+
+
 @cfb_pages.get("/api/v1/cfb/players/<player_id>")
 def player_api(player_id: str):
     season = _season(); player = _repository().get_player(player_id, season)
@@ -821,6 +873,7 @@ def game_preview_api(game_id: int):
         "away_leaders": repository.team_player_leaders(game["away_team"], game["season"], 5),
         "home_quality": repository.team_quality_snapshot(game["home_team_id"], game["season"]),
         "away_quality": repository.team_quality_snapshot(game["away_team_id"], game["season"]),
+        "history": matchup_history(repository, game),
         "stories": _merge_stories(
             ("Game linked", direct_stories), ("Away-team context", away_stories),
             ("Home-team context", home_stories),

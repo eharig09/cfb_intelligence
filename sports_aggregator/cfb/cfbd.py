@@ -194,6 +194,11 @@ class CFBDClient:
     def records(self, year: int, force: bool = False) -> list[dict]:
         return self.get("/records", {"year": year}, cache_ttl_seconds=1800, force=force)
 
+    def coaches(self, year: int, force: bool = False) -> list[dict]:
+        return self.get(
+            "/coaches", {"year": year}, cache_ttl_seconds=21600, force=force
+        )
+
     def rankings(self, year: int, force: bool = False) -> list[dict]:
         return self.get("/rankings", {"year": year}, cache_ttl_seconds=1800, force=force)
 

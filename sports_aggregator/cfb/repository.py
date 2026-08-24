@@ -80,6 +80,28 @@ CREATE INDEX IF NOT EXISTS idx_games_season_start ON games(season, start_date);
 CREATE INDEX IF NOT EXISTS idx_games_home_team ON games(home_team_id, season);
 CREATE INDEX IF NOT EXISTS idx_games_away_team ON games(away_team_id, season);
 
+CREATE TABLE IF NOT EXISTS coach_seasons (
+    season INTEGER NOT NULL,
+    coach_id INTEGER NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    team_id INTEGER NOT NULL,
+    team TEXT NOT NULL,
+    conference TEXT,
+    games INTEGER NOT NULL DEFAULT 0,
+    wins INTEGER NOT NULL DEFAULT 0,
+    losses INTEGER NOT NULL DEFAULT 0,
+    ties INTEGER NOT NULL DEFAULT 0,
+    win_percentage REAL,
+    attribution_complete INTEGER,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (season, coach_id, team_id)
+);
+CREATE INDEX IF NOT EXISTS idx_coach_seasons_team
+    ON coach_seasons(team_id, season DESC);
+CREATE INDEX IF NOT EXISTS idx_coach_seasons_coach
+    ON coach_seasons(coach_id, season DESC);
+
 CREATE TABLE IF NOT EXISTS team_records (
     season INTEGER NOT NULL,
     team_id INTEGER NOT NULL,
@@ -484,11 +506,18 @@ class CFBRepository:
     def replace_games(self, season: int, games: Iterable[Game]) -> int:
         items = tuple(games)
         with self.transaction() as connection:
+            # Media is a separate CFBD endpoint and is synchronized after games.
+            # Preserve it when a game/history refresh replaces canonical rows so
+            # an isolated historical sync cannot temporarily blank current TV.
+            media_by_game = {row["game_id"]: row["television"] for row in
+                             connection.execute(
+                                 "SELECT game_id,television FROM games WHERE season=?",
+                                 (season,))}
             connection.execute("DELETE FROM games WHERE season = ?", (season,))
             connection.executemany(
                 """
                 INSERT INTO games VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
@@ -497,7 +526,8 @@ class CFBRepository:
                         game.game_id, game.season, game.week, game.season_type,
                         game.start_date.isoformat(), int(game.start_time_tbd),
                         int(game.completed), int(game.neutral_site), int(game.conference_game),
-                        game.venue_id, game.venue, game.home_team_id, game.home_team,
+                        game.venue_id, game.venue, media_by_game.get(game.game_id),
+                        game.home_team_id, game.home_team,
                         game.home_conference, game.home_points, game.home_pregame_elo,
                         game.away_team_id, game.away_team, game.away_conference,
                         game.away_points, game.away_pregame_elo, game.excitement_index,
@@ -531,6 +561,40 @@ class CFBRepository:
                     (", ".join(names), game_id),
                 )
         return len(outlets)
+
+    def replace_coach_seasons(self, season: int,
+                              coaches: Iterable[dict[str, Any]]) -> int:
+        """Store the head coach attributed to each team-season by CFBD.
+
+        The historical ``/coaches`` response is coach-shaped with nested
+        seasons. Keeping the season grain locally makes coach/opponent records
+        derivable from the same canonical game log without copying game data.
+        """
+        rows = []
+        now = _now_iso()
+        for coach in coaches:
+            coach_id = coach.get("id")
+            if coach_id is None:
+                continue
+            for item in coach.get("seasons") or []:
+                if int(item.get("year") or 0) != season or item.get("teamId") is None:
+                    continue
+                rows.append((
+                    season, int(coach_id), str(coach.get("firstName") or ""),
+                    str(coach.get("lastName") or ""), int(item["teamId"]),
+                    str(item.get("school") or ""), item.get("conference"),
+                    int(item.get("games") or 0), int(item.get("wins") or 0),
+                    int(item.get("losses") or 0), int(item.get("ties") or 0),
+                    _numeric(item.get("winPercentage")),
+                    (int(bool(item["attributionComplete"]))
+                     if item.get("attributionComplete") is not None else None),
+                    now,
+                ))
+        with self.transaction() as connection:
+            connection.execute("DELETE FROM coach_seasons WHERE season=?", (season,))
+            connection.executemany(
+                """INSERT INTO coach_seasons VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
+        return len(rows)
 
     def replace_records(self, season: int, records: Iterable[dict[str, Any]]) -> int:
         items = tuple(records)
@@ -922,6 +986,7 @@ class CFBRepository:
             counts = {
                 "teams": connection.execute("SELECT COUNT(*) FROM teams").fetchone()[0],
                 "games": connection.execute("SELECT COUNT(*) FROM games WHERE season = ?", (season,)).fetchone()[0],
+                "coach_seasons": connection.execute("SELECT COUNT(*) FROM coach_seasons WHERE season = ?", (season,)).fetchone()[0],
                 "players": connection.execute("SELECT COUNT(*) FROM players WHERE season = ?", (season,)).fetchone()[0],
                 "rankings": connection.execute("SELECT COUNT(*) FROM rankings WHERE season = ?", (season,)).fetchone()[0],
                 "team_stats": connection.execute("SELECT COUNT(*) FROM team_stats WHERE season = ?", (season,)).fetchone()[0],
@@ -1026,6 +1091,30 @@ class CFBRepository:
             grid.append(row)
         return {"seasons": wanted, "conferences": conferences,
                 "grid": grid, "gaps": gaps, "gap_count": len(gaps)}
+
+    def history_coverage(self) -> dict[str, Any]:
+        """Season-level completeness for every dataset used by history pages."""
+        self.initialize()
+        tables = {
+            "games": "games", "records": "team_records", "team_stats": "team_stats",
+            "advanced_stats": "team_advanced_stats", "coaches": "coach_seasons",
+            "player_stats": "player_season_stats",
+        }
+        by_year: dict[int, dict[str, int]] = {}
+        with closing(self._connect()) as connection:
+            for label, table in tables.items():
+                for row in connection.execute(
+                    f"SELECT season,COUNT(*) rows FROM {table} GROUP BY season"):
+                    by_year.setdefault(row["season"], {"season": row["season"]})[label] = row["rows"]
+        rows = []
+        for year in sorted(by_year, reverse=True):
+            row = by_year[year]
+            for label in tables:
+                row.setdefault(label, 0)
+            row["complete"] = all(row[label] > 0 for label in tables)
+            rows.append(row)
+        return {"seasons": rows, "complete_seasons": sum(row["complete"] for row in rows),
+                "season_count": len(rows)}
 
     def team_elo(self, season: int) -> dict[int, dict[str, Any]]:
         """Current Elo per team, derived from CFBD per-game pregame ratings.

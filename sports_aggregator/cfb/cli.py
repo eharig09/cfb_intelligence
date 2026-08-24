@@ -10,7 +10,7 @@ import os
 from dotenv import load_dotenv
 
 from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError
-from sports_aggregator.cfb.models import Player
+from sports_aggregator.cfb.models import Game, Player
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.sync import CFBDataSync
 
@@ -19,6 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Synchronize college-football data from CFBD")
     parser.add_argument("command", choices=("sync", "status", "sync-player-stats",
                                            "sync-roster-context", "backfill",
+                                           "sync-history",
                                            "sync-promoted", "coverage", "sync-lines",
                                            "sync-venues", "sync-recruits",
                                            "link-transfer-grades"))
@@ -90,6 +91,34 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "coverage":
         print(json.dumps(repository.stat_coverage(), indent=2, default=str))
         return 0
+    if args.command == "sync-history":
+        first = args.from_year or args.year
+        last = args.to_year or args.year
+        if first > last:
+            parser.error("--from-year must not be after --to-year")
+        failures = []
+        for year in range(first, last + 1):
+            jobs = (
+                ("games", lambda year=year: repository.replace_games(
+                    year, (Game.from_cfbd(item) for item in client.games(year, args.force)))),
+                ("records", lambda year=year: repository.replace_records(
+                    year, (item for item in client.records(year, args.force)
+                           if item.get("classification") == "fbs"))),
+                ("team_stats", lambda year=year: repository.replace_team_stats(
+                    year, client.team_stats(year, args.force))),
+                ("advanced_stats", lambda year=year: repository.replace_advanced_stats(
+                    year, client.advanced_team_stats(year, args.force))),
+                ("coaches", lambda year=year: repository.replace_coach_seasons(
+                    year, client.coaches(year, args.force))),
+            )
+            for name, operation in jobs:
+                try:
+                    print(f"{year} {name}: success ({operation()})")
+                except Exception as exc:
+                    failures.append(f"{year} {name}")
+                    print(f"{year} {name}: failed ({exc})")
+        print(f"sync-history {first}-{last} complete; {len(failures)} dataset failures")
+        return 1 if failures else 0
     if args.command == "sync-promoted":
         # A team promoted from FCS has no history in any FBS-filtered dataset.
         # Sacramento State and North Dakota State joined for 2026 and carried no
