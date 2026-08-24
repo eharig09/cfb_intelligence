@@ -9,6 +9,21 @@ from sports_aggregator.social.unified import UnifiedSourceRegistry
 
 
 class SourceGraphTests(unittest.TestCase):
+    def test_configured_sources_include_verified_ncaa_fbs_feed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry = UnifiedSourceRegistry(os.path.join(directory, "sources.sqlite3"))
+            registry.seed_configured_endpoints()
+            ncaa = next(entity for entity in registry.list_entities()
+                        if entity["entity_key"] == "organization:ncaa")
+            endpoint = ncaa["endpoints"][0]
+            self.assertEqual(endpoint["platform"], "rss")
+            self.assertEqual(endpoint["verification_status"], "verified")
+            self.assertIn("football/fbs/rss.xml", endpoint["url"])
+            yahoo = next(entity for entity in registry.list_entities()
+                         if entity["entity_key"] == "organization:yahoo-sports")
+            self.assertEqual(yahoo["endpoints"][0]["verification_status"], "verified")
+            self.assertIn("college-football/rss", yahoo["endpoints"][0]["url"])
+
     def test_one_entity_can_own_multiple_platform_endpoints(self):
         with tempfile.TemporaryDirectory() as directory:
             registry = UnifiedSourceRegistry(os.path.join(directory, "sources.sqlite3"))

@@ -4,7 +4,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from sports_aggregator.cfb.models import Team
+from sports_aggregator.cfb.models import Game, Player, Team
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.providers.youtube import YouTubeDataClient, configured_api_key
 from sports_aggregator.social.content import ContentRepository, video_content_type
@@ -143,6 +143,14 @@ class TeamResolutionTests(unittest.TestCase):
         )])
         self.content = ContentRepository(self.path)
         self.content.initialize()
+        self.cfb.replace_games(2026, (
+            Game(900, 2026, 0, "regular", datetime(2026, 8, 29, 16, tzinfo=timezone.utc),
+                 False, False, False, False, None, None, 130, "Michigan", "Big Ten",
+                 None, None, 194, "Ohio State", "Big Ten", None, None, None, None),
+            Game(901, 2026, 1, "regular", datetime(2026, 9, 5, 16, tzinfo=timezone.utc),
+                 False, False, False, False, None, None, 130, "Michigan", "Big Ten",
+                 None, None, 2, "Auburn", "SEC", None, None, None, None),
+        ))
 
     def tearDown(self):
         os.unlink(self.path)
@@ -206,6 +214,77 @@ class TeamResolutionTests(unittest.TestCase):
                 (content_id,)).fetchone()[0]
             self.assertEqual(games, 0)
             self.assertEqual(conferences, 0)
+        finally:
+            connection.close()
+
+    def test_team_only_non_game_article_does_not_inherit_next_game(self):
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        try:
+            games = self.content._game_candidates(
+                connection, {130}, 2026,
+                "Michigan lands a four-star quarterback recruit",
+                NOW,
+            )
+            self.assertEqual(games, [])
+        finally:
+            connection.close()
+
+    def test_week_zero_is_an_explicit_game_signal(self):
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        try:
+            games = self.content._game_candidates(
+                connection, {130}, 2026,
+                "Michigan Week 0 preview and kickoff details",
+                NOW,
+            )
+            self.assertEqual(games, [(900, 0.9, "single_team_explicit_week")])
+        finally:
+            connection.close()
+
+    def test_two_named_opponents_select_their_game_not_the_next_game(self):
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        try:
+            games = self.content._game_candidates(
+                connection, {130, 2}, 2026,
+                "Michigan and Auburn matchup preview",
+                NOW,
+            )
+            self.assertEqual(games, [(901, 1.0, "both_teams_game")])
+        finally:
+            connection.close()
+
+    def test_two_schools_in_transfer_story_do_not_create_game_link(self):
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        try:
+            games = self.content._game_candidates(
+                connection, {130, 2}, 2026,
+                "A receiver transferred from Michigan to Auburn",
+                NOW,
+            )
+            self.assertEqual(games, [])
+        finally:
+            connection.close()
+
+    def test_prior_roster_player_is_retained_with_lower_confidence(self):
+        self.cfb.replace_players(2025, (
+            Player("departed-1", 2025, "Taylor", "Departure", "Michigan",
+                   "WR", 8, 72, 190, 4),
+        ))
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        try:
+            players = self.content._player_candidates(
+                connection,
+                "Michigan graduate Taylor Departure prepares for the NFL draft",
+                2026, {130}, title="Taylor Departure prepares for NFL draft",
+            )
+            self.assertEqual(players[0][0:2], (2025, "departed-1"))
+            self.assertGreaterEqual(players[0][2], 0.8)
+            self.assertIn("prior_season", players[0][3])
         finally:
             connection.close()
 

@@ -1,8 +1,12 @@
 import os
 from datetime import datetime
+from pathlib import Path
+import secrets
+import subprocess
+import sys
 
 import click
-from flask import Flask, render_template
+from flask import Flask, abort, jsonify, render_template, request
 from flask_caching import Cache
 from dotenv import load_dotenv
 
@@ -37,6 +41,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         REGISTER_LEGACY_DASHBOARDS=_env_flag("REGISTER_LEGACY_DASHBOARDS", True),
         CFB_DEFAULT_SEASON=int(os.getenv("CFB_DEFAULT_SEASON", "0")) or None,
         CFB_DISPLAY_TIMEZONE=os.getenv("CFB_DISPLAY_TIMEZONE", "America/New_York"),
+        CFB_REFRESH_TOKEN=os.getenv("CFB_REFRESH_TOKEN", ""),
         CFB_DATABASE_PATH=os.getenv(
             "CFB_DATABASE_PATH", os.path.join(app.instance_path, "cfb.sqlite3")
         ),
@@ -75,6 +80,26 @@ def create_app(test_config: dict | None = None) -> Flask:
             leagues=list_leagues(),
             legacy_dashboards=app.config["REGISTER_LEGACY_DASHBOARDS"],
         )
+
+    @app.post("/internal/cfb-refresh")
+    def start_cfb_refresh():
+        """Let a Render Cron Job trigger work inside the web service filesystem."""
+        expected = str(app.config.get("CFB_REFRESH_TOKEN") or "").strip()
+        authorization = request.headers.get("Authorization", "")
+        provided = authorization.removeprefix("Bearer ").strip()
+        if not expected:
+            abort(503, description="CFB_REFRESH_TOKEN is not configured")
+        if not provided or not secrets.compare_digest(provided, expected):
+            abort(401)
+        season = app.config.get("CFB_DEFAULT_SEASON") or datetime.now().year
+        root = Path(__file__).resolve().parent
+        subprocess.Popen(
+            [sys.executable, "-m", "sports_aggregator.scheduled_refresh",
+             "--season", str(season)],
+            cwd=str(root), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+        return jsonify({"status": "accepted", "season": season}), 202
 
     # One number formatter for every template, so the same statistic cannot
     # render as 0.686, 68.6% and 0.7% on three different pages.

@@ -1,0 +1,16 @@
+services:
+  - type: cron
+    name: cfb-refresh-trigger
+    runtime: python
+    schedule: "0 * * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m sports_aggregator.render_trigger
+    envVars:
+      - key: CFB_REFRESH_URL
+        sync: false
+      - key: CFB_REFRESH_TOKEN
+        sync: false
+      - key: CFB_REFRESH_TIMEZONE
+        value: America/New_York
+      - key: CFB_REFRESH_HOURS
+        value: 6,12,18,23

@@ -162,8 +162,18 @@ multidimensional expertise, resolves stable platform identities, persists normal
 content, and conservatively attaches topics, teams, players, and games. The legacy
 Reds and Bengals integrations remain unchanged.
 
-The initial source is ESPN's documented college-football RSS feed. Provider terms
-still apply: preserve attribution and links, and do not modify syndicated content.
+National articles currently come from ESPN, Yahoo Sports' college-football RSS
+feed, and the official NCAA.com FBS RSS feed. The source graph records each
+publisher independently and NCAA.com as an official primary source, so items
+retain the right attribution and role. Provider terms still apply: preserve
+attribution and links, and do not modify syndicated content.
+
+The nationwide local reporting registry researches every current FBS program,
+normalizes publishers, verifies recurring team coverage and machine-readable
+fallbacks, rejects weak cross-state opponent mappings, and imports the results into
+the unified source graph. See
+[docs/LOCAL_SOURCE_REGISTRY.md](docs/LOCAL_SOURCE_REGISTRY.md) and the generated
+artifacts in [`data/local_sources/`](data/local_sources/).
 
 ## Run locally
 
@@ -185,11 +195,29 @@ python -m sports_aggregator.bootstrap refresh --season 2026
 python -m sports_aggregator.bootstrap status --season 2026
 ```
 
+On Windows, register lock-safe refreshes for 6:00 AM, noon, 6:00 PM, and
+11:00 PM local time:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\register_refresh_task.ps1
+```
+
+Missed runs start when the computer becomes available; overlapping runs are
+skipped. Logs and compact run history live under `instance/`. See
+[`docs/SCHEDULED_REFRESH.md`](docs/SCHEDULED_REFRESH.md) for operations and
+custom schedules.
+
+For Render, use the included [`render.yaml`](render.yaml) Cron Job trigger rather
+than refreshing SQLite inside a separate service. The web service needs a
+persistent disk and a shared `CFB_REFRESH_TOKEN`; deployment details are in
+[`docs/SCHEDULED_REFRESH.md`](docs/SCHEDULED_REFRESH.md#render).
+
 `initial` builds canonical teams/games/current rosters first, then current and
 prior-season player production, models, roster lifecycle, PFF, transfer identity
 links, draft data, weather, source registries, ingestion, retagging, clustering,
 and relevance scores. `refresh` updates every moving current-season source in the
-same dependency order. Week 0 is retained as a real scheduled week. Optional
+same dependency order. National RSS is followed by verified team-scoped local RSS,
+then retagging, clustering, and scoring. Week 0 is retained as a real scheduled week. Optional
 sources are visibly skipped when their credentials are unavailable; Reddit
 requires both its client ID and client secret.
 
@@ -283,6 +311,15 @@ re-fetching any source, so a tagging-rule change reaches the whole archive:
 ```powershell
 python -m sports_aggregator.social.content_cli retag --season 2026
 ```
+
+Game links are evidence-based. Two resolved opponents uniquely identify their
+scheduled meeting; a one-team item must also contain game language, and
+preview/recap wording plus publication time chooses the appropriate direction.
+An explicit `Week 0` or `Week Zero` is retained and matched as week zero. This
+prevents recruiting, transfer, and facilities articles from silently inheriting
+a team's next game. Player matching checks the active roster first, then the prior
+season at reduced confidence for recent graduates, draftees, and departures;
+headline matches are separately recorded and boosted.
 
 The default review export is exception-focused: it selects uncertain roles,
 ranking-boundary items, missing scope, borderline entity links, and classifier

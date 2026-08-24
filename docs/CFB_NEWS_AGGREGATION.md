@@ -223,6 +223,33 @@ links at reduced confidence with the weaker method recorded
 confidence. Recall against items naming a unique rostered player went from 148 of
 161 to 161 of 161.
 
+The resolver now checks the current roster first and falls back one season only
+when that name was not matched in the active roster. Prior-season links retain
+their true roster season and are capped at lower confidence, which keeps recent
+graduates, draftees, and transfers discoverable without allowing stale rows to
+override active players. A full name in the headline is recorded as headline
+evidence and receives a bounded confidence boost.
+
+## Game resolution
+
+A team mention alone no longer attaches the next scheduled game. Two confidently
+resolved opponents can identify a unique meeting; otherwise a one-team item must
+contain game-level language. Preview and recap vocabulary constrains the search to
+future or recent games, publication time selects the nearest plausible event, and
+an explicit week label wins over temporal proximity. Both `Week 0` and `Week Zero`
+resolve to week zero. These decisions are stored as distinct match methods for the
+link audit.
+
+## RSS source expansion
+
+The national article stream includes ESPN, Yahoo Sports' verified college-football
+feed at `https://sports.yahoo.com/college-football/rss/`, and the official NCAA.com
+FBS feed at `https://www.ncaa.com/news/football/fbs/rss.xml`. Each publisher has
+its own source entity, and NCAA.com is represented as an official primary source
+rather than an anonymous feed. New conference or team feeds should follow the
+same rule: verify an exact public endpoint, add its entity and beat scope, then
+activate it; a guessed URL is never promoted directly.
+
 ## Headlines
 
 Video and podcast rows stored the full description as body text, and the game

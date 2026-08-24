@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from app import create_app
 from sports_aggregator.catalog import get_league
@@ -37,6 +38,7 @@ class WebTests(unittest.TestCase):
             "REGISTER_LEGACY_DASHBOARDS": False,
             "LEAGUE_AGGREGATION_SERVICE": StubService(result),
             "CFB_DATABASE_PATH": os.path.join(self.temp_dir.name, "cfb.sqlite3"),
+            "CFB_REFRESH_TOKEN": "test-refresh-token",
         })
         self.client = self.app.test_client()
 
@@ -79,6 +81,18 @@ class WebTests(unittest.TestCase):
         content = self.client.get("/api/v1/cfb/content")
         self.assertEqual(content.status_code, 200)
         self.assertEqual(content.get_json()["count"], 0)
+
+    @patch("app.subprocess.Popen")
+    def test_render_refresh_hook_requires_token_and_starts_background_job(self, popen):
+        self.assertEqual(self.client.post("/internal/cfb-refresh").status_code, 401)
+        response = self.client.post(
+            "/internal/cfb-refresh",
+            headers={"Authorization": "Bearer test-refresh-token"},
+        )
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.get_json()["status"], "accepted")
+        command = popen.call_args.args[0]
+        self.assertIn("sports_aggregator.scheduled_refresh", command)
 
 
 if __name__ == "__main__":

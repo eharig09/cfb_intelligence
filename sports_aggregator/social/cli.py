@@ -1,12 +1,20 @@
 from __future__ import annotations
 import argparse, json, os
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from dotenv import load_dotenv
 from sports_aggregator.social.bluesky import BlueskyIdentityClient
 from sports_aggregator.social.registry import SourceRegistry
 from sports_aggregator.social.seeds import CFB_BLUESKY_SEEDS
 from sports_aggregator.social.reddit import RedditCommunityClient
 from sports_aggregator.social.unified import UnifiedSourceRegistry, migrate_bluesky_sources
+from sports_aggregator.social.local_sources import import_source_graph
+
+LOCAL_REGISTRY = Path("data/local_sources/cfb_local_source_registry.json")
+
+def _import_local(unified, database):
+    if not LOCAL_REGISTRY.exists(): return {"entities": 0, "endpoints": 0}
+    return import_source_graph(json.loads(LOCAL_REGISTRY.read_text(encoding="utf-8")), database)
 
 def main(argv=None):
     load_dotenv(); p=argparse.ArgumentParser(); p.add_argument('command',choices=('seed','resolve','status','prepare','validate-reddit','unified-status')); p.add_argument('--force',action='store_true'); a=p.parse_args(argv)
@@ -16,12 +24,14 @@ def main(argv=None):
         seeded=registry.seed(CFB_BLUESKY_SEEDS); migrated=migrate_bluesky_sources(database)
         reddit=unified.seed_reddit_communities(); candidates=unified.seed_media_candidates()
         configured=unified.seed_configured_endpoints(); relationships=unified.infer_organization_relationships()
-        print(f"bluesky_seeded={seeded} entities_migrated={migrated} reddit_seeded={reddit} media_candidates={candidates} configured_endpoints={configured} relationships_added={relationships}"); return 0
+        local=_import_local(unified,database)
+        print(f"bluesky_seeded={seeded} entities_migrated={migrated} reddit_seeded={reddit} media_candidates={candidates} configured_endpoints={configured} relationships_added={relationships} local_entities={local['entities']} local_endpoints={local['endpoints']}"); return 0
     if a.command=='prepare':
         migrated=migrate_bluesky_sources(database); reddit=unified.seed_reddit_communities()
         candidates=unified.seed_media_candidates(); configured=unified.seed_configured_endpoints()
         relationships=unified.infer_organization_relationships()
-        print(f"entities_migrated={migrated} reddit_seeded={reddit} media_candidates={candidates} configured_endpoints={configured} relationships_added={relationships}"); return 0
+        local=_import_local(unified,database)
+        print(f"entities_migrated={migrated} reddit_seeded={reddit} media_candidates={candidates} configured_endpoints={configured} relationships_added={relationships} local_entities={local['entities']} local_endpoints={local['endpoints']}"); return 0
     if a.command=='status':
         s=registry.status(); print(f"sources={s['count']} verified={s['verified']} failed_or_unresolved={s['failed']}"); return 0
     if a.command=='unified-status':

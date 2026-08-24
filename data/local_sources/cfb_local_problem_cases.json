@@ -1,0 +1,1386 @@
+{
+  "problem_cases": [
+    {
+      "team": "Air Force",
+      "conference": "Mountain West",
+      "source_count": 2,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Akron",
+      "conference": "Mid-American",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Alabama",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "App State",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Arizona",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Arizona State",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Arkansas",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Arkansas State",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Army",
+      "conference": "American Athletic",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Auburn",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "BYU",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Ball State",
+      "conference": "Mid-American",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Baylor",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Boise State",
+      "conference": "Pac-12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Boston College",
+      "conference": "ACC",
+      "source_count": 2,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Bowling Green",
+      "conference": "Mid-American",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Buffalo",
+      "conference": "Mid-American",
+      "source_count": 0,
+      "issues": [
+        "weak_local_coverage"
+      ],
+      "errors": []
+    },
+    {
+      "team": "California",
+      "conference": "ACC",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Central Michigan",
+      "conference": "Mid-American",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Charlotte",
+      "conference": "American Athletic",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Cincinnati",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Clemson",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Coastal Carolina",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Colorado",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Colorado State",
+      "conference": "Pac-12",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Delaware",
+      "conference": "Conference USA",
+      "source_count": 2,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Duke",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "East Carolina",
+      "conference": "American Athletic",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Eastern Michigan",
+      "conference": "Mid-American",
+      "source_count": 2,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Florida",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Florida Atlantic",
+      "conference": "American Athletic",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Florida International",
+      "conference": "Conference USA",
+      "source_count": 0,
+      "issues": [
+        "weak_local_coverage"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Florida State",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Fresno State",
+      "conference": "Pac-12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Georgia",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Georgia Southern",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Georgia State",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Georgia Tech",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Hawai'i",
+      "conference": "Mountain West",
+      "source_count": 0,
+      "issues": [
+        "weak_local_coverage"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Houston",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Illinois",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Indiana",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Iowa",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Iowa State",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Jacksonville State",
+      "conference": "Conference USA",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "James Madison",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Kansas",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Kansas State",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Kennesaw State",
+      "conference": "Conference USA",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Kent State",
+      "conference": "Mid-American",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Kentucky",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "LSU",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Liberty",
+      "conference": "Conference USA",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Louisiana",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Louisiana Tech",
+      "conference": "Sun Belt",
+      "source_count": 0,
+      "issues": [
+        "weak_local_coverage"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Louisville",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Marshall",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Maryland",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Massachusetts",
+      "conference": "Mid-American",
+      "source_count": 0,
+      "issues": [
+        "weak_local_coverage"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Memphis",
+      "conference": "American Athletic",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Miami",
+      "conference": "ACC",
+      "source_count": 2,
+      "issues": [
+        "ambiguous_team_name",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Miami (OH)",
+      "conference": "Mid-American",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "ambiguous_team_name",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Michigan",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Michigan State",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Middle Tennessee",
+      "conference": "Conference USA",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Minnesota",
+      "conference": "Big Ten",
+      "source_count": 2,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Mississippi State",
+      "conference": "SEC",
+      "source_count": 2,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Missouri",
+      "conference": "SEC",
+      "source_count": 2,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Missouri State",
+      "conference": "Conference USA",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "NC State",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Navy",
+      "conference": "American Athletic",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Nebraska",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Nevada",
+      "conference": "Mountain West",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "New Mexico",
+      "conference": "Mountain West",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "New Mexico State",
+      "conference": "Conference USA",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "North Carolina",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "North Dakota State",
+      "conference": "Mountain West",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "North Texas",
+      "conference": "American Athletic",
+      "source_count": 2,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Northern Illinois",
+      "conference": "Mountain West",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Northwestern",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Notre Dame",
+      "conference": "FBS Independents",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Ohio",
+      "conference": "Mid-American",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Ohio State",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Oklahoma",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Oklahoma State",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Old Dominion",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Ole Miss",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Oregon",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Oregon State",
+      "conference": "Pac-12",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Penn State",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Pittsburgh",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Purdue",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Rice",
+      "conference": "American Athletic",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Rutgers",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "SMU",
+      "conference": "ACC",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Sacramento State",
+      "conference": "Mid-American",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Sam Houston",
+      "conference": "Conference USA",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "San Diego State",
+      "conference": "Pac-12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "San José State",
+      "conference": "Mountain West",
+      "source_count": 0,
+      "issues": [
+        "weak_local_coverage"
+      ],
+      "errors": []
+    },
+    {
+      "team": "South Alabama",
+      "conference": "Sun Belt",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "South Carolina",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "South Florida",
+      "conference": "American Athletic",
+      "source_count": 2,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Southern Miss",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Stanford",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Syracuse",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "TCU",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Temple",
+      "conference": "American Athletic",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Tennessee",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Texas",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Texas A&M",
+      "conference": "SEC",
+      "source_count": 2,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Texas State",
+      "conference": "Pac-12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Texas Tech",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Toledo",
+      "conference": "Mid-American",
+      "source_count": 2,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Troy",
+      "conference": "Sun Belt",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Tulane",
+      "conference": "American Athletic",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Tulsa",
+      "conference": "American Athletic",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "UAB",
+      "conference": "American Athletic",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "UCF",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "UCLA",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "UConn",
+      "conference": "FBS Independents",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "UL Monroe",
+      "conference": "Sun Belt",
+      "source_count": 0,
+      "issues": [
+        "weak_local_coverage"
+      ],
+      "errors": []
+    },
+    {
+      "team": "UNLV",
+      "conference": "Mountain West",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "USC",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "ambiguous_team_name",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "UTEP",
+      "conference": "Mountain West",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "UTSA",
+      "conference": "American Athletic",
+      "source_count": 0,
+      "issues": [
+        "weak_local_coverage",
+        "ambiguous_team_name"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Utah",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Utah State",
+      "conference": "Pac-12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Vanderbilt",
+      "conference": "SEC",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Virginia",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Virginia Tech",
+      "conference": "ACC",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Wake Forest",
+      "conference": "ACC",
+      "source_count": 0,
+      "issues": [
+        "weak_local_coverage"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Washington",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Washington State",
+      "conference": "Pac-12",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "West Virginia",
+      "conference": "Big 12",
+      "source_count": 3,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Western Kentucky",
+      "conference": "Conference USA",
+      "source_count": 2,
+      "issues": [
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Western Michigan",
+      "conference": "Mid-American",
+      "source_count": 1,
+      "issues": [
+        "weak_local_coverage",
+        "no_verified_publisher_native_rss",
+        "paywall_status_unverified",
+        "publisher_endpoint_errors"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Wisconsin",
+      "conference": "Big Ten",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    },
+    {
+      "team": "Wyoming",
+      "conference": "Mountain West",
+      "source_count": 3,
+      "issues": [
+        "paywall_status_unverified"
+      ],
+      "errors": []
+    }
+  ]
+}

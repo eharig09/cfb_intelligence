@@ -1,0 +1,3478 @@
+{
+  "publishers": {
+    "1011now-com": {
+      "publisher_id": "1011now-com",
+      "name": "KOLN | Nebraska Local News, Weather, Sports | Lincoln, NE",
+      "domain": "1011now.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.1011now.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Nebraska"
+      ]
+    },
+    "11alive-com": {
+      "publisher_id": "11alive-com",
+      "name": "11Alive.com",
+      "domain": "11alive.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.11alive.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.11alive.com/feeds/googlenews",
+      "teams": [
+        "Georgia Tech"
+      ]
+    },
+    "13newsnow-com": {
+      "publisher_id": "13newsnow-com",
+      "name": "13newsnow.com",
+      "domain": "13newsnow.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.13newsnow.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.13newsnow.com/sitemap.xml",
+      "teams": [
+        "Old Dominion"
+      ]
+    },
+    "7220sports-com": {
+      "publisher_id": "7220sports-com",
+      "name": "7220sports.com",
+      "domain": "7220sports.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": "https://7220sports.com/feed/",
+      "news_sitemap": null,
+      "teams": [
+        "Wyoming"
+      ]
+    },
+    "abc11-com": {
+      "publisher_id": "abc11-com",
+      "name": "ABC11 News",
+      "domain": "abc11.com",
+      "source_type": "newspaper",
+      "native_rss": "https://abc11.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "North Carolina"
+      ]
+    },
+    "abc13-com": {
+      "publisher_id": "abc13-com",
+      "name": "ABC13 Houston",
+      "domain": "abc13.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://abc13.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Rice"
+      ]
+    },
+    "abcnews-com": {
+      "publisher_id": "abcnews-com",
+      "name": "ABC News - Breaking News, Latest News and Videos",
+      "domain": "abcnews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://abcnews.com/xmap",
+      "teams": [
+        "Michigan"
+      ]
+    },
+    "actionnews5-com": {
+      "publisher_id": "actionnews5-com",
+      "name": "Action News 5",
+      "domain": "actionnews5.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.actionnews5.com/arc/outboundfeeds/sitemap-index/?outputType=xml",
+      "teams": [
+        "Memphis"
+      ]
+    },
+    "ajc-com": {
+      "publisher_id": "ajc-com",
+      "name": "AJC.com",
+      "domain": "ajc.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://feeds.ajc.com/arc/outboundfeeds/news-sitemap/?outputType=xml",
+      "teams": [
+        "Kennesaw State"
+      ]
+    },
+    "al-com": {
+      "publisher_id": "al-com",
+      "name": "AL.com",
+      "domain": "al.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.al.com/arc/outboundfeeds/news-sitemap-index/?outputType=xml",
+      "teams": [
+        "Alabama",
+        "Jacksonville State",
+        "South Alabama",
+        "Troy",
+        "UAB"
+      ]
+    },
+    "alligator-org": {
+      "publisher_id": "alligator-org",
+      "name": "The Independent Florida Alligator",
+      "domain": "alligator.org",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Florida"
+      ]
+    },
+    "app-com": {
+      "publisher_id": "app-com",
+      "name": "Asbury Park Press",
+      "domain": "app.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.app.com/news-sitemap.xml",
+      "teams": [
+        "Rutgers"
+      ]
+    },
+    "arizonasports-com": {
+      "publisher_id": "arizonasports-com",
+      "name": "Arizona Sports",
+      "domain": "arizonasports.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://arizonasports.com/news-sitemap.xml",
+      "teams": [
+        "Arizona State"
+      ]
+    },
+    "arkansasonline-com": {
+      "publisher_id": "arkansasonline-com",
+      "name": "The Arkansas Democrat-Gazette",
+      "domain": "arkansasonline.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Arkansas"
+      ]
+    },
+    "astateredwolves-com": {
+      "publisher_id": "astateredwolves-com",
+      "name": "Arkansas State Red Wolves",
+      "domain": "astateredwolves.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Arkansas State"
+      ]
+    },
+    "athensmessenger-com": {
+      "publisher_id": "athensmessenger-com",
+      "name": "The Athens Messenger",
+      "domain": "athensmessenger.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Ohio"
+      ]
+    },
+    "atlantanewsfirst-com": {
+      "publisher_id": "atlantanewsfirst-com",
+      "name": "Atlanta News First",
+      "domain": "atlantanewsfirst.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.atlantanewsfirst.com/arc/outboundfeeds/sitemap-index/?outputType=xml",
+      "teams": [
+        "Georgia Tech",
+        "Kennesaw State"
+      ]
+    },
+    "attheroost-com": {
+      "publisher_id": "attheroost-com",
+      "name": "attheroost.com",
+      "domain": "attheroost.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://attheroost.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Rice"
+      ]
+    },
+    "auburnobserver-com": {
+      "publisher_id": "auburnobserver-com",
+      "name": "The Auburn Observer",
+      "domain": "auburnobserver.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Auburn"
+      ]
+    },
+    "averyjournal-com": {
+      "publisher_id": "averyjournal-com",
+      "name": "The Avery Journal-Times",
+      "domain": "averyjournal.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "App State"
+      ]
+    },
+    "azcentral-com": {
+      "publisher_id": "azcentral-com",
+      "name": "azcentral.com and The Arizona Republic",
+      "domain": "azcentral.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.azcentral.com/news-sitemap.xml",
+      "teams": [
+        "Arizona State"
+      ]
+    },
+    "azfamily-com": {
+      "publisher_id": "azfamily-com",
+      "name": "AZ Family",
+      "domain": "azfamily.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.azfamily.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Arizona State"
+      ]
+    },
+    "badgerobserver-com": {
+      "publisher_id": "badgerobserver-com",
+      "name": "Badger Observer",
+      "domain": "badgerobserver.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.badgerobserver.com/feed",
+      "sports_rss": null,
+      "news_sitemap": "https://www.badgerobserver.com/news_sitemap.xml",
+      "teams": [
+        "Wisconsin"
+      ]
+    },
+    "ballstatedailynews-com": {
+      "publisher_id": "ballstatedailynews-com",
+      "name": "ballstatedailynews.com",
+      "domain": "ballstatedailynews.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Ball State"
+      ]
+    },
+    "baltimoresun-com": {
+      "publisher_id": "baltimoresun-com",
+      "name": "Baltimore Sun",
+      "domain": "baltimoresun.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Maryland"
+      ]
+    },
+    "baytobaynews-com": {
+      "publisher_id": "baytobaynews-com",
+      "name": "Bay to Bay News",
+      "domain": "baytobaynews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://baytobaynews.com/sitemaps/sitemaps-r2-default-all-1.xml",
+      "teams": [
+        "Delaware"
+      ]
+    },
+    "beaconjournal-com": {
+      "publisher_id": "beaconjournal-com",
+      "name": "Akron Beacon Journal",
+      "domain": "beaconjournal.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.beaconjournal.com/news-sitemap.xml",
+      "teams": [
+        "Akron",
+        "Bowling Green",
+        "Kent State"
+      ]
+    },
+    "bearinsider-com": {
+      "publisher_id": "bearinsider-com",
+      "name": "Bear Insider",
+      "domain": "bearinsider.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "California"
+      ]
+    },
+    "beavertonvalleytimes-com": {
+      "publisher_id": "beavertonvalleytimes-com",
+      "name": "Beaverton Valley Times",
+      "domain": "beavertonvalleytimes.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://beavertonvalleytimes.com/sitemap-news.xml",
+      "teams": [
+        "Oregon State"
+      ]
+    },
+    "bgdailynews-com": {
+      "publisher_id": "bgdailynews-com",
+      "name": "Bowling Green Daily News",
+      "domain": "bgdailynews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://bgdailynews.com/sitemap-news.xml",
+      "teams": [
+        "Western Kentucky"
+      ]
+    },
+    "bvmsports-com": {
+      "publisher_id": "bvmsports-com",
+      "name": "BVM Sports",
+      "domain": "bvmsports.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://bvmsports.com/feed/originals-feed/",
+      "sports_rss": "https://bvmsports.com/feed/articles-feed/",
+      "news_sitemap": null,
+      "teams": [
+        "Army"
+      ]
+    },
+    "cachevalleydaily-com": {
+      "publisher_id": "cachevalleydaily-com",
+      "name": "Cache Valley Daily",
+      "domain": "cachevalleydaily.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Utah State"
+      ]
+    },
+    "cdispatch-com": {
+      "publisher_id": "cdispatch-com",
+      "name": "cdispatch.com",
+      "domain": "cdispatch.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://cdispatch.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Mississippi State"
+      ]
+    },
+    "charlotteobserver-com": {
+      "publisher_id": "charlotteobserver-com",
+      "name": "Charlotte Observer",
+      "domain": "charlotteobserver.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "App State",
+        "Charlotte"
+      ]
+    },
+    "chicagotribune-com": {
+      "publisher_id": "chicagotribune-com",
+      "name": "Chicago Tribune",
+      "domain": "chicagotribune.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Northern Illinois",
+        "Northwestern"
+      ]
+    },
+    "cincinnati-com": {
+      "publisher_id": "cincinnati-com",
+      "name": "Cincinnati Enquirer",
+      "domain": "cincinnati.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.cincinnati.com/news-sitemap.xml",
+      "teams": [
+        "Cincinnati",
+        "Miami (OH)"
+      ]
+    },
+    "cjonline-com": {
+      "publisher_id": "cjonline-com",
+      "name": "The Topeka Capital-Journal",
+      "domain": "cjonline.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.cjonline.com/news-sitemap.xml",
+      "teams": [
+        "Kansas",
+        "Kansas State"
+      ]
+    },
+    "clarionledger-com": {
+      "publisher_id": "clarionledger-com",
+      "name": "The Clarion-Ledger",
+      "domain": "clarionledger.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.clarionledger.com/news-sitemap.xml",
+      "teams": [
+        "Mississippi State",
+        "Ole Miss",
+        "Southern Miss"
+      ]
+    },
+    "cm-life-com": {
+      "publisher_id": "cm-life-com",
+      "name": "Central Michigan Life",
+      "domain": "cm-life.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Central Michigan"
+      ]
+    },
+    "coloradoan-com": {
+      "publisher_id": "coloradoan-com",
+      "name": "The Coloradoan",
+      "domain": "coloradoan.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.coloradoan.com/news-sitemap.xml",
+      "teams": [
+        "Colorado"
+      ]
+    },
+    "columbiatribune-com": {
+      "publisher_id": "columbiatribune-com",
+      "name": "Columbia Daily Tribune",
+      "domain": "columbiatribune.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.columbiatribune.com/news-sitemap.xml",
+      "teams": [
+        "Missouri"
+      ]
+    },
+    "county10-com": {
+      "publisher_id": "county10-com",
+      "name": "County 10",
+      "domain": "county10.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Wyoming"
+      ]
+    },
+    "courier-journal-com": {
+      "publisher_id": "courier-journal-com",
+      "name": "The Courier-Journal",
+      "domain": "courier-journal.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.courier-journal.com/news-sitemap.xml",
+      "teams": [
+        "Kentucky",
+        "Louisville"
+      ]
+    },
+    "crossingbroad-com": {
+      "publisher_id": "crossingbroad-com",
+      "name": "Crossing Broad",
+      "domain": "crossingbroad.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Temple"
+      ]
+    },
+    "dailybruin-com": {
+      "publisher_id": "dailybruin-com",
+      "name": "Daily Bruin",
+      "domain": "dailybruin.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "USC"
+      ]
+    },
+    "dailycamera-com": {
+      "publisher_id": "dailycamera-com",
+      "name": "Daily Camera",
+      "domain": "dailycamera.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Colorado"
+      ]
+    },
+    "dailynews-com": {
+      "publisher_id": "dailynews-com",
+      "name": "Los Angeles Daily News",
+      "domain": "dailynews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.dailynews.com/sitemap.xml",
+      "teams": [
+        "UCLA"
+      ]
+    },
+    "dailyorange-com": {
+      "publisher_id": "dailyorange-com",
+      "name": "The Daily Orange",
+      "domain": "dailyorange.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Syracuse"
+      ]
+    },
+    "dailyuw-com": {
+      "publisher_id": "dailyuw-com",
+      "name": "dailyuw.com",
+      "domain": "dailyuw.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Washington"
+      ]
+    },
+    "dallasnews-com": {
+      "publisher_id": "dallasnews-com",
+      "name": "Dallas News",
+      "domain": "dallasnews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.dallasnews.com/web-sitemap-index.xml",
+      "teams": [
+        "SMU",
+        "Texas Tech"
+      ]
+    },
+    "dawgnation-com": {
+      "publisher_id": "dawgnation-com",
+      "name": "DawgNation",
+      "domain": "dawgnation.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.dawgnation.com/arc/outboundfeeds/news-sitemap/?outputType=xml",
+      "teams": [
+        "Georgia"
+      ]
+    },
+    "dawgpost-com": {
+      "publisher_id": "dawgpost-com",
+      "name": "Dawg Post",
+      "domain": "dawgpost.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Georgia"
+      ]
+    },
+    "delawarelive-com": {
+      "publisher_id": "delawarelive-com",
+      "name": "Delaware LIVE News",
+      "domain": "delawarelive.com",
+      "source_type": "newspaper",
+      "native_rss": "https://delawarelive.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Delaware"
+      ]
+    },
+    "denvergazette-com": {
+      "publisher_id": "denvergazette-com",
+      "name": "Denver Gazette",
+      "domain": "denvergazette.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.denvergazette.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": "https://www.denvergazette.com/news-sitemap.xml",
+      "teams": [
+        "Air Force"
+      ]
+    },
+    "denverpost-com": {
+      "publisher_id": "denverpost-com",
+      "name": "The Denver Post",
+      "domain": "denverpost.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Colorado",
+        "Colorado State"
+      ]
+    },
+    "deseret-com": {
+      "publisher_id": "deseret-com",
+      "name": "Deseret News",
+      "domain": "deseret.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.deseret.com/rss/latest.rss",
+      "sports_rss": null,
+      "news_sitemap": "https://www.deseret.com/arc/outboundfeeds/sitemap-news-index/",
+      "teams": [
+        "BYU",
+        "Utah",
+        "Utah State"
+      ]
+    },
+    "desmoinesregister-com": {
+      "publisher_id": "desmoinesregister-com",
+      "name": "The Des Moines Register",
+      "domain": "desmoinesregister.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.desmoinesregister.com/news-sitemap.xml",
+      "teams": [
+        "Iowa",
+        "Iowa State"
+      ]
+    },
+    "detroitnews-com": {
+      "publisher_id": "detroitnews-com",
+      "name": "The Detroit News",
+      "domain": "detroitnews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.detroitnews.com/news-sitemap.xml",
+      "teams": [
+        "Michigan"
+      ]
+    },
+    "dispatch-com": {
+      "publisher_id": "dispatch-com",
+      "name": "The Columbus Dispatch",
+      "domain": "dispatch.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.dispatch.com/news-sitemap.xml",
+      "teams": [
+        "Bowling Green",
+        "Ohio",
+        "Ohio State"
+      ]
+    },
+    "dnews-com": {
+      "publisher_id": "dnews-com",
+      "name": "Moscow-Pullman Daily News",
+      "domain": "dnews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.dnews.com/sitemap.xml",
+      "teams": [
+        "Washington State"
+      ]
+    },
+    "dnj-com": {
+      "publisher_id": "dnj-com",
+      "name": "The Daily News Journal",
+      "domain": "dnj.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.dnj.com/news-sitemap.xml",
+      "teams": [
+        "Middle Tennessee"
+      ]
+    },
+    "duffelblog-com": {
+      "publisher_id": "duffelblog-com",
+      "name": "Duffel Blog",
+      "domain": "duffelblog.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.duffelblog.com/rss/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Navy"
+      ]
+    },
+    "easternecho-com": {
+      "publisher_id": "easternecho-com",
+      "name": "The Eastern Echo",
+      "domain": "easternecho.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Eastern Michigan"
+      ]
+    },
+    "elpasotimes-com": {
+      "publisher_id": "elpasotimes-com",
+      "name": "El Paso Times",
+      "domain": "elpasotimes.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.elpasotimes.com/news-sitemap.xml",
+      "teams": [
+        "UTEP"
+      ]
+    },
+    "fayobserver-com": {
+      "publisher_id": "fayobserver-com",
+      "name": "The Fayetteville Observer",
+      "domain": "fayobserver.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.fayobserver.com/news-sitemap.xml",
+      "teams": [
+        "Duke",
+        "NC State"
+      ]
+    },
+    "fightinggobbler-com": {
+      "publisher_id": "fightinggobbler-com",
+      "name": "Fighting Gobbler",
+      "domain": "fightinggobbler.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://fightinggobbler.com/feed",
+      "sports_rss": null,
+      "news_sitemap": "https://fightinggobbler.com/news-sitemap.xml",
+      "teams": [
+        "Virginia Tech"
+      ]
+    },
+    "fightingirish-com": {
+      "publisher_id": "fightingirish-com",
+      "name": "Notre Dame Fighting Irish",
+      "domain": "fightingirish.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Notre Dame"
+      ]
+    },
+    "fox13seattle-com": {
+      "publisher_id": "fox13seattle-com",
+      "name": "FOX 13 Seattle",
+      "domain": "fox13seattle.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.fox13seattle.com/rss.xml",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Washington"
+      ]
+    },
+    "fox4news-com": {
+      "publisher_id": "fox4news-com",
+      "name": "FOX 4 News Dallas-Fort Worth",
+      "domain": "fox4news.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.fox4news.com/rss.xml",
+      "sports_rss": null,
+      "news_sitemap": "https://www.fox4news.com/sitemap.xml",
+      "teams": [
+        "North Texas"
+      ]
+    },
+    "foxcarolina-com": {
+      "publisher_id": "foxcarolina-com",
+      "name": "FOX Carolina News",
+      "domain": "foxcarolina.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.foxcarolina.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Clemson",
+        "South Carolina"
+      ]
+    },
+    "foxweather-com": {
+      "publisher_id": "foxweather-com",
+      "name": "FOX Weather",
+      "domain": "foxweather.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://moxie.foxweather.com/google-publisher/latest.xml",
+      "sports_rss": null,
+      "news_sitemap": "https://www.foxweather.com/sitemap.xml?type=news",
+      "teams": [
+        "Navy"
+      ]
+    },
+    "freep-com": {
+      "publisher_id": "freep-com",
+      "name": "Detroit Free Press",
+      "domain": "freep.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.freep.com/news-sitemap.xml",
+      "teams": [
+        "Michigan",
+        "Michigan State"
+      ]
+    },
+    "fresnobee-com": {
+      "publisher_id": "fresnobee-com",
+      "name": "Fresno Bee",
+      "domain": "fresnobee.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Fresno State"
+      ]
+    },
+    "fscollegian-com": {
+      "publisher_id": "fscollegian-com",
+      "name": "The Collegian",
+      "domain": "fscollegian.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://fscollegian.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Fresno State"
+      ]
+    },
+    "gadsdentimes-com": {
+      "publisher_id": "gadsdentimes-com",
+      "name": "Gadsden Times",
+      "domain": "gadsdentimes.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.gadsdentimes.com/news-sitemap.xml",
+      "teams": [
+        "Jacksonville State"
+      ]
+    },
+    "gainesville-com": {
+      "publisher_id": "gainesville-com",
+      "name": "Gainesville Sun",
+      "domain": "gainesville.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.gainesville.com/news-sitemap.xml",
+      "teams": [
+        "Florida"
+      ]
+    },
+    "gazette-com": {
+      "publisher_id": "gazette-com",
+      "name": "Colorado Springs Gazette",
+      "domain": "gazette.com",
+      "source_type": "newspaper",
+      "native_rss": "https://gazette.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": "https://gazette.com/news-sitemap.xml",
+      "teams": [
+        "Air Force"
+      ]
+    },
+    "georgiastatesports-com": {
+      "publisher_id": "georgiastatesports-com",
+      "name": "georgiastatesports.com",
+      "domain": "georgiastatesports.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Georgia State"
+      ]
+    },
+    "greeleytribune-com": {
+      "publisher_id": "greeleytribune-com",
+      "name": "Greeley Tribune",
+      "domain": "greeleytribune.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Colorado State"
+      ]
+    },
+    "greenvilleonline-com": {
+      "publisher_id": "greenvilleonline-com",
+      "name": "Greenville Online",
+      "domain": "greenvilleonline.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.greenvilleonline.com/news-sitemap.xml",
+      "teams": [
+        "Boston College"
+      ]
+    },
+    "griceconnect-com": {
+      "publisher_id": "griceconnect-com",
+      "name": "Grice Connect",
+      "domain": "griceconnect.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Georgia Southern"
+      ]
+    },
+    "herald-dispatch-com": {
+      "publisher_id": "herald-dispatch-com",
+      "name": "herald-dispatch.com",
+      "domain": "herald-dispatch.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Marshall"
+      ]
+    },
+    "heraldtimesonline-com": {
+      "publisher_id": "heraldtimesonline-com",
+      "name": "The Herald-Times",
+      "domain": "heraldtimesonline.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.heraldtimesonline.com/news-sitemap.xml",
+      "teams": [
+        "Indiana"
+      ]
+    },
+    "heraldtribune-com": {
+      "publisher_id": "heraldtribune-com",
+      "name": "Sarasota Herald-Tribune",
+      "domain": "heraldtribune.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.heraldtribune.com/news-sitemap.xml",
+      "teams": [
+        "South Florida"
+      ]
+    },
+    "hottytoddy-com": {
+      "publisher_id": "hottytoddy-com",
+      "name": "HottyToddy.com",
+      "domain": "hottytoddy.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.hottytoddy.com/comments/feed/",
+      "sports_rss": "https://www.hottytoddy.com/feed/",
+      "news_sitemap": null,
+      "teams": [
+        "Ole Miss"
+      ]
+    },
+    "houstonchronicle-com": {
+      "publisher_id": "houstonchronicle-com",
+      "name": "Houston Chronicle",
+      "domain": "houstonchronicle.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.houstonchronicle.com/sitemap_news.xml",
+      "teams": [
+        "Houston",
+        "Rice",
+        "Texas"
+      ]
+    },
+    "houstonpublicmedia-org": {
+      "publisher_id": "houstonpublicmedia-org",
+      "name": "Houston Public Media",
+      "domain": "houstonpublicmedia.org",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.houstonpublicmedia.org/rsslatest.xml",
+      "sports_rss": null,
+      "news_sitemap": "https://www.houstonpublicmedia.org/newssitemap.xml",
+      "teams": [
+        "Houston"
+      ]
+    },
+    "idahopress-com": {
+      "publisher_id": "idahopress-com",
+      "name": "Idaho Press",
+      "domain": "idahopress.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Boise State"
+      ]
+    },
+    "idahostatesman-com": {
+      "publisher_id": "idahostatesman-com",
+      "name": "Idaho Statesman",
+      "domain": "idahostatesman.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Boise State"
+      ]
+    },
+    "indystar-com": {
+      "publisher_id": "indystar-com",
+      "name": "IndyStar",
+      "domain": "indystar.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.indystar.com/news-sitemap.xml",
+      "teams": [
+        "Purdue"
+      ]
+    },
+    "inforum-com": {
+      "publisher_id": "inforum-com",
+      "name": "InForum",
+      "domain": "inforum.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.inforum.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "North Dakota State"
+      ]
+    },
+    "instagram-com": {
+      "publisher_id": "instagram-com",
+      "name": "instagram.com",
+      "domain": "instagram.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Georgia State"
+      ]
+    },
+    "iowastatedaily-com": {
+      "publisher_id": "iowastatedaily-com",
+      "name": "Iowa State Daily",
+      "domain": "iowastatedaily.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://iowastatedaily.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Iowa State"
+      ]
+    },
+    "jconline-com": {
+      "publisher_id": "jconline-com",
+      "name": "Journal & Courier",
+      "domain": "jconline.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.jconline.com/news-sitemap.xml",
+      "teams": [
+        "Purdue"
+      ]
+    },
+    "jsonline-com": {
+      "publisher_id": "jsonline-com",
+      "name": "Milwaukee Journal Sentinel",
+      "domain": "jsonline.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.jsonline.com/news-sitemap.xml",
+      "teams": [
+        "Wisconsin"
+      ]
+    },
+    "kait8-com": {
+      "publisher_id": "kait8-com",
+      "name": "K8 News | Jonesboro, Arkansas",
+      "domain": "kait8.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.kait8.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Arkansas State"
+      ]
+    },
+    "kake-com": {
+      "publisher_id": "kake-com",
+      "name": "KAKE",
+      "domain": "kake.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Kansas"
+      ]
+    },
+    "kansas-com": {
+      "publisher_id": "kansas-com",
+      "name": "Wichita Eagle",
+      "domain": "kansas.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Kansas State"
+      ]
+    },
+    "kansascity-com": {
+      "publisher_id": "kansascity-com",
+      "name": "Kansas City Star",
+      "domain": "kansascity.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Kansas",
+        "Kansas State"
+      ]
+    },
+    "katc-com": {
+      "publisher_id": "katc-com",
+      "name": "KATC",
+      "domain": "katc.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.katc.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": "https://www.katc.com/news-sitemap-content.xml",
+      "teams": [
+        "Louisiana"
+      ]
+    },
+    "katu-com": {
+      "publisher_id": "katu-com",
+      "name": "KATU",
+      "domain": "katu.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Oregon"
+      ]
+    },
+    "kbtx-com": {
+      "publisher_id": "kbtx-com",
+      "name": "KBTX News 3",
+      "domain": "kbtx.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.kbtx.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Sam Houston",
+        "Texas A&M"
+      ]
+    },
+    "kcbd-com": {
+      "publisher_id": "kcbd-com",
+      "name": "KCBD",
+      "domain": "kcbd.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.kcbd.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Texas Tech"
+      ]
+    },
+    "kcci-com": {
+      "publisher_id": "kcci-com",
+      "name": "KCCI",
+      "domain": "kcci.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.kcci.com/sitemap_google_news.xml",
+      "teams": [
+        "Iowa",
+        "Iowa State"
+      ]
+    },
+    "kcentv-com": {
+      "publisher_id": "kcentv-com",
+      "name": "kcentv.com",
+      "domain": "kcentv.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.kcentv.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.kcentv.com/feeds/googlenews",
+      "teams": [
+        "Baylor"
+      ]
+    },
+    "kcra-com": {
+      "publisher_id": "kcra-com",
+      "name": "KCRA",
+      "domain": "kcra.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.kcra.com/sitemap_google_news.xml",
+      "teams": [
+        "Sacramento State"
+      ]
+    },
+    "kentucky-com": {
+      "publisher_id": "kentucky-com",
+      "name": "Lexington Herald Leader",
+      "domain": "kentucky.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Kentucky"
+      ]
+    },
+    "ketv-com": {
+      "publisher_id": "ketv-com",
+      "name": "KETV",
+      "domain": "ketv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.ketv.com/sitemap_google_news.xml",
+      "teams": [
+        "Nebraska"
+      ]
+    },
+    "kfyrtv-com": {
+      "publisher_id": "kfyrtv-com",
+      "name": "KFYR-TV",
+      "domain": "kfyrtv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.kfyrtv.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "North Dakota State"
+      ]
+    },
+    "kjnbtv-com": {
+      "publisher_id": "kjnbtv-com",
+      "name": "kjnbtv.com",
+      "domain": "kjnbtv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Arkansas State"
+      ]
+    },
+    "klfy-com": {
+      "publisher_id": "klfy-com",
+      "name": "KLFY.com",
+      "domain": "klfy.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.klfy.com/news-sitemap.xml",
+      "teams": [
+        "Louisiana"
+      ]
+    },
+    "kmph-com": {
+      "publisher_id": "kmph-com",
+      "name": "kmph.com",
+      "domain": "kmph.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Fresno State"
+      ]
+    },
+    "knoxnews-com": {
+      "publisher_id": "knoxnews-com",
+      "name": "Knoxville News Sentinel",
+      "domain": "knoxnews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.knoxnews.com/news-sitemap.xml",
+      "teams": [
+        "Memphis",
+        "Tennessee",
+        "Vanderbilt"
+      ]
+    },
+    "koat-com": {
+      "publisher_id": "koat-com",
+      "name": "KOAT",
+      "domain": "koat.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.koat.com/sitemap_google_news.xml",
+      "teams": [
+        "New Mexico"
+      ]
+    },
+    "kob-com": {
+      "publisher_id": "kob-com",
+      "name": "KOB 4",
+      "domain": "kob.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "New Mexico"
+      ]
+    },
+    "koco-com": {
+      "publisher_id": "koco-com",
+      "name": "KOCO",
+      "domain": "koco.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.koco.com/sitemap_google_news.xml",
+      "teams": [
+        "Oklahoma State"
+      ]
+    },
+    "kold-com": {
+      "publisher_id": "kold-com",
+      "name": "KOLD",
+      "domain": "kold.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.kold.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Arizona"
+      ]
+    },
+    "ktnv-com": {
+      "publisher_id": "ktnv-com",
+      "name": "ktnv.com",
+      "domain": "ktnv.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.ktnv.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": "https://www.ktnv.com/news-sitemap-content.xml",
+      "teams": [
+        "UNLV"
+      ]
+    },
+    "ktsm-com": {
+      "publisher_id": "ktsm-com",
+      "name": "KTSM 9 News",
+      "domain": "ktsm.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.ktsm.com/news-sitemap.xml",
+      "teams": [
+        "UTEP"
+      ]
+    },
+    "ktvb-com": {
+      "publisher_id": "ktvb-com",
+      "name": "KTVB",
+      "domain": "ktvb.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.ktvb.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.ktvb.com/feeds/googlenews",
+      "teams": [
+        "Boise State"
+      ]
+    },
+    "kval-com": {
+      "publisher_id": "kval-com",
+      "name": "KVAL",
+      "domain": "kval.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Oregon"
+      ]
+    },
+    "kvia-com": {
+      "publisher_id": "kvia-com",
+      "name": "KVIA",
+      "domain": "kvia.com",
+      "source_type": "local_tv",
+      "native_rss": "https://kvia.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "UTEP"
+      ]
+    },
+    "kvoa-com": {
+      "publisher_id": "kvoa-com",
+      "name": "KVOA",
+      "domain": "kvoa.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Arizona"
+      ]
+    },
+    "kwtx-com": {
+      "publisher_id": "kwtx-com",
+      "name": "KWTX",
+      "domain": "kwtx.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.kwtx.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Baylor",
+        "TCU"
+      ]
+    },
+    "kxan-com": {
+      "publisher_id": "kxan-com",
+      "name": "KXAN Austin",
+      "domain": "kxan.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.kxan.com/news-sitemap.xml",
+      "teams": [
+        "Texas"
+      ]
+    },
+    "ky3-com": {
+      "publisher_id": "ky3-com",
+      "name": "KY3",
+      "domain": "ky3.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.ky3.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Missouri State"
+      ]
+    },
+    "lansingstatejournal-com": {
+      "publisher_id": "lansingstatejournal-com",
+      "name": "Lansing State Journal",
+      "domain": "lansingstatejournal.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.lansingstatejournal.com/news-sitemap.xml",
+      "teams": [
+        "Michigan State"
+      ]
+    },
+    "lasvegassun-com": {
+      "publisher_id": "lasvegassun-com",
+      "name": "Las Vegas Sun",
+      "domain": "lasvegassun.com",
+      "source_type": "newspaper",
+      "native_rss": "https://lasvegassun.com/feeds/headlines/all/",
+      "sports_rss": null,
+      "news_sitemap": "https://lasvegassun.com/sitemap_news.xml",
+      "teams": [
+        "UNLV"
+      ]
+    },
+    "latimes-com": {
+      "publisher_id": "latimes-com",
+      "name": "Los Angeles Times",
+      "domain": "latimes.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.latimes.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": "https://www.latimes.com/news-sitemap.xml",
+      "teams": [
+        "UCLA",
+        "USC"
+      ]
+    },
+    "lcsun-news-com": {
+      "publisher_id": "lcsun-news-com",
+      "name": "Las Cruces Sun-News",
+      "domain": "lcsun-news.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.lcsun-news.com/news-sitemap.xml",
+      "teams": [
+        "New Mexico",
+        "New Mexico State"
+      ]
+    },
+    "lex18-com": {
+      "publisher_id": "lex18-com",
+      "name": "LEX 18 News",
+      "domain": "lex18.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.lex18.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": "https://www.lex18.com/news-sitemap-content.xml",
+      "teams": [
+        "Kentucky"
+      ]
+    },
+    "live5news-com": {
+      "publisher_id": "live5news-com",
+      "name": "Live 5 News",
+      "domain": "live5news.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.live5news.com/arc/outboundfeeds/sitemap-index/?outputType=xml",
+      "teams": [
+        "Coastal Carolina"
+      ]
+    },
+    "lubbockonline-com": {
+      "publisher_id": "lubbockonline-com",
+      "name": "Lubbock Avalanche-Journal",
+      "domain": "lubbockonline.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.lubbockonline.com/news-sitemap.xml",
+      "teams": [
+        "Texas Tech"
+      ]
+    },
+    "madison-com": {
+      "publisher_id": "madison-com",
+      "name": "Wisconsin State Journal",
+      "domain": "madison.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": "https://madison.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc&k%5B%5D=%23topstory",
+      "news_sitemap": null,
+      "teams": [
+        "Wisconsin"
+      ]
+    },
+    "mainstreetdailynews-com": {
+      "publisher_id": "mainstreetdailynews-com",
+      "name": "Mainstreet Daily News Gainesville",
+      "domain": "mainstreetdailynews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.mainstreetdailynews.com/sitemap_index.xml",
+      "teams": [
+        "Florida"
+      ]
+    },
+    "mercurynews-com": {
+      "publisher_id": "mercurynews-com",
+      "name": "The Mercury News",
+      "domain": "mercurynews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.mercurynews.com/sitemap.xml",
+      "teams": [
+        "Stanford"
+      ]
+    },
+    "miamiherald-com": {
+      "publisher_id": "miamiherald-com",
+      "name": "Miami Herald",
+      "domain": "miamiherald.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Miami"
+      ]
+    },
+    "mlive-com": {
+      "publisher_id": "mlive-com",
+      "name": "MLive.com",
+      "domain": "mlive.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.mlive.com/arc/outboundfeeds/news-sitemap-index/?outputType=xml",
+      "teams": [
+        "Central Michigan",
+        "Eastern Michigan",
+        "Western Michigan"
+      ]
+    },
+    "montgomeryadvertiser-com": {
+      "publisher_id": "montgomeryadvertiser-com",
+      "name": "Montgomery Advertiser",
+      "domain": "montgomeryadvertiser.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.montgomeryadvertiser.com/news-sitemap.xml",
+      "teams": [
+        "Jacksonville State"
+      ]
+    },
+    "mtsusidelines-com": {
+      "publisher_id": "mtsusidelines-com",
+      "name": "MTSU Sidelines",
+      "domain": "mtsusidelines.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://mtsusidelines.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Middle Tennessee"
+      ]
+    },
+    "mynews13-com": {
+      "publisher_id": "mynews13-com",
+      "name": "Spectrum News 13",
+      "domain": "mynews13.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://mynews13.com/sitemap.xml",
+      "teams": [
+        "UCF"
+      ]
+    },
+    "nashvillepost-com": {
+      "publisher_id": "nashvillepost-com",
+      "name": "Nashville Post",
+      "domain": "nashvillepost.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Vanderbilt"
+      ]
+    },
+    "nbcboston-com": {
+      "publisher_id": "nbcboston-com",
+      "name": "NBC Boston",
+      "domain": "nbcboston.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.nbcboston.com/?rss=y",
+      "sports_rss": null,
+      "news_sitemap": "https://www.nbcboston.com/sitemap-news.xml",
+      "teams": [
+        "Boston College"
+      ]
+    },
+    "nbclosangeles-com": {
+      "publisher_id": "nbclosangeles-com",
+      "name": "NBC Los Angeles",
+      "domain": "nbclosangeles.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.nbclosangeles.com/?rss=y",
+      "sports_rss": null,
+      "news_sitemap": "https://www.nbclosangeles.com/sitemap-news.xml",
+      "teams": [
+        "USC"
+      ]
+    },
+    "nbcnews-com": {
+      "publisher_id": "nbcnews-com",
+      "name": "NBC News",
+      "domain": "nbcnews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.nbcnews.com/sitemap/nbcnews/sitemap-index",
+      "teams": [
+        "UAB"
+      ]
+    },
+    "ncfootballnews-com": {
+      "publisher_id": "ncfootballnews-com",
+      "name": "NC Football News",
+      "domain": "ncfootballnews.com",
+      "source_type": "newspaper",
+      "native_rss": "https://ncfootballnews.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": "https://ncfootballnews.com/news-sitemap.xml",
+      "teams": [
+        "App State",
+        "Charlotte",
+        "East Carolina"
+      ]
+    },
+    "nevadasportsnet-com": {
+      "publisher_id": "nevadasportsnet-com",
+      "name": "Nevada Sports Net",
+      "domain": "nevadasportsnet.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "North Dakota State"
+      ]
+    },
+    "news-gazette-com": {
+      "publisher_id": "news-gazette-com",
+      "name": "The News-Gazette",
+      "domain": "news-gazette.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.news-gazette.com/sitemap.xml",
+      "teams": [
+        "Illinois"
+      ]
+    },
+    "news-journalonline-com": {
+      "publisher_id": "news-journalonline-com",
+      "name": "Daytona Beach News-Journal",
+      "domain": "news-journalonline.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.news-journalonline.com/news-sitemap.xml",
+      "teams": [
+        "UCF"
+      ]
+    },
+    "news-leader-com": {
+      "publisher_id": "news-leader-com",
+      "name": "Springfield News-Leader",
+      "domain": "news-leader.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.news-leader.com/news-sitemap.xml",
+      "teams": [
+        "Missouri State"
+      ]
+    },
+    "news-wttw-com": {
+      "publisher_id": "news-wttw-com",
+      "name": "live-news-wttw.pantheonsite.io",
+      "domain": "news.wttw.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Northwestern"
+      ]
+    },
+    "news5cleveland-com": {
+      "publisher_id": "news5cleveland-com",
+      "name": "News 5 Cleveland WEWS",
+      "domain": "news5cleveland.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.news5cleveland.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": "https://www.news5cleveland.com/sitemap.xml",
+      "teams": [
+        "Akron",
+        "Kent State"
+      ]
+    },
+    "news9-com": {
+      "publisher_id": "news9-com",
+      "name": "News 9",
+      "domain": "news9.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.news9.com/sitemap.xml",
+      "teams": [
+        "Oklahoma",
+        "Oklahoma State"
+      ]
+    },
+    "newsobserver-com": {
+      "publisher_id": "newsobserver-com",
+      "name": "News & Observer",
+      "domain": "newsobserver.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Duke",
+        "NC State",
+        "North Carolina"
+      ]
+    },
+    "newson6-com": {
+      "publisher_id": "newson6-com",
+      "name": "News On 6",
+      "domain": "newson6.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.newson6.com/sitemap.xml",
+      "teams": [
+        "Tulsa"
+      ]
+    },
+    "nhregister-com": {
+      "publisher_id": "nhregister-com",
+      "name": "New Haven Register",
+      "domain": "nhregister.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.nhregister.com/sitemap_news.xml",
+      "teams": [
+        "UConn"
+      ]
+    },
+    "ninertimes-com": {
+      "publisher_id": "ninertimes-com",
+      "name": "Niner Times",
+      "domain": "ninertimes.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Charlotte"
+      ]
+    },
+    "nj-com": {
+      "publisher_id": "nj-com",
+      "name": "NJ.com",
+      "domain": "nj.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.nj.com/arc/outboundfeeds/news-sitemap-index/?outputType=xml",
+      "teams": [
+        "Rutgers"
+      ]
+    },
+    "nola-com": {
+      "publisher_id": "nola-com",
+      "name": "NOLA.com",
+      "domain": "nola.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Tulane"
+      ]
+    },
+    "normantranscript-com": {
+      "publisher_id": "normantranscript-com",
+      "name": "Norman Transcript",
+      "domain": "normantranscript.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Oklahoma"
+      ]
+    },
+    "nwaonline-com": {
+      "publisher_id": "nwaonline-com",
+      "name": "Northwest Arkansas Democrat-Gazette",
+      "domain": "nwaonline.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Arkansas"
+      ]
+    },
+    "ohiobobcats-com": {
+      "publisher_id": "ohiobobcats-com",
+      "name": "ohiobobcats.com",
+      "domain": "ohiobobcats.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Ohio"
+      ]
+    },
+    "oklahoman-com": {
+      "publisher_id": "oklahoman-com",
+      "name": "The Oklahoman",
+      "domain": "oklahoman.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.oklahoman.com/news-sitemap.xml",
+      "teams": [
+        "Tulsa"
+      ]
+    },
+    "omaha-com": {
+      "publisher_id": "omaha-com",
+      "name": "Omaha World-Herald",
+      "domain": "omaha.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": "https://omaha.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc&k%5B%5D=%23topstory",
+      "news_sitemap": null,
+      "teams": [
+        "Maryland"
+      ]
+    },
+    "orlandosentinel-com": {
+      "publisher_id": "orlandosentinel-com",
+      "name": "Orlando Sentinel",
+      "domain": "orlandosentinel.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "UCF"
+      ]
+    },
+    "pafootballnews-com": {
+      "publisher_id": "pafootballnews-com",
+      "name": "PA Football News",
+      "domain": "pafootballnews.com",
+      "source_type": "newspaper",
+      "native_rss": "https://pafootballnews.com/rsslatest.xml",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Temple"
+      ]
+    },
+    "palmbeachpost-com": {
+      "publisher_id": "palmbeachpost-com",
+      "name": "The Palm Beach Post",
+      "domain": "palmbeachpost.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.palmbeachpost.com/news-sitemap.xml",
+      "teams": [
+        "Florida Atlantic",
+        "Miami"
+      ]
+    },
+    "pilotonline-com": {
+      "publisher_id": "pilotonline-com",
+      "name": "The Virginian-Pilot",
+      "domain": "pilotonline.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Old Dominion"
+      ]
+    },
+    "portlandtribune-com": {
+      "publisher_id": "portlandtribune-com",
+      "name": "The Portland Tribune",
+      "domain": "portlandtribune.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://portlandtribune.com/sitemap-news.xml",
+      "teams": [
+        "Oregon State"
+      ]
+    },
+    "post-gazette-com": {
+      "publisher_id": "post-gazette-com",
+      "name": "Pittsburgh Post-Gazette",
+      "domain": "post-gazette.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.post-gazette.com/rss",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Pittsburgh"
+      ]
+    },
+    "postandcourier-com": {
+      "publisher_id": "postandcourier-com",
+      "name": "Post and Courier",
+      "domain": "postandcourier.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Clemson",
+        "South Carolina"
+      ]
+    },
+    "pressprosmagazine-com": {
+      "publisher_id": "pressprosmagazine-com",
+      "name": "Press Pros Magazine",
+      "domain": "pressprosmagazine.com",
+      "source_type": "newspaper",
+      "native_rss": "https://pressprosmagazine.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Ohio State"
+      ]
+    },
+    "purduesports-com": {
+      "publisher_id": "purduesports-com",
+      "name": "Purdue Boilermakers",
+      "domain": "purduesports.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Purdue"
+      ]
+    },
+    "qctimes-com": {
+      "publisher_id": "qctimes-com",
+      "name": "The Quad-City Times",
+      "domain": "qctimes.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": "https://qctimes.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc&k%5B%5D=%23topstory",
+      "news_sitemap": null,
+      "teams": [
+        "Iowa"
+      ]
+    },
+    "recordonline-com": {
+      "publisher_id": "recordonline-com",
+      "name": "Times Herald-Record",
+      "domain": "recordonline.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.recordonline.com/news-sitemap.xml",
+      "teams": [
+        "Army"
+      ]
+    },
+    "reflector-com": {
+      "publisher_id": "reflector-com",
+      "name": "reflector.com",
+      "domain": "reflector.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "East Carolina"
+      ]
+    },
+    "registerguard-com": {
+      "publisher_id": "registerguard-com",
+      "name": "The Register-Guard",
+      "domain": "registerguard.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.registerguard.com/news-sitemap.xml",
+      "teams": [
+        "Oregon"
+      ]
+    },
+    "reporterherald-com": {
+      "publisher_id": "reporterherald-com",
+      "name": "Reporter-Herald",
+      "domain": "reporterherald.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Colorado State"
+      ]
+    },
+    "reviewjournal-com": {
+      "publisher_id": "reviewjournal-com",
+      "name": "Las Vegas Review-Journal",
+      "domain": "reviewjournal.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.reviewjournal.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": "https://www.reviewjournal.com/news_sitemap.xml",
+      "teams": [
+        "UNLV"
+      ]
+    },
+    "rgj-com": {
+      "publisher_id": "rgj-com",
+      "name": "Reno Gazette Journal",
+      "domain": "rgj.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.rgj.com/news-sitemap.xml",
+      "teams": [
+        "Nevada"
+      ]
+    },
+    "rockmnation-com": {
+      "publisher_id": "rockmnation-com",
+      "name": "Rock M Nation",
+      "domain": "rockmnation.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.rockmnation.com/rss/index.xml",
+      "sports_rss": null,
+      "news_sitemap": "https://www.rockmnation.com/sitemaps/google_news",
+      "teams": [
+        "Missouri"
+      ]
+    },
+    "rocktownnow-com": {
+      "publisher_id": "rocktownnow-com",
+      "name": "Rocktown Now",
+      "domain": "rocktownnow.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "James Madison"
+      ]
+    },
+    "sandiegouniontribune-com": {
+      "publisher_id": "sandiegouniontribune-com",
+      "name": "San Diego Union-Tribune",
+      "domain": "sandiegouniontribune.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "San Diego State"
+      ]
+    },
+    "seattletimes-com": {
+      "publisher_id": "seattletimes-com",
+      "name": "The Seattle Times",
+      "domain": "seattletimes.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.seattletimes.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Washington",
+        "Washington State"
+      ]
+    },
+    "sfchronicle-com": {
+      "publisher_id": "sfchronicle-com",
+      "name": "San Francisco Chronicle",
+      "domain": "sfchronicle.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.sfchronicle.com/sitemap_news.xml",
+      "teams": [
+        "Stanford"
+      ]
+    },
+    "sgfcitizen-org": {
+      "publisher_id": "sgfcitizen-org",
+      "name": "Springfield Daily Citizen",
+      "domain": "sgfcitizen.org",
+      "source_type": "digital_local_news",
+      "native_rss": "https://sgfcitizen.org/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Missouri State"
+      ]
+    },
+    "sltrib-com": {
+      "publisher_id": "sltrib-com",
+      "name": "The Salt Lake Tribune",
+      "domain": "sltrib.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.sltrib.com/arc/outboundfeeds/rss/?outputType=xml",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "BYU",
+        "Utah"
+      ]
+    },
+    "southbendtribune-com": {
+      "publisher_id": "southbendtribune-com",
+      "name": "South Bend Tribune",
+      "domain": "southbendtribune.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.southbendtribune.com/news-sitemap.xml",
+      "teams": [
+        "Notre Dame"
+      ]
+    },
+    "spectrumlocalnews-com": {
+      "publisher_id": "spectrumlocalnews-com",
+      "name": "Spectrum News",
+      "domain": "spectrumlocalnews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://spectrumlocalnews.com/sitemap.xml",
+      "teams": [
+        "Army",
+        "Syracuse",
+        "Texas"
+      ]
+    },
+    "spectrumnews1-com": {
+      "publisher_id": "spectrumnews1-com",
+      "name": "Spectrum News",
+      "domain": "spectrumnews1.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://spectrumnews1.com/sitemap.xml",
+      "teams": [
+        "Cincinnati",
+        "Louisville",
+        "Ohio State"
+      ]
+    },
+    "sports-ksl-com": {
+      "publisher_id": "sports-ksl-com",
+      "name": "KSL Sports",
+      "domain": "sports.ksl.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://sports.ksl.com/news-sitemap.xml",
+      "teams": [
+        "BYU",
+        "Utah",
+        "Utah State"
+      ]
+    },
+    "stanforddaily-com": {
+      "publisher_id": "stanforddaily-com",
+      "name": "The Stanford Daily",
+      "domain": "stanforddaily.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://stanforddaily.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Stanford"
+      ]
+    },
+    "star-telegram-com": {
+      "publisher_id": "star-telegram-com",
+      "name": "Fort Worth Star-Telegram",
+      "domain": "star-telegram.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "TCU"
+      ]
+    },
+    "statesboroherald-com": {
+      "publisher_id": "statesboroherald-com",
+      "name": "Statesboro Herald",
+      "domain": "statesboroherald.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.statesboroherald.com:443/rss/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Georgia Southern"
+      ]
+    },
+    "statesman-com": {
+      "publisher_id": "statesman-com",
+      "name": "Austin American-Statesman",
+      "domain": "statesman.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.statesman.com/sitemap_news.xml",
+      "teams": [
+        "Texas A&M",
+        "Texas State"
+      ]
+    },
+    "statesmanjournal-com": {
+      "publisher_id": "statesmanjournal-com",
+      "name": "Statesman Journal",
+      "domain": "statesmanjournal.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.statesmanjournal.com/news-sitemap.xml",
+      "teams": [
+        "Oregon State"
+      ]
+    },
+    "stormininnorman-com": {
+      "publisher_id": "stormininnorman-com",
+      "name": "Stormin in Norman",
+      "domain": "stormininnorman.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://stormininnorman.com/feed",
+      "sports_rss": null,
+      "news_sitemap": "https://stormininnorman.com/news-sitemap.xml",
+      "teams": [
+        "Oklahoma"
+      ]
+    },
+    "stwnewspress-com": {
+      "publisher_id": "stwnewspress-com",
+      "name": "Stillwater News Press",
+      "domain": "stwnewspress.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.stwnewspress.com/sitemap.xml",
+      "teams": [
+        "Oklahoma State"
+      ]
+    },
+    "sunbeltsports-org": {
+      "publisher_id": "sunbeltsports-org",
+      "name": "Sun Belt Conference",
+      "domain": "sunbeltsports.org",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "James Madison",
+        "Troy"
+      ]
+    },
+    "swtimes-com": {
+      "publisher_id": "swtimes-com",
+      "name": "Southwest Times Record",
+      "domain": "swtimes.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.swtimes.com/news-sitemap.xml",
+      "teams": [
+        "Arkansas"
+      ]
+    },
+    "swxlocalsports-com": {
+      "publisher_id": "swxlocalsports-com",
+      "name": "SWX Local Sports",
+      "domain": "swxlocalsports.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Washington State"
+      ]
+    },
+    "syracuse-com": {
+      "publisher_id": "syracuse-com",
+      "name": "Syracuse.com",
+      "domain": "syracuse.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.syracuse.com/arc/outboundfeeds/news-sitemap-index/?outputType=xml",
+      "teams": [
+        "Syracuse"
+      ]
+    },
+    "tallahassee-com": {
+      "publisher_id": "tallahassee-com",
+      "name": "Tallahassee Democrat",
+      "domain": "tallahassee.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.tallahassee.com/news-sitemap.xml",
+      "teams": [
+        "Florida State"
+      ]
+    },
+    "tapinto-net": {
+      "publisher_id": "tapinto-net",
+      "name": "TAPinto",
+      "domain": "tapinto.net",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Rutgers"
+      ]
+    },
+    "taskandpurpose-com": {
+      "publisher_id": "taskandpurpose-com",
+      "name": "Task & Purpose",
+      "domain": "taskandpurpose.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://taskandpurpose.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": "https://taskandpurpose.com/sitemap-news.xml/",
+      "teams": [
+        "Navy"
+      ]
+    },
+    "tdalabamamag-com": {
+      "publisher_id": "tdalabamamag-com",
+      "name": "Touchdown Alabama",
+      "domain": "tdalabamamag.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://tdalabamamag.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Alabama"
+      ]
+    },
+    "temple-news-com": {
+      "publisher_id": "temple-news-com",
+      "name": "The Temple News",
+      "domain": "temple-news.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Temple"
+      ]
+    },
+    "texasfootball-com": {
+      "publisher_id": "texasfootball-com",
+      "name": "Dave Campbell's Texas High School Football",
+      "domain": "texasfootball.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Texas State"
+      ]
+    },
+    "theadvertiser-com": {
+      "publisher_id": "theadvertiser-com",
+      "name": "The Daily Advertiser | Lafayette, Louisiana",
+      "domain": "theadvertiser.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.theadvertiser.com/news-sitemap.xml",
+      "teams": [
+        "Louisiana"
+      ]
+    },
+    "theadvocate-com": {
+      "publisher_id": "theadvocate-com",
+      "name": "The Advocate",
+      "domain": "theadvocate.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "LSU"
+      ]
+    },
+    "thedailyaztec-com": {
+      "publisher_id": "thedailyaztec-com",
+      "name": "The Daily Aztec",
+      "domain": "thedailyaztec.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://thedailyaztec.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "San Diego State"
+      ]
+    },
+    "thedailycougar-com": {
+      "publisher_id": "thedailycougar-com",
+      "name": "The Daily Cougar",
+      "domain": "thedailycougar.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://thedailycougar.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Houston"
+      ]
+    },
+    "thedailygopher-com": {
+      "publisher_id": "thedailygopher-com",
+      "name": "The Daily Gopher",
+      "domain": "thedailygopher.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.thedailygopher.com/rss/index.xml",
+      "sports_rss": null,
+      "news_sitemap": "https://www.thedailygopher.com/sitemaps/google_news",
+      "teams": [
+        "Minnesota"
+      ]
+    },
+    "thesportingtribune-com": {
+      "publisher_id": "thesportingtribune-com",
+      "name": "The Sporting Tribune",
+      "domain": "thesportingtribune.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": "https://www.thesportingtribune.com/rss/",
+      "news_sitemap": "https://www.thesportingtribune.com/sitemaps/news.xml",
+      "teams": [
+        "UCLA"
+      ]
+    },
+    "thestarpress-com": {
+      "publisher_id": "thestarpress-com",
+      "name": "The Star Press",
+      "domain": "thestarpress.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.thestarpress.com/news-sitemap.xml",
+      "teams": [
+        "Ball State"
+      ]
+    },
+    "thetelegraph-com": {
+      "publisher_id": "thetelegraph-com",
+      "name": "Alton Telegraph",
+      "domain": "thetelegraph.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.thetelegraph.com/sitemap_news.xml",
+      "teams": [
+        "Northwestern"
+      ]
+    },
+    "timesofsandiego-com": {
+      "publisher_id": "timesofsandiego-com",
+      "name": "Times of San Diego",
+      "domain": "timesofsandiego.com",
+      "source_type": "newspaper",
+      "native_rss": "https://timesofsandiego.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "San Diego State"
+      ]
+    },
+    "timesonline-com": {
+      "publisher_id": "timesonline-com",
+      "name": "Beaver County Times",
+      "domain": "timesonline.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.timesonline.com/news-sitemap.xml",
+      "teams": [
+        "Pittsburgh"
+      ]
+    },
+    "toledoblade-com": {
+      "publisher_id": "toledoblade-com",
+      "name": "Toledo Blade",
+      "domain": "toledoblade.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://www.toledoblade.com/rss/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Toledo"
+      ]
+    },
+    "troymessenger-com": {
+      "publisher_id": "troymessenger-com",
+      "name": "The Troy Messenger",
+      "domain": "troymessenger.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Troy"
+      ]
+    },
+    "tucson-com": {
+      "publisher_id": "tucson-com",
+      "name": "Arizona Daily Star",
+      "domain": "tucson.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": "https://tucson.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc&k%5B%5D=%23topstory",
+      "news_sitemap": null,
+      "teams": [
+        "Arizona"
+      ]
+    },
+    "tulsaworld-com": {
+      "publisher_id": "tulsaworld-com",
+      "name": "Tulsa World",
+      "domain": "tulsaworld.com",
+      "source_type": "digital_local_news",
+      "native_rss": "https://tulsaworld.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc&k%5B%5D=%23topstory",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Tulsa"
+      ]
+    },
+    "tuscaloosanews-com": {
+      "publisher_id": "tuscaloosanews-com",
+      "name": "The Tuscaloosa News",
+      "domain": "tuscaloosanews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.tuscaloosanews.com/news-sitemap.xml",
+      "teams": [
+        "Alabama"
+      ]
+    },
+    "universitystar-com": {
+      "publisher_id": "universitystar-com",
+      "name": "The University Star",
+      "domain": "universitystar.com",
+      "source_type": "newspaper",
+      "native_rss": "https://universitystar.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Texas State"
+      ]
+    },
+    "varsity-startribune-com": {
+      "publisher_id": "varsity-startribune-com",
+      "name": "Star Tribune",
+      "domain": "varsity.startribune.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://varsity.startribune.com/sitemaps/news.xml",
+      "teams": [
+        "Minnesota"
+      ]
+    },
+    "wacotrib-com": {
+      "publisher_id": "wacotrib-com",
+      "name": "Waco Tribune-Herald",
+      "domain": "wacotrib.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": "https://wacotrib.com/search/?f=rss&t=article&l=50&s=start_time&sd=desc&k%5B%5D=%23topstory",
+      "news_sitemap": null,
+      "teams": [
+        "Baylor"
+      ]
+    },
+    "wafb-com": {
+      "publisher_id": "wafb-com",
+      "name": "WAFB",
+      "domain": "wafb.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wafb.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "LSU"
+      ]
+    },
+    "waka-com": {
+      "publisher_id": "waka-com",
+      "name": "WAKA 8",
+      "domain": "waka.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.waka.com/feed/",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Auburn"
+      ]
+    },
+    "wandtv-com": {
+      "publisher_id": "wandtv-com",
+      "name": "WAND-TV",
+      "domain": "wandtv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Illinois"
+      ]
+    },
+    "wane-com": {
+      "publisher_id": "wane-com",
+      "name": "WANE 15",
+      "domain": "wane.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wane.com/news-sitemap.xml",
+      "teams": [
+        "Indiana"
+      ]
+    },
+    "wate-com": {
+      "publisher_id": "wate-com",
+      "name": "WATE 6 On Your Side",
+      "domain": "wate.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wate.com/news-sitemap.xml",
+      "teams": [
+        "Tennessee"
+      ]
+    },
+    "wavy-com": {
+      "publisher_id": "wavy-com",
+      "name": "WAVY.com",
+      "domain": "wavy.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wavy.com/news-sitemap.xml",
+      "teams": [
+        "Old Dominion"
+      ]
+    },
+    "wbir-com": {
+      "publisher_id": "wbir-com",
+      "name": "WBIR",
+      "domain": "wbir.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wbir.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wbir.com/feeds/googlenews",
+      "teams": [
+        "Tennessee"
+      ]
+    },
+    "wbko-com": {
+      "publisher_id": "wbko-com",
+      "name": "WBKO",
+      "domain": "wbko.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wbko.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Western Kentucky"
+      ]
+    },
+    "wboy-com": {
+      "publisher_id": "wboy-com",
+      "name": "WBOY.com",
+      "domain": "wboy.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wboy.com/news-sitemap.xml",
+      "teams": [
+        "West Virginia"
+      ]
+    },
+    "wbrc-com": {
+      "publisher_id": "wbrc-com",
+      "name": "WBRC",
+      "domain": "wbrc.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wbrc.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "UAB"
+      ]
+    },
+    "wbrz-com": {
+      "publisher_id": "wbrz-com",
+      "name": "WBRZ",
+      "domain": "wbrz.com",
+      "source_type": "local_tv",
+      "native_rss": "https://feeds.feedburner.com/wbrz/news",
+      "sports_rss": "https://feeds.feedburner.com/wbrz/sports",
+      "news_sitemap": null,
+      "teams": [
+        "LSU"
+      ]
+    },
+    "wbtw-com": {
+      "publisher_id": "wbtw-com",
+      "name": "WBTW",
+      "domain": "wbtw.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wbtw.com/news-sitemap.xml",
+      "teams": [
+        "Coastal Carolina"
+      ]
+    },
+    "wcia-com": {
+      "publisher_id": "wcia-com",
+      "name": "WCIA.com",
+      "domain": "wcia.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wcia.com/news-sitemap.xml",
+      "teams": [
+        "Illinois"
+      ]
+    },
+    "wcpo-com": {
+      "publisher_id": "wcpo-com",
+      "name": "WCPO 9 News",
+      "domain": "wcpo.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wcpo.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wcpo.com/news-sitemap-content.xml",
+      "teams": [
+        "Cincinnati"
+      ]
+    },
+    "wcyb-com": {
+      "publisher_id": "wcyb-com",
+      "name": "WCYB",
+      "domain": "wcyb.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Virginia Tech"
+      ]
+    },
+    "wdam-com": {
+      "publisher_id": "wdam-com",
+      "name": "WDAM-TV",
+      "domain": "wdam.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wdam.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Southern Miss"
+      ]
+    },
+    "wdrb-com": {
+      "publisher_id": "wdrb-com",
+      "name": "WDRB",
+      "domain": "wdrb.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Louisville"
+      ]
+    },
+    "wesh-com": {
+      "publisher_id": "wesh-com",
+      "name": "WESH",
+      "domain": "wesh.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wesh.com/sitemap_google_news.xml",
+      "teams": [
+        "Florida State"
+      ]
+    },
+    "wfaa-com": {
+      "publisher_id": "wfaa-com",
+      "name": "WFAA",
+      "domain": "wfaa.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wfaa.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wfaa.com/feeds/googlenews",
+      "teams": [
+        "North Texas",
+        "TCU"
+      ]
+    },
+    "wfsb-com": {
+      "publisher_id": "wfsb-com",
+      "name": "WFSB",
+      "domain": "wfsb.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wfsb.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "UConn"
+      ]
+    },
+    "wgno-com": {
+      "publisher_id": "wgno-com",
+      "name": "WGNO",
+      "domain": "wgno.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://wgno.com/news-sitemap.xml",
+      "teams": [
+        "Tulane"
+      ]
+    },
+    "whsv-com": {
+      "publisher_id": "whsv-com",
+      "name": "WHSV",
+      "domain": "whsv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.whsv.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "James Madison"
+      ]
+    },
+    "wilx-com": {
+      "publisher_id": "wilx-com",
+      "name": "WILX",
+      "domain": "wilx.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wilx.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Michigan State"
+      ]
+    },
+    "wishtv-com": {
+      "publisher_id": "wishtv-com",
+      "name": "WISH-TV",
+      "domain": "wishtv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Ball State"
+      ]
+    },
+    "wistv-com": {
+      "publisher_id": "wistv-com",
+      "name": "WIS News 10",
+      "domain": "wistv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wistv.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Clemson",
+        "South Carolina"
+      ]
+    },
+    "wjactv-com": {
+      "publisher_id": "wjactv-com",
+      "name": "WJAC",
+      "domain": "wjactv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Penn State"
+      ]
+    },
+    "wjcl-com": {
+      "publisher_id": "wjcl-com",
+      "name": "WJCL",
+      "domain": "wjcl.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wjcl.com/sitemap_google_news.xml",
+      "teams": [
+        "Georgia Southern"
+      ]
+    },
+    "wkbn-com": {
+      "publisher_id": "wkbn-com",
+      "name": "WKBN.com",
+      "domain": "wkbn.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wkbn.com/news-sitemap.xml",
+      "teams": [
+        "Kent State"
+      ]
+    },
+    "wkyc-com": {
+      "publisher_id": "wkyc-com",
+      "name": "WKYC",
+      "domain": "wkyc.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wkyc.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wkyc.com/feeds/googlenews",
+      "teams": [
+        "Akron"
+      ]
+    },
+    "wlbt-com": {
+      "publisher_id": "wlbt-com",
+      "name": "WLBT",
+      "domain": "wlbt.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wlbt.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Ole Miss"
+      ]
+    },
+    "wlox-com": {
+      "publisher_id": "wlox-com",
+      "name": "WLOX",
+      "domain": "wlox.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wlox.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Southern Miss"
+      ]
+    },
+    "wmar2news-com": {
+      "publisher_id": "wmar2news-com",
+      "name": "WMAR 2 News Baltimore",
+      "domain": "wmar2news.com",
+      "source_type": "newspaper",
+      "native_rss": "https://www.wmar2news.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wmar2news.com/sitemap.xml",
+      "teams": [
+        "Maryland"
+      ]
+    },
+    "wndu-com": {
+      "publisher_id": "wndu-com",
+      "name": "WNDU",
+      "domain": "wndu.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wndu.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Notre Dame"
+      ]
+    },
+    "wnem-com": {
+      "publisher_id": "wnem-com",
+      "name": "WNEM",
+      "domain": "wnem.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wnem.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Central Michigan"
+      ]
+    },
+    "wnep-com": {
+      "publisher_id": "wnep-com",
+      "name": "WNEP",
+      "domain": "wnep.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wnep.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wnep.com/feeds/googlenews",
+      "teams": [
+        "Penn State"
+      ]
+    },
+    "wowktv-com": {
+      "publisher_id": "wowktv-com",
+      "name": "WOWK 13 News",
+      "domain": "wowktv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wowktv.com/news-sitemap.xml",
+      "teams": [
+        "Marshall"
+      ]
+    },
+    "wowt-com": {
+      "publisher_id": "wowt-com",
+      "name": "WOWT",
+      "domain": "wowt.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wowt.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Nebraska"
+      ]
+    },
+    "wpde-com": {
+      "publisher_id": "wpde-com",
+      "name": "WPDE",
+      "domain": "wpde.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Coastal Carolina"
+      ]
+    },
+    "wpxi-com": {
+      "publisher_id": "wpxi-com",
+      "name": "WPXI",
+      "domain": "wpxi.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wpxi.com/arc/outboundfeeds/news-sitemap-index/?outputType=xml",
+      "teams": [
+        "Pittsburgh"
+      ]
+    },
+    "wral-com": {
+      "publisher_id": "wral-com",
+      "name": "WRAL",
+      "domain": "wral.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wral.com/news-sitemap.xml",
+      "teams": [
+        "Duke",
+        "East Carolina",
+        "NC State",
+        "North Carolina"
+      ]
+    },
+    "wreg-com": {
+      "publisher_id": "wreg-com",
+      "name": "WREG.com",
+      "domain": "wreg.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://wreg.com/news-sitemap.xml",
+      "teams": [
+        "Memphis"
+      ]
+    },
+    "wric-com": {
+      "publisher_id": "wric-com",
+      "name": "WRIC ABC 8News",
+      "domain": "wric.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wric.com/news-sitemap.xml",
+      "teams": [
+        "Virginia"
+      ]
+    },
+    "wrtv-com": {
+      "publisher_id": "wrtv-com",
+      "name": "WRTV",
+      "domain": "wrtv.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wrtv.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Indiana"
+      ]
+    },
+    "wsbtv-com": {
+      "publisher_id": "wsbtv-com",
+      "name": "WSB-TV",
+      "domain": "wsbtv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wsbtv.com/arc/outboundfeeds/news-sitemap-index/?outputType=xml",
+      "teams": [
+        "Georgia",
+        "Georgia State",
+        "Georgia Tech",
+        "Kennesaw State"
+      ]
+    },
+    "wset-com": {
+      "publisher_id": "wset-com",
+      "name": "WSET",
+      "domain": "wset.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Liberty"
+      ]
+    },
+    "wsfa-com": {
+      "publisher_id": "wsfa-com",
+      "name": "WSFA",
+      "domain": "wsfa.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wsfa.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Auburn"
+      ]
+    },
+    "wsls-com": {
+      "publisher_id": "wsls-com",
+      "name": "WSLS",
+      "domain": "wsls.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wsls.com/arc/outboundfeeds/news-sitemap/?outputType=xml",
+      "teams": [
+        "Virginia",
+        "Virginia Tech"
+      ]
+    },
+    "wsmv-com": {
+      "publisher_id": "wsmv-com",
+      "name": "WSMV",
+      "domain": "wsmv.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wsmv.com/arc/outboundfeeds/news-sitemap-index/category/news/?outputType=xml",
+      "teams": [
+        "Middle Tennessee",
+        "Vanderbilt"
+      ]
+    },
+    "wtnh-com": {
+      "publisher_id": "wtnh-com",
+      "name": "WTNH.com",
+      "domain": "wtnh.com",
+      "source_type": "local_tv",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wtnh.com/news-sitemap.xml",
+      "teams": [
+        "UConn"
+      ]
+    },
+    "wtol-com": {
+      "publisher_id": "wtol-com",
+      "name": "WTOL",
+      "domain": "wtol.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wtol.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wtol.com/feeds/googlenews",
+      "teams": [
+        "Bowling Green",
+        "Toledo"
+      ]
+    },
+    "wtsp-com": {
+      "publisher_id": "wtsp-com",
+      "name": "wtsp.com",
+      "domain": "wtsp.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wtsp.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wtsp.com/feeds/googlenews",
+      "teams": [
+        "South Florida"
+      ]
+    },
+    "wtvr-com": {
+      "publisher_id": "wtvr-com",
+      "name": "WTVR.com",
+      "domain": "wtvr.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wtvr.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wtvr.com/news-sitemap-content.xml",
+      "teams": [
+        "Virginia"
+      ]
+    },
+    "wtxl-com": {
+      "publisher_id": "wtxl-com",
+      "name": "WTXL ABC 27 Tallahassee News",
+      "domain": "wtxl.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wtxl.com/index.rss",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wtxl.com/news-sitemap-content.xml",
+      "teams": [
+        "Florida State"
+      ]
+    },
+    "wvgazettemail-com": {
+      "publisher_id": "wvgazettemail-com",
+      "name": "Charleston Gazette-Mail",
+      "domain": "wvgazettemail.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": null,
+      "teams": [
+        "Marshall",
+        "West Virginia"
+      ]
+    },
+    "wvnews-com": {
+      "publisher_id": "wvnews-com",
+      "name": "WV News",
+      "domain": "wvnews.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wvnews.com/sitemap.xml",
+      "teams": [
+        "West Virginia"
+      ]
+    },
+    "wwltv-com": {
+      "publisher_id": "wwltv-com",
+      "name": "WWLTV.com",
+      "domain": "wwltv.com",
+      "source_type": "local_tv",
+      "native_rss": "https://www.wwltv.com/feeds/syndication/rss/news",
+      "sports_rss": null,
+      "news_sitemap": "https://www.wwltv.com/feeds/googlenews",
+      "teams": [
+        "Tulane"
+      ]
+    },
+    "wyomingnews-com": {
+      "publisher_id": "wyomingnews-com",
+      "name": "WyomingNews.com",
+      "domain": "wyomingnews.com",
+      "source_type": "digital_local_news",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.wyomingnews.com/sitemap.xml",
+      "teams": [
+        "Wyoming"
+      ]
+    },
+    "ydr-com": {
+      "publisher_id": "ydr-com",
+      "name": "York Daily Record",
+      "domain": "ydr.com",
+      "source_type": "newspaper",
+      "native_rss": null,
+      "sports_rss": null,
+      "news_sitemap": "https://www.ydr.com/news-sitemap.xml",
+      "teams": [
+        "Penn State"
+      ]
+    }
+  }
+}

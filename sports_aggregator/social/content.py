@@ -299,7 +299,8 @@ def source_role(classes: set[str]) -> str:
         return "OFFICIAL_CONFIRMATION"
     if "BOT" in classes: return "AUTOMATED"
     if "AGGREGATOR" in classes: return "AGGREGATION"
-    if classes & {"BEAT_REPORTER", "NATIONAL_REPORTER"}: return "REPORTING_UNDETERMINED"
+    if classes & {"BEAT_REPORTER", "NATIONAL_REPORTER", "LOCAL_OUTLET"}:
+        return "REPORTING_UNDETERMINED"
     if classes & {"NATIONAL_ANALYST", "TEAM_ANALYST", "FILM_ANALYST", "DRAFT_ANALYST", "SCOUT", "MODEL"}:
         return "ANALYSIS"
     if "COMMUNITY" in classes: return "COMMUNITY_REACTION"
@@ -479,7 +480,8 @@ class ContentRepository:
         return [(team_id, *values) for team_id, values in found.items()]
 
     def _player_candidates(self, connection: sqlite3.Connection, text: str, season: int,
-                           team_ids: set[int]) -> list[tuple[str,float,str]]:
+                           team_ids: set[int], title: str | None = None
+                           ) -> list[tuple[int,str,float,str]]:
         """Resolve player mentions by exact full name, scoped where possible.
 
         Scoping to the resolved teams is the strongest signal, but requiring it
@@ -491,63 +493,161 @@ class ContentRepository:
         # Person names are normalized with initials collapsed so "C.J. Carr" in
         # an article reaches "CJ Carr" on the roster.
         normalized = f" {normalize_person_name(text)} "
+        headline = f" {normalize_person_name(title)} " if title else ""
         team_names = {row[0] for row in connection.execute(
             f"SELECT school FROM teams WHERE team_id IN ({','.join('?' for _ in team_ids)})",
             tuple(team_ids))} if team_ids else set()
-        if season not in self._players_by_season:
-            by_name: dict[str, list[dict]] = defaultdict(list)
-            for row in connection.execute(
-                "SELECT player_id,first_name,last_name,normalized_name,team "
-                "FROM players WHERE season=?", (season,)
-            ):
-                key = normalize_person_name(f"{row['first_name']} {row['last_name']}")
-                if len(key) >= 7 and " " in key:
-                    by_name[key].append(dict(row))
-            self._players_by_season[season] = dict(by_name)
-        by_name = self._players_by_season[season]
+        indexes: list[tuple[int, dict[str, list[dict]]]] = []
+        for roster_season in (season, season - 1):
+            if roster_season not in self._players_by_season:
+                by_name: dict[str, list[dict]] = defaultdict(list)
+                for row in connection.execute(
+                    "SELECT player_id,first_name,last_name,normalized_name,team "
+                    "FROM players WHERE season=?", (roster_season,)
+                ):
+                    key = normalize_person_name(f"{row['first_name']} {row['last_name']}")
+                    if len(key) >= 7 and " " in key:
+                        by_name[key].append(dict(row))
+                self._players_by_season[roster_season] = dict(by_name)
+            indexes.append((roster_season, self._players_by_season[roster_season]))
         # An unscoped match needs the item to look like college football and not
         # like the pro game, otherwise a shared name silently becomes a link.
         unscoped_allowed = allows_unscoped_match(text, has_resolved_team=bool(team_names))
         found = []
-        for name, rows in by_name.items():
-            if f" {name} " not in normalized:
-                continue
-            on_resolved_team = [row for row in rows if row["team"] in team_names]
-            if len(on_resolved_team) == 1:
-                player, confidence = on_resolved_team[0], 0.95
-                method = "exact_full_name_on_resolved_team"
-            elif len(rows) == 1 and unscoped_allowed and not names_staff(text, name):
-                # Unique across every roster, but the team was not resolved from
-                # the text. Still the same person; simply less corroborated.
-                player, confidence = rows[0], 0.72
-                method = "exact_full_name_unscoped"
-            else:
-                continue
-            found.append((player["player_id"], confidence, method))
-            self._last_evidence.append({
-                "kind": "player", "target": player["player_id"], "matched_text": name,
-                "location": "body", "method": method, "confidence": confidence})
+        matched_player_ids: set[str] = set()
+        matched_names: set[str] = set()
+        for roster_season, by_name in indexes:
+            for name, rows in by_name.items():
+                if name in matched_names or f" {name} " not in normalized:
+                    continue
+                on_resolved_team = [row for row in rows if row["team"] in team_names]
+                if len(on_resolved_team) == 1:
+                    player, confidence = on_resolved_team[0], 0.95
+                    method = "exact_full_name_on_resolved_team"
+                elif len(rows) == 1 and unscoped_allowed and not names_staff(text, name):
+                    # Unique across every roster, but the team was not resolved from
+                    # the text. Still the same person; simply less corroborated.
+                    player, confidence = rows[0], 0.72
+                    method = "exact_full_name_unscoped"
+                else:
+                    continue
+                if player["player_id"] in matched_player_ids:
+                    continue
+                if roster_season != season:
+                    confidence = min(confidence, 0.8)
+                    method += "_prior_season"
+                in_headline = bool(headline) and f" {name} " in headline
+                if in_headline:
+                    confidence = min(0.98, confidence + 0.14)
+                    method += "_headline"
+                found.append((roster_season, player["player_id"], confidence, method))
+                matched_player_ids.add(player["player_id"])
+                matched_names.add(name)
+                self._last_evidence.append({
+                    "kind": "player", "target": player["player_id"], "matched_text": name,
+                    "location": "headline" if in_headline else "body",
+                    "method": method, "confidence": confidence})
         return found
 
-    def _game_candidates(self, connection: sqlite3.Connection, team_ids: set[int], season: int) -> list[tuple[int,float,str]]:
-        if not team_ids: return []
-        now=datetime.now(timezone.utc); cutoff=(now+timedelta(days=21)).isoformat()
+    GAME_LANGUAGE = re.compile(
+        r"\b(?:vs\.?|versus|hosts?|travels? to|matchup|game|kickoff|opener|"
+        r"preview|prediction|odds|recap|final|defeats?|beats?|falls? to|week\s+(?:zero|\d+))\b",
+        re.I,
+    )
+    PAST_GAME_LANGUAGE = re.compile(
+        r"\b(?:recap|final|defeats?|defeated|beats?|beat|falls? to|lost to|win over|"
+        r"postgame|takeaways?)\b", re.I,
+    )
+    FUTURE_GAME_LANGUAGE = re.compile(
+        r"\b(?:preview|prediction|odds|kickoff|will face|set to face|hosts?|travels? to|"
+        r"upcoming|opener)\b", re.I,
+    )
+
+    @staticmethod
+    def _published_datetime(value: str | datetime | None) -> datetime:
+        if isinstance(value, datetime):
+            parsed = value
+        elif value:
+            try:
+                parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            except ValueError:
+                parsed = datetime.now(timezone.utc)
+        else:
+            parsed = datetime.now(timezone.utc)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    def _game_candidates(self, connection: sqlite3.Connection, team_ids: set[int],
+                         season: int, text: str = "",
+                         published_at: str | datetime | None = None
+                         ) -> list[tuple[int,float,str]]:
+        """Resolve a game only when the article contains game-level evidence.
+
+        Game language is always required because two schools can also share a
+        transfer or realignment story. When both opponents are named, their
+        unique meeting wins. Single-team resolution selects the nearest game in
+        the direction implied by preview/recap wording. Explicit week labels,
+        including Week 0/Week Zero, override temporal ambiguity.
+        """
+        if not team_ids:
+            return []
+        anchor = self._published_datetime(published_at)
         if season not in self._games_by_season:
             self._games_by_season[season] = [dict(row) for row in connection.execute(
-                """SELECT game_id,home_team_id,away_team_id,start_date FROM games
-                   WHERE season=? AND completed=0 AND start_date BETWEEN ? AND ? ORDER BY start_date""",
-                (season,now.isoformat(),cutoff)).fetchall()]
-        rows=self._games_by_season[season]
-        exact=[row for row in rows if {row["home_team_id"],row["away_team_id"]}.issubset(team_ids)]
-        if len(exact)==1: return [(exact[0]["game_id"],1.0,"both_teams_upcoming_game")]
-        if len(team_ids)==1:
-            team_id=next(iter(team_ids)); one=[row for row in rows if team_id in {row["home_team_id"],row["away_team_id"]}]
-            if one: return [(one[0]["game_id"],0.55,"next_game_single_team")]
-        return []
+                """SELECT game_id,week,home_team_id,away_team_id,start_date,completed
+                   FROM games WHERE season=? ORDER BY start_date""", (season,)).fetchall()]
+        rows = self._games_by_season[season]
+        week_match = re.search(r"\bweek\s+(zero|\d+)\b", text, re.I)
+        explicit_week = (0 if week_match and week_match.group(1).casefold() == "zero"
+                         else int(week_match.group(1)) if week_match else None)
+
+        # Even two teams can appear together in transfer, recruiting, or
+        # realignment copy. The schedule is corroboration, not permission to
+        # turn every two-school article into a game article.
+        if not self.GAME_LANGUAGE.search(text):
+            return []
+        exact = [row for row in rows
+                 if {row["home_team_id"], row["away_team_id"]}.issubset(team_ids)]
+        if explicit_week is not None:
+            exact = [row for row in exact if row["week"] == explicit_week]
+        if len(exact) == 1:
+            method = ("both_teams_explicit_week" if explicit_week is not None
+                      else "both_teams_game")
+            return [(exact[0]["game_id"], 1.0, method)]
+
+        # More than one resolved team but no unique scheduled meeting is safer
+        # left unlinked than guessed from proximity.
+        if len(team_ids) != 1:
+            return []
+        team_id = next(iter(team_ids))
+        candidates = [row for row in rows
+                      if team_id in {row["home_team_id"], row["away_team_id"]}]
+        if explicit_week is not None:
+            candidates = [row for row in candidates if row["week"] == explicit_week]
+        dated: list[tuple[dict, float]] = []
+        for row in candidates:
+            game_time = self._published_datetime(row["start_date"])
+            delta_hours = (game_time - anchor).total_seconds() / 3600
+            if self.PAST_GAME_LANGUAGE.search(text):
+                valid = -24 * 10 <= delta_hours <= 24
+            elif self.FUTURE_GAME_LANGUAGE.search(text):
+                valid = -24 <= delta_hours <= 24 * 28
+            else:
+                valid = abs(delta_hours) <= 24 * 4
+            if valid:
+                dated.append((row, abs(delta_hours)))
+        dated.sort(key=lambda item: item[1])
+        if not dated:
+            return []
+        confidence = 0.9 if explicit_week is not None else 0.82
+        method = "single_team_explicit_week" if explicit_week is not None else "single_team_game_context"
+        return [(dated[0][0]["game_id"], confidence, method)]
 
     def _link_entities(self, connection: sqlite3.Connection, content_id: int, text: str,
                        entity_id: int | None, season: int,
-                       title: str | None = None) -> set[int]:
+                       title: str | None = None,
+                       published_at: str | datetime | None = None) -> set[int]:
         """Attach topic, team, player, and game candidates to one content row.
 
         Every ingestion path uses this, so a Reddit submission and a Bluesky post
@@ -568,8 +668,9 @@ class ContentRepository:
                                [(content_id, *item) for item in teams])
         connection.executemany(
             "INSERT INTO content_players VALUES(?,?,?,?,?)",
-            [(content_id, season, *item)
-             for item in self._player_candidates(connection, text, season, team_ids)])
+            [(content_id, *item)
+             for item in self._player_candidates(connection, text, season, team_ids,
+                                                  title=title)])
         # Evidence is written once, after every resolver has contributed to it.
         # Writing it straight after team resolution silently discarded every
         # player match, because those are appended later in this same method.
@@ -581,7 +682,8 @@ class ContentRepository:
         connection.executemany(
             "INSERT INTO content_games VALUES(?,?,?,?)",
             [(content_id, *item)
-             for item in self._game_candidates(connection, confident_ids, season)])
+             for item in self._game_candidates(connection, confident_ids, season,
+                                                text, published_at)])
         connection.execute("DELETE FROM content_conferences WHERE content_id=?", (content_id,))
         connection.executemany(
             "INSERT OR IGNORE INTO content_conferences VALUES(?,?,?,?)",
@@ -629,20 +731,54 @@ class ContentRepository:
         self._games_by_season = {}
         with closing(self._connect()) as connection:
             rows = connection.execute(
-                """SELECT content_id,source_entity_id,title,body_text,summary
+                """SELECT content_id,source_entity_id,title,body_text,summary,published_at
                    FROM content_items ORDER BY content_id""").fetchall()
             counts = {"items": 0, "teams": 0, "players": 0, "games": 0, "conferences": 0}
             for row in rows:
                 text = " ".join(filter(None, (row["title"], row["body_text"], row["summary"])))
                 self._link_entities(connection, row["content_id"], text,
                                     row["source_entity_id"], season,
-                                    title=row["title"])
+                                    title=row["title"], published_at=row["published_at"])
                 counts["items"] += 1
             connection.commit()
             for table, key in (("content_teams", "teams"), ("content_players", "players"),
                                ("content_games", "games"), ("content_conferences", "conferences")):
                 counts[key] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         return counts
+
+    def prune_local_non_football(self, *, dry_run: bool = True) -> dict[str, Any]:
+        """Remove only local-registry items that explicitly name another sport.
+
+        The conservative classifier deliberately keeps ambiguous items. Deleted
+        rows can be recovered by running local ingestion again.
+        """
+        from sports_aggregator.social.local_sources import is_clearly_other_sport
+
+        self.initialize()
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                """SELECT c.content_id,c.title,c.body_text,c.summary,c.canonical_url
+                   FROM content_items c JOIN source_entities e USING(source_entity_id)
+                   WHERE e.entity_key LIKE 'local-publisher:%'
+                   ORDER BY c.content_id"""
+            ).fetchall()
+            matches = []
+            for row in rows:
+                text = " ".join(filter(None, (row["title"], row["body_text"], row["summary"])))
+                if is_clearly_other_sport(text):
+                    matches.append(dict(row))
+            if matches and not dry_run:
+                connection.executemany(
+                    "DELETE FROM content_items WHERE content_id=?",
+                    [(row["content_id"],) for row in matches],
+                )
+                connection.commit()
+        return {
+            "scanned": len(rows), "candidates": len(matches),
+            "deleted": 0 if dry_run else len(matches), "dry_run": dry_run,
+            "sample": [{"content_id": row["content_id"], "title": row["title"]}
+                       for row in matches[:25]],
+        }
 
     def redetermine_roles(self) -> dict[str, Any]:
         """Re-classify every stored item and record the evidence for each verdict.
@@ -830,7 +966,8 @@ class ContentRepository:
                 "SELECT content_id FROM content_items WHERE platform='youtube' AND platform_content_id=?",
                 (video_id,)).fetchone()[0]
             self._link_entities(connection, content_id, f"{title} {description[:1500]}",
-                                endpoint.get("source_entity_id"), season, title=title)
+                                endpoint.get("source_entity_id"), season, title=title,
+                                published_at=published_at)
             connection.execute("DELETE FROM content_links WHERE content_id=?", (content_id,))
             connection.execute("INSERT INTO content_links VALUES(?,?,'ORIGINAL')", (content_id, url))
             connection.commit()
@@ -876,7 +1013,8 @@ class ContentRepository:
                 "SELECT content_id FROM content_items WHERE platform='podcast' AND platform_content_id=?",
                 (episode_id,)).fetchone()[0]
             self._link_entities(connection, content_id, f"{title} {description[:1500]}",
-                                endpoint.get("source_entity_id"), season, title=title)
+                                endpoint.get("source_entity_id"), season, title=title,
+                                published_at=published_at)
             connection.commit()
         return content_id
 
@@ -927,7 +1065,8 @@ class ContentRepository:
                 "SELECT content_id FROM content_items WHERE platform='reddit' AND platform_content_id=?",
                 (identifier,)).fetchone()[0]
             self._link_entities(connection, content_id, classification_text,
-                                endpoint["source_entity_id"], season, title=title)
+                                endpoint["source_entity_id"], season, title=title,
+                                published_at=published)
             connection.execute("DELETE FROM content_links WHERE content_id=?", (content_id,))
             if links_out:
                 connection.execute("INSERT INTO content_links VALUES(?,?,'ORIGINAL')",
@@ -968,19 +1107,11 @@ class ContentRepository:
             )
             content_id=connection.execute(
                 "SELECT content_id FROM content_items WHERE platform='bluesky' AND platform_content_id=?",(uri,)).fetchone()[0]
-            for table in ("content_topics","content_teams","content_players","content_games","content_links"):
-                connection.execute(f"DELETE FROM {table} WHERE content_id=?",(content_id,))
-            connection.executemany("INSERT INTO content_topics VALUES(?,?,?,?)",
-                                   [(content_id,*item) for item in classify_topics(classification_text)])
-            teams=self._team_candidates(connection,classification_text,endpoint["source_entity_id"]); team_ids={item[0] for item in teams}
-            connection.executemany("INSERT INTO content_teams VALUES(?,?,?,?)",
-                                   [(content_id,*item) for item in teams])
-            players=self._player_candidates(connection,classification_text,season,team_ids)
-            connection.executemany("INSERT INTO content_players VALUES(?,?,?,?,?)",
-                                   [(content_id,season,*item) for item in players])
-            games=self._game_candidates(connection,team_ids,season)
-            connection.executemany("INSERT INTO content_games VALUES(?,?,?,?)",
-                                   [(content_id,*item) for item in games])
+            self._link_entities(connection, content_id, classification_text,
+                                endpoint["source_entity_id"], season,
+                                title=external_title or text[:self.LEAD_LENGTH],
+                                published_at=created)
+            connection.execute("DELETE FROM content_links WHERE content_id=?", (content_id,))
             connection.executemany("INSERT INTO content_links VALUES(?,?,'EXTERNAL')",
                                    [(content_id,url) for url in links])
             connection.commit()
@@ -1040,14 +1171,18 @@ class ContentRepository:
             team_ids = {item[0] for item in teams}
             connection.executemany("INSERT INTO content_teams VALUES(?,?,?,?)",
                                    [(content_id,*item) for item in teams])
-            players = [(player_id, 1.0, "provider_entity") for player_id in article.player_ids]
+            players = [(season, player_id, 1.0, "provider_entity")
+                       for player_id in article.player_ids]
             if not players:
-                players = self._player_candidates(connection, text, season, team_ids)
+                players = self._player_candidates(connection, text, season, team_ids,
+                                                  title=article.title)
             connection.executemany("INSERT INTO content_players VALUES(?,?,?,?,?)",
-                                   [(content_id,season,*item) for item in players])
+                                   [(content_id,*item) for item in players])
             games = [(game_id, 1.0, "provider_entity") for game_id in article.game_ids]
             if not games:
-                games = self._game_candidates(connection, team_ids, season)
+                confident_ids = {item[0] for item in teams if item[1] >= 0.75}
+                games = self._game_candidates(connection, confident_ids, season,
+                                              text, published)
             connection.executemany("INSERT INTO content_games VALUES(?,?,?,?)",
                                    [(content_id,*item) for item in games])
             connection.execute("INSERT INTO content_links VALUES(?,?,'ORIGINAL')",

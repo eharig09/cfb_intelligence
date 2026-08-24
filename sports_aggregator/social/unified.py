@@ -275,6 +275,27 @@ class UnifiedSourceRegistry:
 
     def seed_configured_endpoints(self) -> int:
         """Attach endpoints already used or verified elsewhere in this application."""
+        # NCAA publishes this endpoint in its official RSS directory. Keeping
+        # the identity in the source graph preserves official-source attribution
+        # instead of treating the feed as an unclassified publisher.
+        self.upsert_entity(SourceEntityProfile(
+            name="NCAA.com", organization="NCAA", entity_type="ORGANIZATION",
+            entity_key="organization:ncaa",
+            source_classes=("PRIMARY_SOURCE", "PUBLICATION"),
+            specialties=("national_CFB", "FBS", "rankings", "playoff", "awards"),
+            conferences=("ALL",), reliability_score=5, reporting_score=4,
+            national_score=5, awards_score=5, official_score=5, priority=5,
+            trust_status="OFFICIAL",
+        ))
+        self.upsert_entity(SourceEntityProfile(
+            name="Yahoo Sports", organization="Yahoo", entity_type="ORGANIZATION",
+            entity_key="organization:yahoo-sports",
+            source_classes=("PUBLICATION",),
+            specialties=("national_CFB", "news", "features", "analysis"),
+            conferences=("ALL",), reliability_score=4, reporting_score=4,
+            national_score=5, analytics_score=3, priority=4,
+            trust_status="TRUSTED_SEED",
+        ))
         configured = (
             ("organization:espn", SourceEndpointProfile(
                 platform="rss", endpoint_type="WEBSITE_RSS",
@@ -288,6 +309,20 @@ class UnifiedSourceRegistry:
                 platform_id="api.collegefootballdata.com",
                 url="https://api.collegefootballdata.com/",
                 endpoint_key="api:api.collegefootballdata.com",
+                verification_status="verified",
+            )),
+            ("organization:ncaa", SourceEndpointProfile(
+                platform="rss", endpoint_type="WEBSITE_RSS",
+                platform_id="https://www.ncaa.com/news/football/fbs/rss.xml",
+                url="https://www.ncaa.com/news/football/fbs/rss.xml",
+                endpoint_key="rss:https://www.ncaa.com/news/football/fbs/rss.xml",
+                verification_status="verified",
+            )),
+            ("organization:yahoo-sports", SourceEndpointProfile(
+                platform="rss", endpoint_type="WEBSITE_RSS",
+                platform_id="https://sports.yahoo.com/college-football/rss/",
+                url="https://sports.yahoo.com/college-football/rss/",
+                endpoint_key="rss:https://sports.yahoo.com/college-football/rss/",
                 verification_status="verified",
             )),
         )

@@ -1,0 +1,43 @@
+{
+  "total_teams_researched": 138,
+  "teams_with_3_plus_sources": 104,
+  "teams_with_2_sources": 13,
+  "teams_with_only_1_source": 12,
+  "teams_with_no_sources": 9,
+  "teams_with_verified_native_rss": 67,
+  "teams_without_verified_native_rss": 62,
+  "teams_requiring_google_news_fallback": 129,
+  "sources_with_original_reporting_signal": 260,
+  "sources_with_unverified_original_reporting": 90,
+  "sources_with_unverified_paywall_status": 350,
+  "weak_coverage_teams": [
+    "Buffalo",
+    "California",
+    "Florida Atlantic",
+    "Florida International",
+    "Hawai'i",
+    "Liberty",
+    "Louisiana Tech",
+    "Massachusetts",
+    "Miami (OH)",
+    "Nevada",
+    "New Mexico State",
+    "Northern Illinois",
+    "SMU",
+    "Sacramento State",
+    "Sam Houston",
+    "San José State",
+    "South Alabama",
+    "UL Monroe",
+    "UTSA",
+    "Wake Forest",
+    "Western Michigan"
+  ],
+  "ambiguous_team_names": [
+    "Miami",
+    "Miami (OH)",
+    "USC",
+    "UTSA"
+  ],
+  "research_failures": {}
+}
