@@ -47,15 +47,12 @@ def ingest_fpi(repository: CFBRepository, seasons: list[int], *,
             print(f"power_index {season}: failed ({str(exc)[:120]})")
             continue
         if asset is None:
-            # An unpublished season is a normal state, not an error.
             record_run(repository, source="sportsdataverse", dataset="power_index",
                        season=season, started_at=started, status="unpublished",
                        message="no release asset for this season")
             print(f"power_index {season}: not published")
             continue
         if rows and "teampredptdiff" not in rows[0]:
-            # The release published something, but not the FPI schema. Recorded
-            # as a schema mismatch rather than a silent zero-row success.
             record_run(repository, source="sportsdataverse", dataset="power_index",
                        season=season, started_at=started, status="schema_mismatch",
                        rows_seen=len(rows), asset=asset.name,
@@ -89,23 +86,32 @@ def ingest_weather(repository: CFBRepository, season: int, *,
             (season, datetime.now(timezone.utc).isoformat(), limit))]
     stored = skipped = outside = indoor_count = 0
     failures: list[str] = []
+    venue_payloads: dict[tuple[float, float], dict] = {}
+    venue_errors: dict[tuple[float, float], str] = {}
     for game in games:
         if not OpenMeteoClient.within_horizon(game["start_date"]):
             outside += 1
             continue
         venue = venues.get(game["home_team_id"])
-        if not venue or venue.get("latitude") is None:
+        if not venue or venue.get("latitude") is None or venue.get("longitude") is None:
             skipped += 1
             continue
-        # An indoor game still gets a row so the page can say "indoor" rather
-        # than showing nothing, but it carries no weather flags.
         indoor = bool(venue.get("dome"))
-        try:
-            payload = client.venue_forecast(venue["latitude"], venue["longitude"],
-                                            force=force)
-        except Exception as exc:
-            failures.append(f"{game['game_id']}: {str(exc)[:80]}")
+        key = (round(float(venue["latitude"]), 5), round(float(venue["longitude"]), 5))
+        if key in venue_errors:
+            failures.append(f"{game['game_id']}: {venue_errors[key]}")
             continue
+        payload = venue_payloads.get(key)
+        if payload is None:
+            try:
+                payload = client.venue_forecast(venue["latitude"], venue["longitude"],
+                                                force=force)
+                venue_payloads[key] = payload
+            except Exception as exc:
+                message = str(exc)[:220]
+                venue_errors[key] = message
+                failures.append(f"{game['game_id']}: {message}")
+                continue
         forecast = OpenMeteoClient.at_kickoff(payload, game["start_date"])
         if forecast is None:
             outside += 1
@@ -124,6 +130,13 @@ def ingest_weather(repository: CFBRepository, season: int, *,
                message="; ".join(failures[:3]))
     print(f"game_weather {season}: stored {stored} ({indoor_count} indoor), "
           f"outside horizon {outside}, no venue {skipped}, failures {len(failures)}")
+    if failures:
+        print("weather failure samples:")
+        for failure in failures[:3]:
+            print(f"  - {failure}")
+    if venue_errors:
+        print(f"weather venue requests: {len(venue_payloads)} succeeded, "
+              f"{len(venue_errors)} failed (deduplicated across {len(games)} games)")
     return len(failures)
 
 
@@ -141,7 +154,6 @@ def main(argv=None) -> int:
     repository = _repository(args.database)
 
     if args.command == "sources":
-        # What each upstream dataset currently publishes, before importing it.
         for entry in SportsDataverseClient().status():
             seasons = entry.get("seasons") or []
             span = f"{seasons[0]}-{seasons[-1]}" if seasons else "none"

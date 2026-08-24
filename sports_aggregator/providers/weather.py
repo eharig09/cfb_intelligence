@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
@@ -126,6 +128,24 @@ class OpenMeteoClient:
         self.base_url = base_url
         self.session = session or requests.Session()
         self.session.headers.setdefault("User-Agent", "cfb-intelligence/1.0 (weather)")
+        # A scheduled refresh can hit dozens of venues in a short burst. Retry
+        # transient rate limits and upstream errors rather than turning one brief
+        # Open-Meteo hiccup into 60 failed games.
+        if session is None:
+            retry = Retry(
+                total=4,
+                connect=3,
+                read=3,
+                status=4,
+                backoff_factor=0.75,
+                status_forcelist=(429, 500, 502, 503, 504),
+                allowed_methods=frozenset({"GET"}),
+                respect_retry_after_header=True,
+                raise_on_status=False,
+            )
+            adapter = HTTPAdapter(max_retries=retry, pool_connections=8, pool_maxsize=8)
+            self.session.mount("https://", adapter)
+            self.session.mount("http://", adapter)
         self.timeout = timeout
         self.cache_seconds = cache_seconds
 
@@ -151,8 +171,21 @@ class OpenMeteoClient:
             "precipitation_unit": "inch", "timezone": "UTC",
             "forecast_days": FORECAST_HORIZON_DAYS,
         }, timeout=self.timeout)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            detail = (response.text or "").strip().replace("\n", " ")[:240]
+            suffix = f" response={detail}" if detail else ""
+            raise RuntimeError(
+                f"Open-Meteo HTTP {response.status_code} for "
+                f"{latitude:.3f},{longitude:.3f}{suffix}"
+            ) from exc
         payload = response.json()
+        if not isinstance(payload, dict) or payload.get("error"):
+            raise RuntimeError(
+                f"Open-Meteo invalid response for {latitude:.3f},{longitude:.3f}: "
+                f"{str(payload)[:240]}"
+            )
         cached.parent.mkdir(parents=True, exist_ok=True)
         cached.write_text(json.dumps(payload), encoding="utf-8")
         return payload
