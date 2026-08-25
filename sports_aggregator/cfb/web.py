@@ -244,6 +244,8 @@ def today():
         status=repository.status(season),
         rankings=rankings,
         games_table=views.games_to_watch_compact(slate, brands),
+        watch_games=slate,
+        watch_brands=brands,
         weekly_matchups_table=views.weekly_matchups_table(
             _weekly_matchup_watches(repository, weekly_slate), season),
         nearest_week=nearest_week,

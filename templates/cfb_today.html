@@ -22,6 +22,7 @@
     .panel-head span { color: #d7c8b5; font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; }
     .panel-body { overflow-y: auto; max-height: 31rem; }
     .panel .table-wrap { border: 0; margin: 0; }
+    .watch-cards { display: none; }
 
     /* Compact development entries with their provenance one click away. */
     .dev { padding: 9px 12px; border-bottom: 1px solid var(--line); border-left: 4px solid transparent; }
@@ -50,7 +51,7 @@
     .conference-chip span { color: var(--muted); font-weight: 400; }
     .reference .table-wrap { max-height: 27rem; overflow-y: auto; }
 
-    @media (max-width: 600px) {
+    @media (max-width: 767px) {
         .season { display: none; }
         .hero { align-items: flex-start; gap: 8px; }
         .panel-head { align-items: flex-start; }
@@ -59,6 +60,68 @@
         .conference-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
                             overflow: visible; padding-bottom: 5px; }
         .conference-chip { min-width: 0; text-align: center; }
+
+        .games-table-display { display: none; }
+        .watch-cards { display: grid; gap: 9px; padding: 9px; }
+        .watch-card {
+            display: block; min-width: 0; overflow: hidden; color: var(--ink);
+            background: var(--paper); border: 1px solid var(--line);
+            border-radius: 8px; box-shadow: 0 4px 12px #2b211514;
+            text-decoration: none;
+        }
+        .watch-card:focus-visible { outline: 3px solid var(--rust); outline-offset: 2px; }
+        .watch-card-top {
+            display: flex; justify-content: space-between; align-items: center; gap: 8px;
+            padding: 6px 9px; background: var(--ink); color: #fff;
+            font-size: .61rem; font-weight: 800; text-transform: uppercase;
+            letter-spacing: .055em;
+        }
+        .watch-card-top span:last-child { color: #ead8bd; }
+        .watch-faceoff {
+            display: grid; grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1fr);
+            align-items: center; min-height: 106px;
+            background:
+                linear-gradient(115deg, color-mix(in srgb, var(--away) 12%, transparent), transparent 42%),
+                linear-gradient(245deg, color-mix(in srgb, var(--home) 12%, transparent), transparent 42%);
+        }
+        .watch-team { min-width: 0; padding: 10px 5px 8px; text-align: center; }
+        .watch-team-mark {
+            position: relative; display: grid; place-items: center;
+            width: 62px; height: 62px; margin: 0 auto 6px; border-radius: 50%;
+            background: #fff; border: 3px solid var(--side);
+            box-shadow: 0 4px 10px #17130f20, 0 0 0 4px color-mix(in srgb, var(--side) 10%, transparent);
+        }
+        .watch-team-mark img { width: 48px; height: 48px; object-fit: contain; }
+        .watch-team-mark b { color: var(--side); font-size: .72rem; }
+        .watch-team-rank {
+            position: absolute; top: -6px; right: -7px; min-width: 25px; height: 25px;
+            display: grid; place-items: center; padding: 0 3px; border-radius: 50%;
+            border: 2px solid var(--paper); background: var(--ink); color: #fff;
+            font-size: .58rem;
+        }
+        .watch-team-name {
+            display: block; overflow: hidden; text-overflow: ellipsis;
+            font: 700 .86rem/1.15 Georgia, serif; white-space: nowrap;
+        }
+        .watch-vs {
+            display: grid; place-items: center; width: 38px; height: 38px;
+            border-radius: 50%; background: var(--ink); color: #fff;
+            font-size: .65rem; font-weight: 900; letter-spacing: .05em;
+            box-shadow: 0 3px 8px #17130f2b;
+        }
+        .watch-card-bottom {
+            display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px;
+            align-items: center; padding: 7px 9px; border-top: 1px solid var(--line);
+            color: var(--muted); font-size: .62rem;
+        }
+        .watch-card-edge { min-width: 0; }
+        .watch-card-edge strong { color: var(--ink); }
+        .watch-card-edge span {
+            display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            margin-top: 2px;
+        }
+        .watch-card-line { text-align: right; white-space: nowrap; }
+        .watch-card-line strong { display: block; color: var(--rust); font-size: .76rem; }
     }
 </style>
 {% endblock %}
@@ -101,7 +164,50 @@
 <div class="briefing">
     <section class="panel">
         <div class="panel-head"><strong>Games to Watch</strong><span>Attention &amp; matchup edge</span></div>
-        <div class="panel-body">{{ data_table(games_table) }}</div>
+        <div class="panel-body">
+            <div class="games-table-display">{{ data_table(games_table) }}</div>
+            <div class="watch-cards">
+                {% for game in watch_games %}
+                {% set away = watch_brands.get(game.away_team_id, {}) %}
+                {% set home = watch_brands.get(game.home_team_id, {}) %}
+                <a class="watch-card" href="{{ url_for('cfb.game_preview', game_id=game.game_id) }}"
+                   style="--away:{{ away.color or '#6b625a' }};--home:{{ home.color or '#6b625a' }}"
+                   aria-label="{{ game.away_team }} at {{ game.home_team }} preview">
+                    <div class="watch-card-top">
+                        <span>Week {{ game.week }} &middot; {{ game.date_label }}</span>
+                        <span>{{ game.time_label or 'Time TBD' }}{% if game.television %} &middot; {{ game.television }}{% endif %}</span>
+                    </div>
+                    <div class="watch-faceoff">
+                        {% for team_name, brand, rank, side in [
+                            (game.away_team, away, game.away_rank, 'away'),
+                            (game.home_team, home, game.home_rank, 'home')] %}
+                        <div class="watch-team" style="--side:{{ brand.color or '#6b625a' }}">
+                            <div class="watch-team-mark">
+                                {% if brand.logo %}<img src="{{ brand.logo }}" alt="" loading="lazy">
+                                {% else %}<b>{{ brand.abbreviation or team_name[:3] | upper }}</b>{% endif %}
+                                {% if rank %}<span class="watch-team-rank">#{{ rank }}</span>{% endif %}
+                            </div>
+                            <span class="watch-team-name">{{ team_name }}</span>
+                        </div>
+                        {% if loop.first %}<span class="watch-vs">VS</span>{% endif %}
+                        {% endfor %}
+                    </div>
+                    <div class="watch-card-bottom">
+                        <span class="watch-card-edge">
+                            <strong>{{ game.matchup_edge_team or 'Even matchup' }}</strong>
+                            {% if game.matchup_edge_unit %}<span>{{ game.matchup_edge_unit }}</span>{% endif %}
+                        </span>
+                        <span class="watch-card-line">
+                            <strong>{{ game.attention_score | cell('int') }}</strong> attention
+                            {% if game.market and game.market.spread is not none %}<span>Line {{ game.market.spread | cell('f1') }}</span>{% endif %}
+                        </span>
+                    </div>
+                </a>
+                {% else %}
+                <div class="empty">No upcoming games are stored for this season.</div>
+                {% endfor %}
+            </div>
+        </div>
     </section>
 
     <section class="panel">
