@@ -344,3 +344,98 @@ class ServedMetadataTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EndpointHealthTests(unittest.TestCase):
+    """Every registered GET route must respond, and every API must serialize.
+
+    A packet that renders fine in a template can still be unserializable — a
+    dict keyed by tuples is the case that actually shipped, and it took down
+    /api/v1/cfb/games/<id>/preview while every HTML page stayed green.
+    """
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        self.repository = CFBRepository(self.path)
+        self.repository.replace_teams([Team.from_cfbd(payload) for payload in (
+            {"id": 68, "school": "Boise State", "mascot": "Broncos", "abbreviation": "BSU",
+             "alternateNames": [], "conference": "Mountain West", "classification": "fbs",
+             "color": "#0033A0", "logos": ["https://example.test/bsu.png"]},
+            {"id": 21, "school": "San Diego State", "mascot": "Aztecs", "abbreviation": "SDSU",
+             "alternateNames": [], "conference": "Mountain West", "classification": "fbs",
+             "color": "#A6192E", "logos": []},
+        )])
+        self.repository.replace_games(2026, [Game.from_cfbd({
+            "id": 401, "season": 2026, "week": 3, "seasonType": "regular",
+            "startDate": "2026-09-12T19:30:00.000Z", "startTimeTBD": False,
+            "completed": False, "neutralSite": False, "conferenceGame": True,
+            "venue": "Snapdragon Stadium", "venueId": 1,
+            "homeId": 21, "homeTeam": "San Diego State", "homeConference": "Mountain West",
+            "homePoints": None, "awayId": 68, "awayTeam": "Boise State",
+            "awayConference": "Mountain West", "awayPoints": None,
+        })])
+        self.repository.replace_players(2026, (
+            Player("p1", 2026, "Test", "Player", "Boise State", "QB", 1, 74, 200, 3),
+        ))
+        # A completed prior meeting with a box score, so the preview endpoint
+        # actually builds its prior-player-games packet. Without stored box
+        # rows that packet is empty and the sweep proves nothing about it.
+        self.repository.replace_games(2025, [Game.from_cfbd({
+            "id": 390, "season": 2025, "week": 5, "seasonType": "regular",
+            "startDate": "2025-10-04T19:30:00.000Z", "startTimeTBD": False,
+            "completed": True, "neutralSite": False, "conferenceGame": True,
+            "venue": "Albertsons Stadium", "venueId": 2,
+            "homeId": 68, "homeTeam": "Boise State", "homeConference": "Mountain West",
+            "homePoints": 31, "awayId": 21, "awayTeam": "San Diego State",
+            "awayConference": "Mountain West", "awayPoints": 17,
+        })])
+        self.repository.store_game_player_box_scores(({
+            "id": 390, "teams": [{"team": "Boise State", "conference": "Mountain West",
+                "homeAway": "home", "points": 31, "categories": [{
+                    "name": "passing", "types": [{"name": "YDS", "athletes": [
+                        {"id": "p1", "name": "Test Player", "stat": "268"}]}]}]}],
+        },))
+        ContentRepository(self.path).initialize()
+        self.app = create_app({
+            "TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False,
+            "CFB_REPOSITORY": self.repository, "CFB_DEFAULT_SEASON": 2026,
+        })
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        os.unlink(self.path)
+
+    #: Endpoints that legitimately refuse without configuration.
+    EXPECTED_NON_200 = {"/internal/cfb-refresh-status"}
+
+    def _routes(self):
+        samples = {"<int:game_id>": "401", "<int:team_id>": "68",
+                   "<player_id>": "p1", "<slug>": "mountain-west",
+                   "<path:filename>": "cfb.css", "<league_slug>": "college-football"}
+        for rule in sorted(self.app.url_map.iter_rules(), key=str):
+            if "GET" not in rule.methods:
+                continue
+            path = str(rule)
+            for token, value in samples.items():
+                path = path.replace(token, value)
+            if "<" in path:
+                continue
+            yield path
+
+    def test_every_get_route_responds_without_a_server_error(self):
+        for path in self._routes():
+            if path in self.EXPECTED_NON_200:
+                continue
+            with self.subTest(path=path):
+                self.assertLess(self.client.get(path).status_code, 500)
+
+    def test_every_json_api_serializes(self):
+        for path in self._routes():
+            if not path.startswith("/api/"):
+                continue
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertLess(response.status_code, 500)
+                if response.status_code == 200:
+                    json.loads(response.get_data(as_text=True))

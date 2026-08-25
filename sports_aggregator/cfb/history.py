@@ -411,8 +411,16 @@ def _game_stat_lines(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         interceptions = (value(item, "interceptions", "INT") or
                          value(item, "defensive", "INT"))
         local = _local_start(item["start_date"])
+        # `stats` is the lookup index this function builds for `value()` above,
+        # keyed by (category, stat_type) tuples. Spreading it into the result
+        # leaked an internal structure into every packet, and a tuple key is not
+        # representable in JSON, so /api/v1/cfb/games/<id>/preview raised
+        # "keys must be str, int, float, bool or None, not tuple" rather than
+        # returning. Nothing downstream reads it; the derived lines below are
+        # the output.
+        emitted = {key: field for key, field in item.items() if key != "stats"}
         results.append({
-            **item, "opponent_id": opponent_id, "opponent": opponent,
+            **emitted, "opponent_id": opponent_id, "opponent": opponent,
             "date_label": local.strftime("%b %d, %Y"),
             "passing": " / ".join(filter(None, (
                 passing, f"{passing_yards} yd" if passing_yards else None,

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 import os
 import tempfile
 import unittest
@@ -118,6 +119,15 @@ class HistoryTests(unittest.TestCase):
         history = matchup_player_history(self.repository, target)
         self.assertEqual(history[0]["player"], "Test Runner")
         self.assertEqual(history[0]["rushing"], "104 yd")
+        # This packet is served by /api/v1/cfb/games/<id>/preview.
+        # _game_stat_lines builds a lookup index keyed by (category, stat_type)
+        # tuples and used to spread it into every emitted row. Templates never
+        # noticed; a tuple key cannot be represented in JSON, so the preview
+        # endpoint raised instead of responding.
+        for row in history:
+            self.assertNotIn("stats", row, "internal lookup index leaked into output")
+        json.dumps(history)
+
 
     def test_partial_box_rows_require_completion_marker(self):
         self.repository.store_game_team_box_scores(({
