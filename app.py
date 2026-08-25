@@ -1,5 +1,7 @@
 import os
+from collections import deque
 from datetime import datetime
+import json
 from pathlib import Path
 import secrets
 import subprocess
@@ -41,6 +43,16 @@ def _legacy_dashboards_default() -> bool:
     CFB application unless an operator explicitly opts back in.
     """
     return not _env_flag("RENDER", False)
+
+
+def _tail_lines(path: Path, limit: int = 80) -> list[str]:
+    if not path.exists():
+        return []
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            return [line.rstrip("\n") for line in deque(handle, maxlen=limit)]
+    except OSError:
+        return []
 
 
 def create_app(test_config: dict | None = None) -> Flask:
@@ -86,6 +98,15 @@ def create_app(test_config: dict | None = None) -> Flask:
         source_database_path
     )
 
+    def require_refresh_auth() -> None:
+        expected = str(app.config.get("CFB_REFRESH_TOKEN") or "").strip()
+        authorization = request.headers.get("Authorization", "")
+        provided = authorization.removeprefix("Bearer ").strip()
+        if not expected:
+            abort(503, description="CFB_REFRESH_TOKEN is not configured")
+        if not provided or not secrets.compare_digest(provided, expected):
+            abort(401)
+
     @app.route("/")
     def index():
         return render_template(
@@ -97,13 +118,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     @app.post("/internal/cfb-refresh")
     def start_cfb_refresh():
         """Let a Render Cron Job trigger work inside the web service filesystem."""
-        expected = str(app.config.get("CFB_REFRESH_TOKEN") or "").strip()
-        authorization = request.headers.get("Authorization", "")
-        provided = authorization.removeprefix("Bearer ").strip()
-        if not expected:
-            abort(503, description="CFB_REFRESH_TOKEN is not configured")
-        if not provided or not secrets.compare_digest(provided, expected):
-            abort(401)
+        require_refresh_auth()
 
         profile = (request.args.get("profile") or "light").strip().casefold()
         if profile not in {"light", "heavy"}:
@@ -125,6 +140,45 @@ def create_app(test_config: dict | None = None) -> Flask:
             close_fds=True,
         )
         return jsonify({"status": "accepted", "season": season, "profile": profile}), 202
+
+    @app.get("/internal/cfb-refresh-status")
+    def cfb_refresh_status():
+        """Return persisted scheduler state and the tail of the newest refresh log."""
+        require_refresh_auth()
+        database = Path(app.config["CFB_DATABASE_PATH"])
+        instance = database.parent
+        logs = instance / "refresh_logs"
+        candidates = sorted(
+            logs.glob("refresh-*.log"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        ) if logs.exists() else []
+        latest_log = candidates[0] if candidates else None
+
+        history_path = instance / "scheduled_refresh_history.jsonl"
+        history_lines = _tail_lines(history_path, 1)
+        last_refresh = None
+        if history_lines:
+            try:
+                last_refresh = json.loads(history_lines[-1])
+            except json.JSONDecodeError:
+                last_refresh = {"status": "unreadable_history_record"}
+
+        lock_path = instance / "scheduled_refresh.lock"
+        lock = None
+        if lock_path.exists():
+            try:
+                lock = json.loads(lock_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                lock = {"present": True}
+
+        return jsonify({
+            "running": lock_path.exists(),
+            "lock": lock,
+            "last_refresh": last_refresh,
+            "latest_log": str(latest_log) if latest_log else None,
+            "latest_log_lines": _tail_lines(latest_log, 100) if latest_log else [],
+        })
 
     # One number formatter for every template, so the same statistic cannot
     # render as 0.686, 68.6% and 0.7% on three different pages.
