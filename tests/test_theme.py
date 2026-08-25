@@ -90,10 +90,24 @@ class TokenDisciplineTests(unittest.TestCase):
             "--display-font", "--body-font", "--shell", "--gap", "--pad",
             "--team-light", "--team-dark", "--conference-light", "--conference-dark",
             "--team-fill", "--team-on-fill", "--rust", "--color-scheme",
+            # School marks are drawn for white grounds, so the disc behind one
+            # stays white on both themes. Constant by intent, not by omission.
+            "--logo-ground",
         }
         missing = sorted(name for name in light
                          if name not in theme_independent and name not in dark)
         self.assertEqual(missing, [], "tokens with no dark value would stay light")
+
+    def test_the_stylesheet_holds_no_control_characters(self):
+        """A mangled CSS escape writes a raw control byte and fails silently.
+
+        The rule still parses, so nothing errors: the marker simply renders as
+        nothing. Cheap to assert, invisible to review.
+        """
+        allowed = {ord(chr(10)), ord(chr(13)), ord(chr(9))}
+        found = sorted({hex(ord(char)) for char in self.css
+                        if ord(char) < 32 and ord(char) not in allowed})
+        self.assertEqual(found, [])
 
     def test_both_themes_declare_a_color_scheme(self):
         self.assertIn("color-scheme: light", self.css)

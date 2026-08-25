@@ -71,6 +71,11 @@
        wordmarks vanish. A faint plate keeps every mark readable without
        recoloring anyone's. Invisible on the light page. */
     --logo-plate: transparent;
+    /* Deliberately theme-independent: school marks are drawn for white
+       grounds, so the disc behind one stays white on both themes. */
+    --logo-ground: #ffffff;
+    --notice-bg: #fff7d6;
+    --notice-ink: #07182c;
 
     --shadow-soft: 0 3px 10px #2b21150b;
     --shadow-panel: 0 5px 16px #2b211512;
@@ -162,6 +167,8 @@ body, [data-identity] {
     --field-border: #3a4c60;
     --field-placeholder: #8496aa;
     --logo-plate: #ffffff0f;
+    --notice-bg: #3a3320;
+    --notice-ink: #f7edd2;
 
     /* Shadows read as depth on paper and as grime on charcoal. Kept, but
        deepened and tightened so they separate surfaces without smearing. */
@@ -225,6 +232,8 @@ body, [data-identity] {
     --field-border: #3a4c60;
     --field-placeholder: #8496aa;
     --logo-plate: #ffffff0f;
+    --notice-bg: #3a3320;
+    --notice-ink: #f7edd2;
 
     /* Shadows read as depth on paper and as grime on charcoal. Kept, but
        deepened and tightened so they separate surfaces without smearing. */
@@ -562,6 +571,38 @@ table.data td.state-departed .sub { color: var(--red); }
     text-decoration: none; border-left: 3px solid var(--row-team, var(--team));
 }
 .story-team img { width: 13px; height: 13px; object-fit: contain; }
+
+/* ---------- provenance ----------
+
+   "Why is this here" is the one thing a scoreboard cannot copy: every value in
+   these blocks was computed and stored by the clustering, role, and relevance
+   pipelines. Rendered as <details> so it costs a reader nothing until asked
+   for, and styled once so the dashboard panel and every story list agree. */
+
+.dev details, .provenance { margin-top: 5px; }
+.dev summary, .provenance summary {
+    cursor: pointer; color: var(--muted); font-size: .63rem; list-style: none;
+}
+.dev summary::-webkit-details-marker,
+.provenance summary::-webkit-details-marker { display: none; }
+.dev summary:before, .provenance summary:before { content: "▸  "; }
+.dev details[open] summary:before,
+.provenance[open] summary:before { content: "▾  "; }
+.dev summary:hover, .provenance summary:hover { color: var(--rust); }
+.provenance summary:focus-visible { outline: 2px solid var(--team); outline-offset: 2px; }
+
+.why {
+    margin: 6px 0 0; padding: 8px 10px;
+    background: var(--zebra); border-left: 3px solid var(--line-strong);
+    font-size: .66rem; line-height: 1.55;
+}
+.why dt {
+    color: var(--rust); font-weight: 900; text-transform: uppercase;
+    font-size: .57rem; letter-spacing: .06em; margin-top: 6px;
+}
+.why dt:first-child { margin-top: 0; }
+.why dd { margin: 2px 0 0; color: var(--ink); }
+.why code { background: var(--tint); padding: 0 3px; }
 
 /* ---------- tabs ---------- */
 

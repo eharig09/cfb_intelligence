@@ -1,0 +1,33 @@
+{
+  "name": "College Football Intelligence",
+  "short_name": "CFB Intel",
+  "description": "Ranked matchups, team and player intelligence, and reporting attributed to its source.",
+  "start_url": "/college-football/",
+  "scope": "/college-football/",
+  "display": "standalone",
+  "background_color": "#f2f5f9",
+  "theme_color": "#07182c",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Today",
+      "url": "/college-football/"
+    },
+    {
+      "name": "Draft watch",
+      "url": "/college-football/draft/"
+    },
+    {
+      "name": "Search",
+      "url": "/college-football/search/"
+    }
+  ]
+}

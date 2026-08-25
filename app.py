@@ -19,6 +19,7 @@ from sports_aggregator.social.unified import UnifiedSourceRegistry
 from sports_aggregator.social.content import ContentRepository
 from sports_aggregator.social.stories import StoryRepository
 from sports_aggregator.cfb.views import height_label
+from sports_aggregator.social.roles import role_label
 from sports_aggregator.tables import format_value
 from sports_aggregator.web import league_pages
 
@@ -129,6 +130,9 @@ def create_app(test_config: dict | None = None) -> Flask:
     # render as 0.686, 68.6% and 0.7% on three different pages.
     app.jinja_env.filters["cell"] = format_value
     app.jinja_env.filters["height"] = height_label
+    # Story provenance is rendered from stored role codes; the reader-facing
+    # name for each belongs in one place.
+    app.jinja_env.filters["role"] = role_label
 
     app.register_blueprint(league_pages)
     app.register_blueprint(cfb_pages)

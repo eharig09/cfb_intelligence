@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="College football intelligence">
+  <rect width="512" height="512" rx="96" fill="#07182c"/>
+  <!-- A field-position mark rather than a ball: the app is about where things
+       stand, not about the sport's iconography. -->
+  <g fill="none" stroke="#1473e6" stroke-width="26" stroke-linecap="round">
+    <path d="M112 372V206"/>
+    <path d="M208 372V150"/>
+    <path d="M304 372V246"/>
+    <path d="M400 372V178"/>
+  </g>
+  <path d="M96 400h320" stroke="#f2f5f9" stroke-width="20" stroke-linecap="round"/>
+</svg>

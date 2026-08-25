@@ -236,7 +236,11 @@ def today():
     watch_games = games_to_watch(upcoming)
     rankings = repository.latest_rankings(season)
     movement_stream = repository.recent_movements(season, limit=16)
-    brands = repository.team_brands()
+    # Cards paint the team's letters in its own color, so they need the
+    # contrast-checked pair rather than the raw helmet color. team_identity
+    # returns a superset of the brand, so existing consumers are unaffected.
+    brands = {team_id: team_identity(brand)
+              for team_id, brand in repository.team_brands().items()}
     slate = _with_matchup_edges(repository, _label_games(watch_games))
     weekly_slate = _label_games(games_to_watch(week_games, limit=20))
     market = lines_by_game(repository, season)

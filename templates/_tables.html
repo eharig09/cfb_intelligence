@@ -130,10 +130,10 @@
   visible, so the statistics are still readable; the script only collapses the
   set into tabs once it runs.
 #}
-{% macro tabbed_tables(groups, group_id, note=None) %}
+{% macro tabbed_tables(groups, group_id, note=None, label=None) %}
     {%- if groups %}
     <div class="tabset" data-tabset="{{ group_id }}">
-        <div class="tabs" role="tablist">
+        <div class="tabs" role="tablist" aria-label="{{ label or 'Table views' }}">
             {%- for group in groups %}
             <button type="button" role="tab" id="{{ group_id }}-tab-{{ loop.index }}"
                     aria-controls="{{ group_id }}-panel-{{ loop.index }}"
@@ -177,6 +177,20 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
         tab.addEventListener('click', function (event) {
             event.preventDefault();
             select(index, true);
+        });
+        // Roving tabindex without arrow keys leaves a keyboard reader able to
+        // reach the tablist but not to move inside it. The page-level tabs
+        // already behave this way; these did not.
+        tab.addEventListener('keydown', function (event) {
+            var target = null;
+            if (event.key === 'ArrowRight') target = (index + 1) % tabs.length;
+            else if (event.key === 'ArrowLeft') target = (index - 1 + tabs.length) % tabs.length;
+            else if (event.key === 'Home') target = 0;
+            else if (event.key === 'End') target = tabs.length - 1;
+            if (target === null) return;
+            event.preventDefault();
+            select(target, true);
+            tabs[target].focus();
         });
     });
     var initial = 0;
@@ -242,6 +256,51 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
 
 
 {#
+  Why a story is on the page. Every field here was already computed and stored
+  by the clustering and role pipelines; until now it existed only in the JSON
+  APIs and on one dashboard panel. Reporting that shows its work is the thing a
+  scoreboard cannot copy, so it belongs next to the story rather than behind an
+  endpoint.
+
+  Rendered as <details> so it costs nothing until asked for.
+#}
+{% macro story_provenance(story) %}
+    {%- set sources = story.sources or [] %}
+    <details class="provenance">
+        <summary>Why this is here</summary>
+        <dl class="why">
+            <dt>How it was grouped</dt>
+            <dd>
+                {{- (story.cluster_basis or 'ungrouped') | replace('_', ' ') | lower }}
+                {%- if story.confidence is not none %}
+                &middot; {{ story.confidence | cell('f2') }} confidence{% endif -%}
+            </dd>
+            {%- if sources %}
+            <dt>Who reported it</dt>
+            <dd>
+                {%- for source in sources[:6] %}
+                <strong>{{ source.source_display_name or source.publisher_name or 'Unattributed' }}</strong>
+                &mdash; {{ source.source_role | role | lower }}
+                {%- if source.is_primary %} <em>(first)</em>{% endif -%}
+                {%- if not loop.last %}<br>{% endif %}
+                {%- endfor %}
+                {%- if sources | length > 6 %}<br>and {{ sources | length - 6 }} more{% endif -%}
+            </dd>
+            {%- endif %}
+            {%- if story.first_reported_at %}
+            <dt>Timing</dt>
+            <dd>
+                first reported <time datetime="{{ story.first_reported_at }}">{{ story.first_reported_at[:16] | replace('T', ' ') }}</time>
+                {%- if story.last_updated_at and story.last_updated_at != story.first_reported_at %},
+                last updated <time datetime="{{ story.last_updated_at }}">{{ story.last_updated_at[:16] | replace('T', ' ') }}</time>
+                {%- endif -%}
+            </dd>
+            {%- endif %}
+        </dl>
+    </details>
+{% endmacro %}
+
+{#
   A story list. `context` marks a stream as background rather than reporting
   about the page's subject, so conference-wire items can never read as team
   reporting; each carries the team it is actually about.
@@ -268,6 +327,7 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
                 <span>{{ story.sources | length }} source{{ '' if story.sources | length == 1 else 's' }}</span>
                 {{ linked_piece_meta(story) }}
             </div>
+            {{ story_provenance(story) }}
         </article>
         {%- endfor %}
     </div>

@@ -51,6 +51,9 @@ The active application factory is `app.create_app`. It exposes:
 - `/api/v1/cfb/developments` — content ranked by relevance rather than recency
 - `/college-football/draft/` — 2027 draft watch: consensus board vs production profile
 - `/api/v1/cfb/draft/board`, `/draft/consensus`, `/draft/reconcile` — draft packets
+- `/college-football/feed.xml` — national reporting as RSS, linking to publishers
+- `/college-football/teams/<team_id>/feed.xml` — one team's reporting as RSS
+- `/sitemap.xml` and `/robots.txt` — canonical pages only; admin and API excluded
 - `/college-football/search/` — cross-entity search over teams, players, games, reporting
 - `/college-football/admin/links/` — entity link audit with matched text and rule
 - `/api/v1/cfb/links` — the same audit as JSON
@@ -152,6 +155,22 @@ Presentation is its own boundary rather than template logic:
 - `templates/_layout.html`, `templates/_tables.html`, and `static/cfb.css` are
   the shared page shell, table macros, and stylesheet. Pages previously carried
   a private copy of the same CSS.
+- `sports_aggregator/cfb/meta.py` builds one sharing packet per page kind, so a
+  pasted link renders as a card describing what the page actually holds. A card
+  claims only the layers that populated for that page.
+- `sports_aggregator/cfb/syndication.py` emits RSS feeds, `sitemap.xml`, and
+  `robots.txt`. Feed items link to the original publisher and name them, so
+  attribution survives the hop; a story with no resolvable source URL is
+  dropped rather than relinked internally.
+- The stylesheet carries a light and a dark theme. Every color is a token; a
+  literal hex outside the token blocks is a bug, and `tests/test_theme.py`
+  fails on one. Team identity arrives as `--team-light`/`--team-dark` pairs
+  because a color legible on cream is not legible on charcoal and the
+  correction runs in opposite directions. The theme resolves in an inline
+  script before the stylesheet loads, so no page paints light and then snaps.
+- Story lists disclose their own provenance: how the story was grouped, who
+  filed it and in what role, and whether it has moved since. Every value was
+  already stored by the clustering and role pipelines.
 
 The `sports_aggregator/cfb/` package adds the structured college-football path:
 

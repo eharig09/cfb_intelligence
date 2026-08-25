@@ -9,7 +9,7 @@
     .hero h1 { font-size: clamp(2rem, 4.5vw, 3.2rem); margin: 4px 0 6px; }
     .hero .dek { font-size: .92rem; max-width: 640px; }
     .season { font-family: var(--display-font); font-size: 1.6rem; font-weight: 800; color: var(--rust); }
-    .notice { padding: 12px 15px; background: #fff7d6; border-left: 5px solid var(--gold); margin: 14px 0 0; font-size: .85rem; line-height: 1.5; }
+    .notice { padding: 12px 15px; background: var(--notice-bg); color: var(--notice-ink); border-left: 5px solid var(--gold); margin: 14px 0 0; font-size: .85rem; line-height: 1.5; }
 
     /* Three panels across on a wide screen: the slate, what happened, and who
        to watch. They collapse to two and then one as width runs out. */
@@ -17,9 +17,9 @@
     @media (min-width: 900px) { .briefing { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
     @media (min-width: 1300px) { .briefing { grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.14fr) minmax(0, .92fr); } }
     .panel { background: var(--paper); border: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; }
-    .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 12px; background: var(--ink); color: #fff; }
+    .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 12px; background: var(--surface-strong); color: var(--on-strong); }
     .panel-head strong { font: 800 1.02rem var(--display-font); }
-    .panel-head span { color: #b9c7d8; font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; }
+    .panel-head span { color: var(--on-strong-muted); font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; }
     .panel-body { overflow-y: auto; max-height: 31rem; }
     .panel .table-wrap { border: 0; margin: 0; }
     .games-table-display { display: none; }
@@ -27,18 +27,18 @@
     .watch-card {
         display: block; min-width: 0; overflow: hidden; color: var(--ink);
         background: var(--paper); border: 1px solid var(--line);
-        border-radius: 8px; box-shadow: 0 4px 12px #2b211514;
+        border-radius: 8px; box-shadow: var(--shadow-soft);
         text-decoration: none; transition: transform .14s ease, box-shadow .14s ease;
     }
-    .watch-card:hover { transform: translateY(-1px); box-shadow: 0 7px 18px #2b211522; }
+    .watch-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-raised); }
     .watch-card:focus-visible { outline: 3px solid var(--rust); outline-offset: 2px; }
     .watch-card-top {
         display: flex; justify-content: space-between; align-items: center; gap: 8px;
-        padding: 7px 10px; background: var(--ink); color: #fff;
+        padding: 7px 10px; background: var(--surface-strong); color: var(--on-strong);
         font-size: .62rem; font-weight: 800; text-transform: uppercase;
         letter-spacing: .055em;
     }
-    .watch-card-top span:last-child { color: #ead8bd; text-align: right; }
+    .watch-card-top span:last-child { color: var(--on-strong-muted); text-align: right; }
     .watch-faceoff {
         display: grid; grid-template-columns: minmax(0, 1fr) 46px minmax(0, 1fr);
         align-items: center; min-height: 116px;
@@ -50,11 +50,11 @@
     .watch-team-mark {
         position: relative; display: grid; place-items: center;
         width: 68px; height: 68px; margin: 0 auto 7px; border-radius: 50%;
-        background: #fff; border: 3px solid var(--side);
-        box-shadow: 0 4px 10px #07182c20, 0 0 0 4px color-mix(in srgb, var(--side) 10%, transparent);
+        background: var(--logo-ground); border: 3px solid var(--team);
+        box-shadow: var(--shadow-crest), 0 0 0 4px color-mix(in srgb, var(--team) 10%, transparent);
     }
     .watch-team-mark img { width: 53px; height: 53px; object-fit: contain; }
-    .watch-team-mark b { color: var(--side); font-size: .74rem; }
+    .watch-team-mark b { color: var(--team); font-size: .74rem; }
     .watch-team-rank {
         position: absolute; top: -6px; right: -7px; min-width: 26px; height: 26px;
         display: grid; place-items: center; padding: 0 3px; border-radius: 50%;
@@ -95,17 +95,6 @@
     .dev > a { display: block; font-size: .84rem; line-height: 1.35; font-weight: 700; text-decoration: none; margin: 3px 0 4px; }
     .dev > a:hover { text-decoration: underline; }
     .dev-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; color: var(--muted); font-size: .64rem; }
-    .dev details { margin-top: 5px; }
-    .dev summary { cursor: pointer; color: var(--muted); font-size: .63rem; list-style: none; }
-    .dev summary::-webkit-details-marker { display: none; }
-    .dev summary:before { content: "\25B8  "; }
-    .dev details[open] summary:before { content: "\25BE  "; }
-    .dev summary:hover { color: var(--rust); }
-    .why { margin: 6px 0 0; padding: 8px 10px; background: var(--zebra); border-left: 3px solid var(--line-strong); font-size: .66rem; line-height: 1.55; }
-    .why dt { color: var(--rust); font-weight: 900; text-transform: uppercase; font-size: .57rem; letter-spacing: .06em; margin-top: 6px; }
-    .why dt:first-child { margin-top: 0; }
-    .why dd { margin: 2px 0 0; color: var(--ink); }
-    .why code { background: #edf1f6; padding: 0 3px; }
 
     .conference-strip { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
     .conference-chip { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--rust); padding: 5px 9px; font-size: .72rem; font-weight: 700; text-decoration: none; }
@@ -182,7 +171,7 @@
                 {% set away = watch_brands.get(game.away_team_id, {}) %}
                 {% set home = watch_brands.get(game.home_team_id, {}) %}
                 <a class="watch-card" href="{{ url_for('cfb.game_preview', game_id=game.game_id) }}"
-                   style="--away:{{ away.color or '#6b625a' }};--home:{{ home.color or '#6b625a' }}"
+                   style="--away:{{ away.color or 'transparent' }};--home:{{ home.color or 'transparent' }}"
                    aria-label="{{ game.away_team }} at {{ game.home_team }} preview">
                     <div class="watch-card-top">
                         <span>Week {{ game.week }} &middot; {{ game.date_label }}</span>
@@ -192,7 +181,7 @@
                         {% for team_name, brand, rank, side in [
                             (game.away_team, away, game.away_rank, 'away'),
                             (game.home_team, home, game.home_rank, 'home')] %}
-                        <div class="watch-team" style="--side:{{ brand.color or '#6b625a' }}">
+                        <div class="watch-team" data-identity style="--team-light:{{ brand.accent }};--team-dark:{{ brand.accent_dark }}">
                             <div class="watch-team-mark">
                                 {% if brand.logo %}<img src="{{ brand.logo }}" alt="" loading="lazy">
                                 {% else %}<b>{{ brand.abbreviation or team_name[:3] | upper }}</b>{% endif %}
