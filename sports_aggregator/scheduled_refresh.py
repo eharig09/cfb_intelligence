@@ -588,7 +588,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run one lock-safe scheduled refresh")
     parser.add_argument("--season", type=int, default=datetime.now().year)
     parser.add_argument("--profile", choices=("light", "heavy"), default="heavy")
-    parser.add_argument("--stale-lock-hours", type=float, default=6)
+    # Matches run_scheduled_refresh: liveness and the per-step heartbeat do
+    # the real work, so this only has to outlast a single stalled step.
+    parser.add_argument("--stale-lock-hours", type=float, default=1)
     args = parser.parse_args(argv)
     report = run_scheduled_refresh(
         args.season,

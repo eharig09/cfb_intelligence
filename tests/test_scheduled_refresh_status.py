@@ -131,3 +131,24 @@ def test_an_uncertain_pid_is_never_assumed_dead(tmp_path: Path):
     assert _process_alive(os.getpid()) is True
 
 
+
+
+def test_the_cli_stale_window_matches_the_function_default():
+    """The CLI passes its own default explicitly, so a mismatch silently wins.
+
+    run_scheduled_refresh dropped to an hour, but argparse still handed it six,
+    which is what production actually used.
+    """
+    import argparse
+    import inspect
+
+    from sports_aggregator import scheduled_refresh as module
+
+    signature = inspect.signature(module.run_scheduled_refresh)
+    function_default = signature.parameters["stale_lock_hours"].default
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--stale-lock-hours", type=float, default=1)
+    source = inspect.getsource(module.main)
+    assert "default=1" in source, "CLI default drifted from the function default"
+    assert function_default == 1
