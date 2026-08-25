@@ -3,24 +3,42 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from sports_aggregator.scheduled_refresh import run_scheduled_refresh
+from sports_aggregator.scheduled_refresh import LIGHT_REFRESH_STEPS, run_scheduled_refresh
 
 
 class ScheduledRefreshTests(unittest.TestCase):
     def test_refresh_records_history_and_releases_lock(self):
         calls = []
 
-        def runner(command, **kwargs):
-            calls.append((command, kwargs))
-            return type("Completed", (), {"returncode": 0})()
+        def phase_runner(phase, season, **kwargs):
+            calls.append((phase, season, kwargs))
+            return [{"step": "cfbd-sync", "status": "success", "optional": False}]
 
         with tempfile.TemporaryDirectory() as directory:
-            report = run_scheduled_refresh(2026, repo_root=directory, runner=runner)
+            report = run_scheduled_refresh(
+                2026, repo_root=directory, profile="heavy", phase_runner=phase_runner
+            )
             self.assertEqual(report["status"], "success")
+            self.assertEqual(report["profile"], "heavy")
             self.assertFalse((Path(directory) / "instance/scheduled_refresh.lock").exists())
             history = Path(directory) / "instance/scheduled_refresh_history.jsonl"
             self.assertEqual(json.loads(history.read_text())["season"], 2026)
-            self.assertIn("sports_aggregator.bootstrap", calls[0][0])
+            self.assertEqual(calls[0][0:2], ("refresh", 2026))
+            self.assertIsNone(calls[0][2]["only"])
+
+    def test_light_profile_uses_light_step_allowlist(self):
+        calls = []
+
+        def phase_runner(phase, season, **kwargs):
+            calls.append((phase, season, kwargs))
+            return []
+
+        with tempfile.TemporaryDirectory() as directory:
+            report = run_scheduled_refresh(
+                2026, repo_root=directory, profile="light", phase_runner=phase_runner
+            )
+            self.assertEqual(report["status"], "success")
+            self.assertEqual(calls[0][2]["only"], LIGHT_REFRESH_STEPS)
 
     def test_active_lock_skips_overlapping_refresh(self):
         with tempfile.TemporaryDirectory() as directory:
