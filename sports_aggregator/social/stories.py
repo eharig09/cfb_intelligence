@@ -14,7 +14,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sports_aggregator.cfb.identity import (
     conference_color, conference_color_dark, dark_accent, readable_accent)
-from sports_aggregator.cfb.repository import _logo_pair
+from sports_aggregator.cfb.repository import (
+    _logo_pair, _mark_schema_current, _schema_is_current)
 from sports_aggregator.social.content import ContentRepository, label_linked_piece
 
 
@@ -365,8 +366,11 @@ class StoryRepository:
         connection.execute("PRAGMA foreign_keys=ON"); return connection
 
     def initialize(self):
+        if _schema_is_current("stories", self.path):
+            return
         ContentRepository(self.path).initialize()
         with closing(self._connect()) as connection: connection.executescript(STORY_SCHEMA)
+        _mark_schema_current("stories", self.path)
 
     def rebuild(self,lookback_days: int=21) -> dict:
         self.initialize(); cutoff=(datetime.now(timezone.utc)-timedelta(days=lookback_days)).isoformat()

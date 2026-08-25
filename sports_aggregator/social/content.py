@@ -16,7 +16,8 @@ from zoneinfo import ZoneInfo
 
 from sports_aggregator.cfb.identity import readable_accent, dark_accent
 from sports_aggregator.cfb.models import normalize_alias, normalize_person_name
-from sports_aggregator.cfb.repository import CFBRepository, _logo_pair
+from sports_aggregator.cfb.repository import (
+    CFBRepository, _logo_pair, _mark_schema_current, _schema_is_current)
 from sports_aggregator.models import Article
 from sports_aggregator.social.context import (
     allows_unscoped_match, names_staff, strip_publisher_attribution, transfer_role)
@@ -409,9 +410,12 @@ class ContentRepository:
         connection.execute("PRAGMA foreign_keys=ON"); return connection
 
     def initialize(self) -> None:
+        if _schema_is_current("content", self.path):
+            return
         CFBRepository(self.path).initialize()
         UnifiedSourceRegistry(self.path).initialize()
         with closing(self._connect()) as connection: connection.executescript(CONTENT_SCHEMA)
+        _mark_schema_current("content", self.path)
 
     def bluesky_endpoints(self) -> list[dict]:
         self.initialize()

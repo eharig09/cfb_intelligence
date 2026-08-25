@@ -427,6 +427,44 @@ def _logo_pair(logos: list[str]) -> tuple[str | None, str | None]:
     return light or dark, dark or light
 
 
+#: Databases whose schema has already been created in this process.
+#:
+#: Every repository method begins with `self.initialize()`, which opened a
+#: connection and replayed its whole `CREATE TABLE IF NOT EXISTS` script. The
+#: social repositories compound it: ContentRepository.initialize() builds a
+#: fresh CFBRepository and runs the full CFB schema, and StoryRepository builds
+#: a ContentRepository on top of that, so a single `list_stories()` replayed
+#: four schemas. Rendering one matchup page opened 137 connections and issued
+#: 4,431 statements, roughly 3,500 of them re-creating tables that already
+#: existed.
+#:
+#: The work is idempotent, so it only has to happen once per database per
+#: process. Keyed by resolved path rather than by instance because those inner
+#: calls construct new objects each time. A path whose file has since been
+#: removed is initialized again, so a caller that deletes a database and reuses
+#: the location still gets a schema.
+_INITIALIZED_SCHEMAS: set[tuple[str, str]] = set()
+
+
+def _schema_is_current(kind: str, path: Path) -> bool:
+    key = (kind, str(path.resolve()))
+    if key not in _INITIALIZED_SCHEMAS:
+        return False
+    if not path.exists():
+        _INITIALIZED_SCHEMAS.discard(key)
+        return False
+    return True
+
+
+def _mark_schema_current(kind: str, path: Path) -> None:
+    _INITIALIZED_SCHEMAS.add((kind, str(path.resolve())))
+
+
+def forget_initialized_schemas() -> None:
+    """Drop the memo. For tests that rebuild a database in place."""
+    _INITIALIZED_SCHEMAS.clear()
+
+
 class CFBRepository:
     def __init__(self, database_path: str | Path) -> None:
         self._brands: dict[int, dict[str, Any]] | None = None
@@ -446,6 +484,8 @@ class CFBRepository:
         return connection
 
     def initialize(self) -> None:
+        if _schema_is_current("cfb", self.path):
+            return
         with closing(self._connect()) as connection:
             # Changing journal mode requires an exclusive lock. Reissuing this
             # on every request can itself cause `database is locked` on a live
@@ -507,6 +547,50 @@ class CFBRepository:
                     CREATE INDEX idx_rankings_team ON rankings(season, school, week);
                     """
                 )
+            self._ensure_statistics(connection)
+        _mark_schema_current("cfb", self.path)
+
+    @staticmethod
+    def _ensure_statistics(connection: sqlite3.Connection) -> None:
+        """Give the query planner statistics, once per database.
+
+        Without them SQLite guesses join order from defaults, and it guesses
+        badly here: the continuity lookup drove from `pff_player_metrics`,
+        scanning every row for the season, instead of starting from the handful
+        of `pff_players` rows for one team that `idx_pff_players_team` already
+        indexes. Five teams took 462ms; with statistics the same work takes
+        16ms and the plan uses the index.
+
+        ANALYZE writes `sqlite_stat1` into the database, so this is paid once
+        for the life of the file rather than per process. `PRAGMA optimize`
+        keeps it current as tables grow -- see `optimize()`.
+        """
+        try:
+            has_stats = connection.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name='sqlite_stat1'").fetchone()[0]
+            if has_stats and connection.execute(
+                    "SELECT COUNT(*) FROM sqlite_stat1").fetchone()[0]:
+                return
+            connection.execute("ANALYZE")
+        except sqlite3.Error:
+            # Statistics are an optimization; a database that refuses them
+            # still answers every query.
+            pass
+
+    def optimize(self) -> None:
+        """Refresh planner statistics for tables that have changed.
+
+        Cheap by design: PRAGMA optimize only analyzes what has moved enough to
+        matter, so it is safe to run at the end of every refresh.
+        """
+        self.initialize()
+        try:
+            with closing(self._connect()) as connection:
+                connection.execute("PRAGMA optimize")
+                connection.commit()
+        except sqlite3.Error:
+            pass
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:

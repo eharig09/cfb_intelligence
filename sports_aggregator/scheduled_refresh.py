@@ -155,6 +155,22 @@ def _acquire_lock(path: Path, started: datetime, stale_hours: float) -> bool:
     return True
 
 
+def _refresh_statistics(instance: Path) -> None:
+    """Run PRAGMA optimize against the database this refresh just wrote."""
+    try:
+        from sports_aggregator.cfb.repository import CFBRepository
+
+        database = (instance / "cfb.sqlite3")
+        configured = (os.getenv("CFB_DATABASE_PATH") or "").strip()
+        if configured:
+            database = Path(configured)
+        if database.exists():
+            CFBRepository(database).optimize()
+    except Exception:
+        # Never let a maintenance step fail an otherwise good refresh.
+        pass
+
+
 def _touch_lock(path: Path) -> None:
     """Mark progress, so a stalled refresh ages out but a working one does not."""
     try:
@@ -518,6 +534,10 @@ def run_scheduled_refresh(
                 )
             else:
                 results = phase_runner("refresh", season, only=only)
+
+        # Tables grow all season; stale statistics send the planner back to
+        # scanning. Cheap enough to run every time.
+        _refresh_statistics(instance)
 
         finished = datetime.now(timezone.utc)
         required_failures = [
