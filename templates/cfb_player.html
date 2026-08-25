@@ -25,7 +25,7 @@
 </style>
 {% endblock %}
 
-{% block body_attrs %} style="--accent:{{ identity.accent }};--team:{{ identity.accent }};--team-fill:{{ identity.fill }};--team-on-fill:{{ identity.on_fill }};--conference:{{ identity.conference_color }}"{% endblock %}
+{% block body_attrs %} style="--team-light:{{ identity.accent }};--team-dark:{{ identity.accent_dark }};--team-fill:{{ identity.fill }};--team-on-fill:{{ identity.on_fill }};--conference-light:{{ identity.conference_color }};--conference-dark:{{ identity.conference_color_dark }}"{% endblock %}
 
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.team_preview', team_id=player.team_id) if player.team_id else url_for('cfb.today') }}">&larr; {{ player.team }}</a>

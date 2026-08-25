@@ -17,7 +17,8 @@ from sports_aggregator.cfb.prospects import (
     board_with_profile, consensus_board, reconcile)
 from sports_aggregator.cfb.external import (
     fpi_for_game, fpi_team_season, weather_flags_by_game, weather_for_game)
-from sports_aggregator.cfb.identity import conference_color, team_identity
+from sports_aggregator.cfb.identity import (
+    conference_color, conference_color_dark, team_identity)
 from sports_aggregator.cfb.history import (
     matchup_history, matchup_player_history, team_game_history,
     team_historical_stats, upcoming_player_opponent_history)
@@ -291,6 +292,7 @@ def conference_preview(slug: str):
         season=season,
         conference=conference,
         conference_color=conference_color(name),
+        conference_color_dark=conference_color_dark(name),
         standings_table=views.standings_table(
             repository.conference_standings(name, season), season
         ),

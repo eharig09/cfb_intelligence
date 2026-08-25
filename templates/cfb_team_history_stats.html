@@ -2,7 +2,7 @@
 {% from "_tables.html" import data_table %}
 
 {% block title %}{{ team.school }} Historical Stats &amp; Identity{% endblock %}
-{% block body_attrs %} style="--accent:{{ identity.accent }};--team:{{ identity.accent }};--conference:{{ identity.conference_color }}"{% endblock %}
+{% block body_attrs %} style="--team-light:{{ identity.accent }};--team-dark:{{ identity.accent_dark }};--conference-light:{{ identity.conference_color }};--conference-dark:{{ identity.conference_color_dark }}"{% endblock %}
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.team_preview', team_id=team.team_id) }}">&larr; {{ team.school }}</a>
 <span class="tagline">Historical stats</span>

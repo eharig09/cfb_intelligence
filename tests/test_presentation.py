@@ -161,11 +161,16 @@ class ContextSeparationTests(unittest.TestCase):
 
     def test_pages_carry_contrast_checked_identity_variables(self):
         body = self.app.test_client().get("/college-football/teams/68/").get_data(as_text=True)
-        self.assertRegex(body, r"--accent:#[0-9a-f]{6}")
-        self.assertRegex(body, r"--team:#[0-9a-f]{6}")
-        self.assertRegex(body, r"--conference:#[0-9a-f]{6}")
+        # Identity is sent as a light/dark pair; the stylesheet derives the
+        # active --team from it, because an inline --team could not be
+        # overridden by a theme rule.
+        self.assertRegex(body, r"--team-light:#[0-9a-f]{6}")
+        self.assertRegex(body, r"--team-dark:#[0-9a-f]{6}")
+        self.assertRegex(body, r"--conference-light:#[0-9a-f]{6}")
+        self.assertRegex(body, r"--conference-dark:#[0-9a-f]{6}")
         # A single hash only; the double-hash bug produced invalid CSS.
-        self.assertNotIn("--team:##", body)
+        self.assertNotIn("--team-light:##", body)
+        self.assertNotIn("--team-dark:##", body)
 
 
 class ResponsiveTests(unittest.TestCase):

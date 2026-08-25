@@ -92,7 +92,7 @@
 </style>
 {% endblock %}
 
-{% block body_attrs %} class="matchup-page" style="--accent:{{ home_brand.accent }};--team:{{ home_brand.accent }};--away-team:{{ away_brand.accent }};--home-team:{{ home_brand.accent }};--conference:{{ home_brand.conference_color }}"{% endblock %}
+{% block body_attrs %} class="matchup-page" style="--team-light:{{ home_brand.accent }};--team-dark:{{ home_brand.accent_dark }};--away-team-light:{{ away_brand.accent }};--away-team-dark:{{ away_brand.accent_dark }};--home-team-light:{{ home_brand.accent }};--home-team-dark:{{ home_brand.accent_dark }};--conference-light:{{ home_brand.conference_color }};--conference-dark:{{ home_brand.conference_color_dark }}"{% endblock %}
 
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.today') }}">&larr; College Football Today</a>
@@ -119,7 +119,8 @@
         (game.away_team, game.away_team_id, away_brand),
         (game.home_team, game.home_team_id, home_brand)] %}
     {% set record = game.records.get(team_name) %}
-    <section class="team" style="--team:{{ brand.accent }};--conference:{{ brand.conference_color }}">
+    <section class="team" data-identity
+             style="--team-light:{{ brand.accent }};--team-dark:{{ brand.accent_dark }};--conference-light:{{ brand.conference_color }};--conference-dark:{{ brand.conference_color_dark }}">
         <div class="label">{{ 'Away' if loop.first else 'Home' }}</div>
         <div class="matchup-logo">
             {% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ team_name }} logo">

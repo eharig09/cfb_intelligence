@@ -3,7 +3,7 @@
 
 {% block title %}{{ game.away_team }} at {{ game.home_team }} | Box Score{% endblock %}
 
-{% block body_attrs %} style="--accent:{{ home_brand.accent }};--team:{{ home_brand.accent }};--conference:{{ home_brand.conference_color }}"{% endblock %}
+{% block body_attrs %} style="--team-light:{{ home_brand.accent }};--team-dark:{{ home_brand.accent_dark }};--conference-light:{{ home_brand.conference_color }};--conference-dark:{{ home_brand.conference_color_dark }}"{% endblock %}
 
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.game_preview', game_id=game.game_id) }}">&larr; Full game page</a>

@@ -139,3 +139,65 @@
 
     document.querySelectorAll("[data-mobile-page-tabs]").forEach(setup);
 }());
+
+/* ---------- theme toggle ----------
+
+   The resolved theme is already on <html> before this file runs; the inline
+   bootstrap in the layout handles that, because doing it here would paint the
+   light theme first and then snap. This only handles the switch itself and
+   keeping the control's label honest. */
+(function () {
+    "use strict";
+
+    var root = document.documentElement;
+    var STORAGE_KEY = "cfb-theme";
+
+    function systemPrefersDark() {
+        return window.matchMedia
+            && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+
+    function activeTheme() {
+        return root.dataset.theme || (systemPrefersDark() ? "dark" : "light");
+    }
+
+    function describe(buttons) {
+        var dark = activeTheme() === "dark";
+        buttons.forEach(function (button) {
+            button.setAttribute("aria-pressed", dark ? "true" : "false");
+            button.setAttribute(
+                "aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+        });
+    }
+
+    var buttons = Array.prototype.slice.call(
+        document.querySelectorAll("[data-theme-toggle]"));
+    if (!buttons.length) return;
+
+    buttons.forEach(function (button) {
+        button.addEventListener("click", function () {
+            var next = activeTheme() === "dark" ? "light" : "dark";
+            root.dataset.theme = next;
+            try {
+                window.localStorage.setItem(STORAGE_KEY, next);
+            } catch (error) {
+                /* Storage can be unavailable or full. The theme still applies
+                   for this page; it just will not be remembered. */
+            }
+            describe(buttons);
+        });
+    });
+
+    /* A reader who never chose follows the system. Track it live so a machine
+       switching to night mode is reflected without a reload. */
+    if (window.matchMedia) {
+        var query = window.matchMedia("(prefers-color-scheme: dark)");
+        var onChange = function () {
+            if (!root.dataset.theme) describe(buttons);
+        };
+        if (query.addEventListener) query.addEventListener("change", onChange);
+        else if (query.addListener) query.addListener(onChange);
+    }
+
+    describe(buttons);
+}());
