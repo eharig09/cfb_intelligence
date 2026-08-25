@@ -29,6 +29,35 @@ full structured-data refresh, run:
 python -m sports_aggregator.bootstrap refresh --season 2026 --only articles retag cluster score
 ```
 
+## Reclaiming disk
+
+`python -m sports_aggregator.cfb.prune_cli` reports what the database is
+spending space on and reclaims it in tiers. It is a dry run unless a tier is
+named, and it prints what each tier costs before touching anything.
+
+Ordered by what you lose, not by what you recover:
+
+| tier | what goes | recoverable by |
+| --- | --- | --- |
+| `raw` | `content_items.raw_json`, written on every ingest and read by nothing | n/a, nothing is lost |
+| `reporting` | articles past a retention window and their links | re-ingesting, if the URLs still resolve |
+| `seasons` | per-game box scores and season stats before a cutoff | `bootstrap history` |
+
+The intuition that old news is the weight does not survive measurement: all
+6,616 content items hold about 15 MB, while 2.97 million historical box-score
+rows hold roughly 128 MB before indexes. On a real database, dropping seasons
+before 2021 and vacuuming took 888 MB to 657 MB.
+
+```powershell
+python -m sports_aggregator.cfb.prune_cli                       # report only
+python -m sports_aggregator.cfb.prune_cli --apply raw --vacuum
+python -m sports_aggregator.cfb.prune_cli --before-season 2021 --apply seasons --vacuum
+```
+
+Deleting rows leaves free pages inside the file; without `--vacuum` the
+database does not shrink on disk. Vacuuming rewrites the file and needs free
+space equal to its current size.
+
 ## Lock reclamation
 
 The refresh takes a lock in `instance/` and releases it in a `finally`. A
