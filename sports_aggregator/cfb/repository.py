@@ -11,6 +11,7 @@ import sqlite3
 import re
 from typing import Any, Iterable, Iterator
 
+from sports_aggregator.cfb.identity import conference_slug as _conference_slug
 from sports_aggregator.cfb.models import Game, PollRanking, Team, normalize_alias
 from sports_aggregator.cfb.statlines import category_label, qualifier, sort_stat
 
@@ -406,8 +407,8 @@ def _hex_color(value: str | None) -> str | None:
     return f"#{candidate}" if re.fullmatch(r"[0-9A-Fa-f]{3,8}", candidate) else None
 
 
-def conference_slug(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+#: Re-exported: the slug is a presentation rule and lives with the palette.
+conference_slug = _conference_slug
 
 
 def _logo_pair(logos: list[str]) -> tuple[str | None, str | None]:

@@ -155,8 +155,13 @@
 
 <div class="conference-strip">
     {% for conference in conferences %}
-    <a class="conference-chip" href="{{ url_for('cfb.conference_preview', slug=conference.slug, season=season) }}">
-        {{ conference.conference }} <span>{{ conference.team_count }}</span>
+    <a class="conference-chip" href="{{ url_for('cfb.conference_preview', slug=conference.slug, season=season) }}"
+       data-identity style="--conference-mark-light:{{ conference.identity.color }};--conference-mark-dark:{{ conference.identity.color_dark }}">
+        <span class="conference-mark">{{ conference.identity.abbreviation }}</span>
+        {#- Several conferences are already known by their abbreviation, so
+            printing both reads as "ACC ACC". -#}
+        {% if conference.conference != conference.identity.abbreviation %}{{ conference.conference }} {% endif %}
+        <span>{{ conference.team_count }}</span>
     </a>
     {% endfor %}
 </div>

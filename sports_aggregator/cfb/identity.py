@@ -21,6 +21,7 @@ must so the team's hue stays recognisable.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -42,6 +43,29 @@ CONFERENCE_COLORS: dict[str, str] = {
 
 DEFAULT_CONFERENCE_COLOR = "#41556d"
 
+#: Conference abbreviations, as CFBD publishes them.
+#:
+#: CFBD has no conference *logo* — the /conferences payload carries only id,
+#: name, shortName, abbreviation, classification and memberCount — so a
+#: conference is represented by its own short form set in its palette color
+#: rather than by a mark we would have to source elsewhere. The values are
+#: CFBD's, pinned here because conferences are derived from team rows and there
+#: is no conference table to read them from; a missing one falls back to the
+#: name itself, which is always correct if longer.
+CONFERENCE_ABBREVIATIONS: dict[str, str] = {
+    "ACC": "ACC",
+    "American Athletic": "AAC",
+    "Big 12": "B12",
+    "Big Ten": "B1G",
+    "Conference USA": "CUSA",
+    "FBS Independents": "Ind",
+    "Mid-American": "MAC",
+    "Mountain West": "MWC",
+    "Pac-12": "PAC",
+    "SEC": "SEC",
+    "Sun Belt": "SBC",
+}
+
 #: Page backgrounds these colors are checked against, light and dark.
 PAGE_BACKGROUND = (242, 245, 249)
 DARK_PAGE_BACKGROUND = (16, 21, 28)
@@ -58,6 +82,39 @@ def conference_color_dark(conference: str | None) -> str:
     so the two can never drift apart when a conference is added or realigned.
     """
     return dark_accent(conference_color(conference)) or DEFAULT_CONFERENCE_COLOR
+
+
+def conference_slug(value: str) -> str:
+    """A conference name as it appears in a URL."""
+    return re.sub(r"[^a-z0-9]+", "-", (value or "").casefold()).strip("-")
+
+
+def conference_abbreviation(conference: str | None) -> str:
+    """The short form for a conference, or its name when none is published."""
+    name = (conference or "").strip()
+    if not name:
+        return ""
+    return CONFERENCE_ABBREVIATIONS.get(name, name)
+
+
+def conference_identity(conference: str | None) -> dict[str, Any]:
+    """Everything a template needs to paint one conference consistently.
+
+    The counterpart to :func:`team_identity`. A conference has no logo to show,
+    so its mark is its abbreviation set in its palette color, derived for both
+    page backgrounds like every other accent here.
+    """
+    name = (conference or "").strip()
+    return {
+        "conference": name,
+        "abbreviation": conference_abbreviation(name),
+        "slug": conference_slug(name),
+        "color": conference_color(name),
+        "color_dark": conference_color_dark(name),
+        # A short mark can sit inside a filled chip; the fill needs a readable
+        # foreground the same way a team fill does.
+        "on_fill": foreground_for(conference_color(name)),
+    }
 
 
 def _channels(value: str | None) -> tuple[int, int, int] | None:
@@ -165,4 +222,7 @@ def team_identity(brand: dict[str, Any] | None) -> dict[str, Any]:
         "on_fill": foreground_for(brand.get("color")),
         "conference_color": conference_color(brand.get("conference")),
         "conference_color_dark": conference_color_dark(brand.get("conference")),
+        # The conference's own mark, for surfaces that show both identities.
+        "conference_identity": (conference_identity(brand["conference"])
+                                if brand.get("conference") else None),
     }

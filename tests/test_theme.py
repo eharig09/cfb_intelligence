@@ -351,3 +351,54 @@ class TeamMarkTests(unittest.TestCase):
         css = _read_css()
         self.assertIn(':root[data-theme="dark"] .team-mark', css)
         self.assertIn("--mark-dark", css)
+
+
+class ConferenceMarkTests(unittest.TestCase):
+    """CFBD publishes no conference logo, so the mark is the abbreviation."""
+
+    def test_every_conference_in_the_palette_has_an_abbreviation(self):
+        missing = sorted(set(I.CONFERENCE_COLORS) - set(I.CONFERENCE_ABBREVIATIONS))
+        self.assertEqual(missing, [])
+
+    def test_an_unknown_conference_falls_back_to_its_own_name(self):
+        """Longer is fine; wrong or blank is not."""
+        identity = I.conference_identity("Some New League")
+        self.assertEqual(identity["abbreviation"], "Some New League")
+        self.assertEqual(identity["color"], I.DEFAULT_CONFERENCE_COLOR)
+
+    def test_the_mark_is_legible_in_both_themes(self):
+        for conference in I.CONFERENCE_ABBREVIATIONS:
+            with self.subTest(conference=conference):
+                identity = I.conference_identity(conference)
+                self.assertGreaterEqual(
+                    I.contrast_ratio(I._channels(identity["color"]),
+                                     I.PAGE_BACKGROUND), 3.0)
+                self.assertGreaterEqual(
+                    I.contrast_ratio(I._channels(identity["color_dark"]),
+                                     I.DARK_PAGE_BACKGROUND), 3.0)
+
+    def test_a_filled_mark_has_a_readable_foreground(self):
+        for conference in I.CONFERENCE_ABBREVIATIONS:
+            with self.subTest(conference=conference):
+                identity = I.conference_identity(conference)
+                self.assertGreaterEqual(
+                    I.contrast_ratio(I._channels(identity["on_fill"]),
+                                     I._channels(identity["color"])), 3.0)
+
+    def test_the_slug_round_trips_to_the_conference_page(self):
+        for conference in I.CONFERENCE_ABBREVIATIONS:
+            with self.subTest(conference=conference):
+                slug = I.conference_identity(conference)["slug"]
+                self.assertTrue(slug)
+                self.assertNotIn(" ", slug)
+                self.assertEqual(slug, slug.casefold())
+
+    def test_an_empty_conference_yields_no_mark(self):
+        """The macro renders nothing rather than an empty chip."""
+        for value in (None, "", "   "):
+            self.assertEqual(I.conference_identity(value)["abbreviation"], "")
+
+    def test_team_identity_carries_its_conference_mark(self):
+        identity = I.team_identity({"color": "#00274C", "conference": "Big Ten"})
+        self.assertEqual(identity["conference_identity"]["abbreviation"], "B1G")
+        self.assertIsNone(I.team_identity({"color": "#00274C"})["conference_identity"])

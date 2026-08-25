@@ -1,5 +1,5 @@
 {% extends "_layout.html" %}
-{% from "_tables.html" import data_table, linked_piece_meta, tabbed_tables, tabs_script %}
+{% from "_tables.html" import conference_mark, data_table, linked_piece_meta, tabbed_tables, tabs_script %}
 
 {% block title %}{{ conference.conference }} | College Football{% endblock %}
 
@@ -26,7 +26,10 @@
 
 {% block content %}
 <div class="eyebrow">Conference intelligence &middot; {{ season }}</div>
-<h1 class="team-bar">{{ conference.conference }}</h1>
+<h1 class="team-bar conference-heading">
+    {{ conference_mark(conference.identity, filled=true, large=true) }}
+    {% if conference.conference != conference.identity.abbreviation %}{{ conference.conference }}{% endif %}
+</h1>
 <p class="dek">
     Standings, upcoming games, verified-source story clusters, current player production,
     and the prior-season PFF context that feeds matchup previews.

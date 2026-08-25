@@ -29,6 +29,7 @@
                   navigation and replaces the current page as usual.
     "<key>_sub"   render a small secondary line under the value
     "<key>_class" add a state class such as win / loss / pending
+    "<key>_conference"  render the conference mark instead of the value
     "<key>_logo"  render the team logo before the value
     "<key>_color" paint a team-colored rule beside the value
 #}
@@ -83,11 +84,13 @@
                         data-label="{{ column.label }}"
                         {%- if state_class == 'advantage' %} title="Comparison edge"{% endif %}
                         data-sort-value="{{ row.get(column.key ~ '_sort', row.get(column.key)) if row.get(column.key) is not none else '' }}">
+                        {%- set conference = row.get(column.key ~ '_conference') %}
                         {%- set logo = row.get(column.key ~ '_logo') %}
                         {%- set logo_dark = row.get(column.key ~ '_logo_dark') %}
                         {%- set color = row.get(column.key ~ '_color') %}
                         {%- set color_dark = row.get(column.key ~ '_color_dark') %}
-                        {%- if logo or color %}<span class="team-cell"{% if color %} data-identity style="--row-team-light:{{ color }};--row-team-dark:{{ color_dark or color }}"{% endif %}>
+                        {%- if conference %}{{ conference_mark(conference, href=url_for('cfb.conference_preview', slug=conference.slug)) }}
+                        {%- elif logo or color %}<span class="team-cell"{% if color %} data-identity style="--row-team-light:{{ color }};--row-team-dark:{{ color_dark or color }}"{% endif %}>
                             {%- if color %}<i class="team-rule" aria-hidden="true"></i>{% endif %}
                             {%- if logo %}<span class="team-logo team-mark" aria-hidden="true"
                               style="--mark:url('{{ logo }}');--mark-dark:url('{{ logo_dark or logo }}')"></span>{% endif %}
@@ -302,6 +305,26 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
             {%- endif %}
         </dl>
     </details>
+{% endmacro %}
+
+{#
+  A conference's mark. CFBD publishes no conference logo, so this is the
+  conference's own abbreviation set in its palette color -- see
+  sports_aggregator.cfb.identity.conference_identity. `href` makes it a link to
+  the conference page; `filled` is for a page already about that conference.
+#}
+{% macro conference_mark(identity, href=None, filled=false, large=false) %}
+    {%- if identity and identity.abbreviation %}
+    {%- set classes = 'conference-mark' ~ (' is-filled' if filled else '') ~ (' is-large' if large else '') %}
+    {%- set style = '--conference-mark-light:' ~ identity.color ~ ';--conference-mark-dark:' ~ identity.color_dark ~ (';--conference-on-fill:' ~ identity.on_fill if filled else '') %}
+    {%- if href %}
+    <a class="{{ classes }}" href="{{ href }}" data-identity style="{{ style }}"
+       title="{{ identity.conference }}">{{ identity.abbreviation }}</a>
+    {%- else %}
+    <span class="{{ classes }}" data-identity style="{{ style }}"
+          title="{{ identity.conference }}">{{ identity.abbreviation }}</span>
+    {%- endif %}
+    {%- endif %}
 {% endmacro %}
 
 {#

@@ -174,8 +174,11 @@ Presentation is its own boundary rather than template logic:
 - Team marks follow the theme. CFBD publishes both variants for every school
   (`logos/500/N.png` and `logos-dark/500/N.png`); both reach the page and CSS
   chooses, because a `<picture>` element answers only to the media query and
-  never to the manual toggle. Conferences have no logo in the CFBD data at all,
-  which is why they are represented by the editorial palette instead.
+  never to the manual toggle. Conferences have no logo in the CFBD data at all
+  — `/conferences` carries only name, abbreviation and member count — so a
+  conference is marked by its own abbreviation set in its palette color, on the
+  dashboard strip, conference pages, matchup pages, and conference table
+  columns. `sports_aggregator/cfb/identity.py` owns both.
 - The `roles` step determines what each item is and records the evidence. It
   runs after clustering, because determination reads an item's position in its
   cluster, and before scoring, because relevance weights the role.

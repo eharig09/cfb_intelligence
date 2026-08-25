@@ -105,6 +105,7 @@ body, [data-identity] {
     --home-team: var(--home-team-light, var(--team-light));
     --story-team: var(--story-team-light, var(--team-light));
     --row-team: var(--row-team-light, var(--line-strong));
+    --conference-mark: var(--conference-mark-light, var(--conference));
 }
 
 /* ---------- dark theme ----------
@@ -181,6 +182,7 @@ body, [data-identity] {
     --home-team: var(--home-team-dark, var(--team-dark));
     --story-team: var(--story-team-dark, var(--team-dark));
     --row-team: var(--row-team-dark, var(--line-strong));
+    --conference-mark: var(--conference-mark-dark, var(--conference));
     }
 }
 
@@ -247,6 +249,7 @@ body, [data-identity] {
     --home-team: var(--home-team-dark, var(--team-dark));
     --story-team: var(--story-team-dark, var(--team-dark));
     --row-team: var(--row-team-dark, var(--line-strong));
+    --conference-mark: var(--conference-mark-dark, var(--conference));
 }
 
 /* The toggle itself. Sits in the header, inherits the chrome palette. */
@@ -615,6 +618,38 @@ table.data td.state-departed .sub { color: var(--red); }
 .why dt:first-child { margin-top: 0; }
 .why dd { margin: 2px 0 0; color: var(--ink); }
 .why code { background: var(--tint); padding: 0 3px; }
+
+/* ---------- conference mark ----------
+
+   CFBD publishes no conference logo -- the /conferences payload carries only
+   the name, abbreviation and member count -- so a conference is shown as its
+   own short form set in its palette color. That is honest about what the data
+   contains and needs no trademarked artwork. Sized to sit beside a team logo
+   without competing with it. */
+
+.conference-mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 0 0 auto; min-width: 2.4rem; padding: 2px 6px;
+    border-left: 3px solid var(--conference-mark, var(--conference));
+    background: color-mix(in srgb, var(--conference-mark, var(--conference)) 14%, transparent);
+    color: var(--conference-mark, var(--conference));
+    font: 900 .6rem/1.35 var(--display-font);
+    letter-spacing: .07em; text-transform: uppercase; text-decoration: none;
+    white-space: nowrap;
+}
+a.conference-mark:hover { background: color-mix(in srgb, var(--conference-mark, var(--conference)) 24%, transparent); }
+a.conference-mark:focus-visible { outline: 2px solid var(--conference-mark, var(--conference)); outline-offset: 2px; }
+/* Filled variant, for a page that is already about this conference. */
+.conference-mark.is-filled {
+    background: var(--conference-mark, var(--conference));
+    color: var(--conference-on-fill, var(--on-strong));
+    border-left-color: var(--conference-mark, var(--conference));
+}
+.conference-mark.is-large { min-width: 3.2rem; padding: 5px 11px; font-size: .95rem; }
+table.data .conference-mark { min-width: 2.2rem; font-size: .55rem; padding: 1px 5px; }
+.conference-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.conference-chip .conference-mark { margin-right: 4px; }
+.matchup-conference { margin-top: 6px; }
 
 /* ---------- tabs ---------- */
 

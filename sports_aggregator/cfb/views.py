@@ -15,7 +15,7 @@ from typing import Any, Iterable, Sequence
 from flask import url_for
 
 from sports_aggregator.cfb.draft import position_abbreviation
-from sports_aggregator.cfb.identity import dark_accent
+from sports_aggregator.cfb.identity import conference_identity, dark_accent
 from sports_aggregator.cfb.repository import _logo_pair
 from sports_aggregator.cfb.statlines import (
     CATEGORY_ORDER, category_label, leader_table, player_stat_tables, sort_stat)
@@ -71,6 +71,8 @@ def historical_games_table(games: Sequence[dict[str, Any]], *,
         "result": row.get("result"), "score": row.get("score"),
         "score_url": row.get("game_url"), "slot": row.get("slot"),
         "conference": row.get("opponent_conference"),
+        "conference_conference": (conference_identity(row["opponent_conference"])
+                                  if row.get("opponent_conference") else None),
         "box_score": "Box score", "box_score_url": row.get("box_score_url") or
         (f"/college-football/games/{row['game_id']}/box-score/" if row.get("game_id") else None),
     } for row in games]
@@ -1415,6 +1417,7 @@ def rankings_table(rankings: dict[str, Any], season: int,
             "school": row.get("school"),
             "school_url": _team_url(row.get("team_id"), season),
             "conference": row.get("conference") or "Independent",
+            "conference_conference": conference_identity(row.get("conference")),
             "first_place_votes": row.get("first_place_votes"),
             "points": row.get("points"),
         }

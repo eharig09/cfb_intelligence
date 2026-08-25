@@ -1,5 +1,5 @@
 {% extends "_layout.html" %}
-{% from "_tables.html" import data_table, linked_piece_meta, story_list, tabbed_tables, tabs_script %}
+{% from "_tables.html" import conference_mark, data_table, linked_piece_meta, story_list, tabbed_tables, tabs_script %}
 
 {% block title %}{{ game.away_team }} at {{ game.home_team }} | Game Preview{% endblock %}
 
@@ -129,6 +129,13 @@
             {% if game.rankings.get(team_name) %}<span class="matchup-rank">#{{ game.rankings.get(team_name) }}</span>{% endif %}
         </div>
         <div class="team-name"><a href="{{ url_for('cfb.team_preview', team_id=team_id) }}">{{ team_name }}</a></div>
+        {% if brand.conference_identity %}
+        <div class="matchup-conference">
+            {{ conference_mark(brand.conference_identity,
+                                      href=url_for('cfb.conference_preview',
+                                                   slug=brand.conference_identity.slug)) }}
+        </div>
+        {% endif %}
         <div class="matchup-record">
             {% if record %}{{ record.wins }}&ndash;{{ record.losses }}
             <span class="meta">({{ record.conference_wins }}&ndash;{{ record.conference_losses }} conf)</span>

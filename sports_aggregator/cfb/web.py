@@ -18,7 +18,7 @@ from sports_aggregator.cfb.prospects import (
 from sports_aggregator.cfb.external import (
     fpi_for_game, fpi_team_season, weather_flags_by_game, weather_for_game)
 from sports_aggregator.cfb.identity import (
-    conference_color, conference_color_dark, team_identity)
+    conference_color, conference_color_dark, conference_identity, team_identity)
 from sports_aggregator.cfb.history import (
     matchup_history, matchup_player_history, team_game_history,
     team_historical_stats, upcoming_player_opponent_history)
@@ -151,6 +151,12 @@ def _team_packet(team_id: int, season: int) -> dict:
     }
 
 
+def _with_conference_identity(conferences: list[dict]) -> list[dict]:
+    """Attach the mark packet to each conference for the listing strips."""
+    return [{**item, "identity": conference_identity(item.get("conference"))}
+            for item in conferences]
+
+
 def _labelled_developments(items: list[dict]) -> list[dict]:
     """Attach the reader-facing role name without losing the stored code."""
     for item in items:
@@ -260,7 +266,7 @@ def today():
         weekly_matchups_table=views.weekly_matchups_table(
             _weekly_matchup_watches(repository, weekly_slate), season),
         nearest_week=nearest_week,
-        conferences=repository.conferences(),
+        conferences=_with_conference_identity(repository.conferences()),
         national_stories=national_stories,
         streams=_content_repository().source_streams(limit=8),
         content_summary=_content_repository().summary(),
@@ -294,7 +300,7 @@ def conference_preview(slug: str):
         "cfb_conference.html",
         meta=page_meta_for.conference_meta(conference, season, game_count=len(games)),
         season=season,
-        conference=conference,
+        conference={**conference, "identity": conference_identity(name)},
         conference_color=conference_color(name),
         conference_color_dark=conference_color_dark(name),
         standings_table=views.standings_table(
@@ -733,7 +739,7 @@ def draft_watch():
         board=board,
         comparison=comparison,
         conference=conference,
-        conferences=repository.conferences(),
+        conferences=_with_conference_identity(repository.conferences()),
         prospect_table=views.prospect_table(board, season, dense=True),
         draft_watch_table=views.draft_watch_table(
             board_with_profile(repository, full_board, limit=100), season,
