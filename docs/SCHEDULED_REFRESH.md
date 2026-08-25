@@ -29,6 +29,21 @@ full structured-data refresh, run:
 python -m sports_aggregator.bootstrap refresh --season 2026 --only articles retag cluster score
 ```
 
+## What "degraded" means
+
+An ingestion step fails when it did not do its job, not when the internet was
+imperfect. Feeds are flaky in ordinary operation: publishers rotate URLs, hosts
+time out, accounts go private. A step is reported as failed when it stored
+nothing despite having work available, or when more than a quarter of its
+endpoints failed. Anything else is partial success, and the printed counts say
+how partial.
+
+This matters because the previous rule — any error at all — made the signal
+useless. A run that reached 328 of 350 feeds and stored 1,808 articles was
+reported identically to one that died on its first line, so three steps sat in
+`degraded_steps` on every run while the refresh was working, and a real failure
+took a day to notice.
+
 ## Reclaiming disk
 
 `python -m sports_aggregator.cfb.prune_cli` reports what the database is

@@ -34,6 +34,34 @@ from sports_aggregator.service import build_default_service
 WORKER_STACK_BYTES = 512 * 1024
 
 
+#: Share of endpoints that may fail before a step is reported as failed.
+#:
+#: Feeds and social endpoints are flaky in ordinary operation: a publisher
+#: rotates a URL, a host times out, an account goes private. Treating any error
+#: as failure meant a step that reached 328 of 350 feeds and stored 1,808
+#: articles reported exactly like one that died on its first line, so
+#: "degraded" stopped carrying information — three steps sat in that list every
+#: run while the refresh was working. A step now fails when it did not do its
+#: job, not when the internet was imperfect.
+MAX_TOLERATED_FAILURE_SHARE = 0.25
+
+
+def _step_exit_code(*, attempted: int, errors: int, stored: int) -> int:
+    """0 when the step did its job, 1 when it genuinely did not.
+
+    Failure means one of two things: nothing was stored despite work being
+    available, or more than a quarter of the endpoints failed. Everything else
+    is partial success, and the printed counts already say how partial.
+    """
+    if attempted <= 0:
+        return 0
+    if errors >= attempted:
+        return 1
+    if stored <= 0:
+        return 1
+    return 1 if (errors / attempted) > MAX_TOLERATED_FAILURE_SHARE else 0
+
+
 def _use_small_thread_stacks() -> None:
     """Ask for modest thread stacks, where the platform allows it."""
     try:
@@ -119,7 +147,7 @@ def main(argv=None) -> int:
         repository.record_run(started,datetime.now(timezone.utc).isoformat(),
                               len(endpoints),succeeded,seen,stored,errors,platform="reddit")
         print(f"subreddits={len(endpoints)} succeeded={succeeded} seen={seen} stored={stored} errors={len(errors)}")
-        return 0 if not errors else 1
+        return _step_exit_code(attempted=len(endpoints), errors=len(errors), stored=stored)
     if args.command=="ingest-youtube":
         from sports_aggregator.providers.youtube import YouTubeDataClient
         registry=MediaRegistry(repository.path); endpoints=registry.youtube_endpoints()
@@ -138,7 +166,7 @@ def main(argv=None) -> int:
         repository.record_run(started,datetime.now(timezone.utc).isoformat(),
                               len(endpoints),succeeded,seen,stored,errors,platform="youtube")
         print(f"channels={len(endpoints)} succeeded={succeeded} seen={seen} stored={stored} errors={len(errors)}")
-        return 0 if not errors else 1
+        return _step_exit_code(attempted=len(endpoints), errors=len(errors), stored=stored)
     if args.command=="ingest-podcasts":
         from sports_aggregator.providers.podcast import PodcastRSSClient
         registry=MediaRegistry(repository.path); endpoints=registry.podcast_endpoints()
@@ -157,7 +185,7 @@ def main(argv=None) -> int:
         repository.record_run(started,datetime.now(timezone.utc).isoformat(),
                               len(endpoints),succeeded,seen,stored,errors,platform="podcast")
         print(f"feeds={len(endpoints)} succeeded={succeeded} seen={seen} stored={stored} errors={len(errors)}")
-        return 0 if not errors else 1
+        return _step_exit_code(attempted=len(endpoints), errors=len(errors), stored=stored)
     if args.command=="ingest-reporting":
         started=datetime.now(timezone.utc).isoformat()
         result=build_default_service().aggregate(get_league("college-football"),force_refresh=True)
@@ -170,7 +198,8 @@ def main(argv=None) -> int:
         )
         clustered=StoryRepository(repository.path).rebuild()
         print(f"articles={len(result.articles)} stored={stored} errors={len(result.errors)} stories={clustered['stories']}")
-        return 0 if not result.errors else 1
+        return _step_exit_code(attempted=len(result.league.feeds),
+                               errors=len(result.errors), stored=stored)
     if args.command=="ingest-local-reporting":
         from sports_aggregator.models import FeedConfig
         from sports_aggregator.providers.rss import RSSNewsProvider
@@ -221,7 +250,7 @@ def main(argv=None) -> int:
             len(combined),stored,errors,platform="rss-local",
         )
         print(f"feeds={len(tasks)} succeeded={succeeded} articles={len(combined)} stored={stored} errors={len(errors)}")
-        return 0 if not errors else 1
+        return _step_exit_code(attempted=len(tasks), errors=len(errors), stored=stored)
     started=datetime.now(timezone.utc).isoformat(); endpoints=repository.bluesky_endpoints()
     client=BlueskyIdentityClient(); succeeded=seen=stored=0; errors=[]
     def fetch(endpoint):
@@ -244,7 +273,7 @@ def main(argv=None) -> int:
     finished=datetime.now(timezone.utc).isoformat()
     repository.record_run(started,finished,len(endpoints),succeeded,seen,stored,errors)
     print(f"endpoints={len(endpoints)} succeeded={succeeded} seen={seen} stored={stored} errors={len(errors)}")
-    return 0 if not errors else 1
+    return _step_exit_code(attempted=len(endpoints), errors=len(errors), stored=stored)
 
 
 if __name__=="__main__": raise SystemExit(main())

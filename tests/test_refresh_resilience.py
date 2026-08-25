@@ -20,7 +20,8 @@ from sports_aggregator.providers.weather import (
     DAILY_LIMIT_MARKERS, OpenMeteoClient, WeatherQuotaExhausted,
 )
 from sports_aggregator.social.content_cli import (
-    WORKER_STACK_BYTES, _use_small_thread_stacks,
+    MAX_TOLERATED_FAILURE_SHARE, WORKER_STACK_BYTES, _step_exit_code,
+    _use_small_thread_stacks,
 )
 
 
@@ -126,6 +127,46 @@ class WeatherQuotaTests(unittest.TestCase):
             client.venue_forecast(34.014, -118.288)
         self.assertIn("daily quota exhausted", str(raised.exception).casefold())
 
+
+
+class StepOutcomeTests(unittest.TestCase):
+    """A step fails when it did not do its job, not when the internet was flaky.
+
+    Every ingestion step used to end `return 0 if not errors else 1`, so one bad
+    feed out of 350 reported exactly like a crash on the first line. Three steps
+    sat in `degraded_steps` on every run while the refresh was working, which is
+    how a genuine failure stayed hidden for a day.
+    """
+
+    def test_the_runs_that_were_wrongly_reported_as_failures_now_pass(self):
+        observed = {
+            "bluesky": dict(attempted=40, errors=3, stored=1323),
+            "podcasts": dict(attempted=62, errors=2, stored=900),
+            "local-articles": dict(attempted=350, errors=22, stored=1808),
+        }
+        for step, counts in observed.items():
+            with self.subTest(step=step):
+                self.assertEqual(_step_exit_code(**counts), 0)
+
+    def test_a_step_that_stored_nothing_fails_even_with_few_errors(self):
+        """Storing nothing is the definition of not having done the job."""
+        self.assertEqual(_step_exit_code(attempted=40, errors=1, stored=0), 1)
+
+    def test_a_step_where_everything_failed_fails(self):
+        """Weather against a spent quota: 56 venues, 56 failures, 0 stored."""
+        self.assertEqual(_step_exit_code(attempted=56, errors=56, stored=0), 1)
+
+    def test_losing_more_than_a_quarter_of_endpoints_fails(self):
+        self.assertEqual(_step_exit_code(attempted=40, errors=20, stored=100), 1)
+        self.assertEqual(_step_exit_code(attempted=100, errors=26, stored=500), 1)
+
+    def test_the_boundary_is_inclusive_of_the_tolerated_share(self):
+        at_limit = int(100 * MAX_TOLERATED_FAILURE_SHARE)
+        self.assertEqual(_step_exit_code(attempted=100, errors=at_limit, stored=500), 0)
+        self.assertEqual(_step_exit_code(attempted=100, errors=at_limit + 1, stored=500), 1)
+
+    def test_having_nothing_to_do_is_not_a_failure(self):
+        self.assertEqual(_step_exit_code(attempted=0, errors=0, stored=0), 0)
 
 if __name__ == "__main__":
     unittest.main()
