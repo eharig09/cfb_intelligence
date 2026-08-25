@@ -57,6 +57,13 @@ WEATHER_CODES = {
     95: "Thunderstorm", 96: "Thunderstorm with hail", 99: "Thunderstorm with hail",
 }
 
+
+def weather_condition(code: int | None) -> str:
+    """Translate a WMO code without treating valid clear-sky code zero as missing."""
+    if code is None:
+        return "Condition unavailable"
+    return WEATHER_CODES.get(int(code), f"Weather code {code}")
+
 #: Thresholds for the explainable flags. Chosen for football, not meteorology:
 #: 15 mph sustained is where the passing and kicking game is discussed.
 HIGH_WIND_MPH = 15.0
@@ -84,7 +91,7 @@ class Forecast:
 
     @property
     def condition(self) -> str:
-        return WEATHER_CODES.get(self.weather_code or -1, "Unknown")
+        return weather_condition(self.weather_code)
 
 
 def weather_flags(forecast: Forecast) -> list[dict[str, str]]:

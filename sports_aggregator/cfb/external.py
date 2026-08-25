@@ -28,6 +28,7 @@ from typing import Any, Iterable
 
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.providers.sportsdataverse import optional_float, utc_now
+from sports_aggregator.providers.weather import weather_condition
 
 
 EXTERNAL_SCHEMA = """
@@ -266,6 +267,11 @@ def weather_for_game(repository: CFBRepository, game_id: int) -> dict[str, Any]:
         return {"available": False, "snapshots": 0, "flags": []}
     latest, first = rows[0], rows[-1]
     latest["flags"] = json.loads(latest.pop("flags_json") or "[]")
+    # Snapshots written before the clear-sky code-zero fix stored "Unknown".
+    # Correct them at read time so cached forecasts become accurate immediately
+    # without throwing away their historical snapshot timestamps.
+    if not latest.get("condition") or latest["condition"] == "Unknown":
+        latest["condition"] = weather_condition(latest.get("weather_code"))
     movement = {}
     for field in ("temperature", "precipitation_probability", "sustained_wind"):
         if latest.get(field) is not None and first.get(field) is not None and len(rows) > 1:

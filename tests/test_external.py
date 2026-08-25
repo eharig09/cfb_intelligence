@@ -253,6 +253,9 @@ class WeatherTests(unittest.TestCase):
     def test_calm_conditions_raise_no_flags(self):
         self.assertEqual(weather_flags(self.forecast()), [])
 
+    def test_clear_sky_code_zero_has_a_condition(self):
+        self.assertEqual(self.forecast(weather_code=0).condition, "Clear")
+
     def test_each_flag_carries_the_number_that_produced_it(self):
         flags = weather_flags(self.forecast(wind_speed=22.0, wind_gusts=34.0))
         names = {flag["flag"] for flag in flags}
@@ -343,6 +346,18 @@ class WeatherStorageTests(unittest.TestCase):
         packet = weather_for_game(self.repository, 999)
         self.assertFalse(packet["available"])
         self.assertEqual(packet["flags"], [])
+
+    def test_legacy_unknown_clear_snapshot_is_normalized_when_read(self):
+        self._store("2026-09-04T00:00:00Z", weather_code=0)
+        connection = self.repository._connect()
+        try:
+            connection.execute(
+                "UPDATE game_weather SET condition='Unknown' WHERE game_id=500")
+            connection.commit()
+        finally:
+            connection.close()
+        packet = weather_for_game(self.repository, 500)
+        self.assertEqual(packet["latest"]["condition"], "Clear")
 
     def test_indoor_games_carry_no_flags(self):
         forecast = WeatherTests.forecast(wind_speed=40.0)
