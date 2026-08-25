@@ -1407,8 +1407,25 @@ def opponent_quality_table(away_team: str, away: dict[str, Any], home_team: str,
                  empty=f"No completed {season} opponents have model coverage.")
 
 
-def team_opponent_quality_table(team: str, quality: dict[str, Any], season: int) -> Table:
-    rows = []
+def team_opponent_quality_table(team: str, quality: dict[str, Any], season: int, *,
+                                upcoming: bool = False) -> Table:
+    """Strength of the schedule actually played, for the season on screen.
+
+    Only completed games carry ratings, so on an upcoming schedule this is
+    empty by definition rather than missing data, and says so.
+    """
+    # With no completed games the averages are all absent and only zero counts
+    # remain, which reads as "this schedule faced nobody ranked" rather than
+    # "nobody has played yet". Say the latter.
+    rows: list[dict[str, Any]] = []
+    if not quality.get("games"):
+        return Table(
+            columns=[Column("metric", "Schedule measure", align="left", emphasis=True),
+                     Column("value", team, align="right")],
+            rows=rows, dense=True, caption=f"{season} opponent quality",
+            empty=(f"Opponent quality appears here once {season} games are played."
+                   if upcoming
+                   else f"No completed {season} opponent ratings are stored."))
     for label, key, fmt in (
         ("Completed opponents", "games", "int"),
         ("Avg opponent pregame Elo", "average_pregame_elo", "f1"),
@@ -1425,7 +1442,8 @@ def team_opponent_quality_table(team: str, quality: dict[str, Any], season: int)
                           Column("value", team, align="right")], rows=rows, dense=True,
                  caption=f"{season} opponent quality",
                  note="Ratings remain separate because Elo, CORE, and polls use different scales",
-                 empty=f"No completed {season} opponent ratings are stored.")
+                 empty=(f"No {season} games have been played yet." if upcoming
+                        else f"No completed {season} opponent ratings are stored."))
 
 
 def _humanize(name: str) -> str:

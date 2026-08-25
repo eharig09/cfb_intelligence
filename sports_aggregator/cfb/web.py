@@ -415,7 +415,12 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
     schedule_year = schedule_year or season
     stats_year = stats_year or season
     selected_metrics = _repository().team_metrics(packet["team"]["school"], stats_year)
-    opponent_quality = _repository().opponent_quality(packet["team"]["team_id"], stats_year)
+    # Opponent quality describes the schedule, so it follows the schedule's
+    # season selector rather than the statistics one. Reading it from stats_year
+    # meant the two could disagree on screen: a 2025 schedule beside 2026
+    # opponent ratings.
+    opponent_quality = _repository().opponent_quality(
+        packet["team"]["team_id"], schedule_year)
     return {
         "schedule_table": views.schedule_table(
             packet["schedule"], packet["team"]["team_id"], schedule_year,
@@ -438,7 +443,8 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
         "quality_table": views.quality_cards_table(packet["quality"]),
         "team_stats_table": views.team_summary_table(selected_metrics, stats_year, stats_mode),
         "opponent_quality_table": views.team_opponent_quality_table(
-            packet["team"]["school"], opponent_quality, stats_year),
+            packet["team"]["school"], opponent_quality, schedule_year,
+            upcoming=schedule_is_upcoming),
         "fpi_season": fpi_team_season(_repository(), season, packet["team"]["team_id"]),
         "unit_continuity_table": views.unit_continuity_table(
             units_with_continuity(_repository(), packet["team"]["team_id"],
