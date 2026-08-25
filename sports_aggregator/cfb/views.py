@@ -733,6 +733,50 @@ def pff_departures_table(players: Sequence[dict[str, Any]], season: int, *,
     )
 
 
+def unit_continuity_table(units: Sequence[dict[str, Any]], season: int) -> Table:
+    """Last season's unit grades beside how much of each unit actually returns.
+
+    A grade with no continuity beside it invites the reader to assume the unit
+    is intact. Snaps back is shown next to the share because 5% of 1,763 snaps
+    and 5% of 60 are very different claims.
+    """
+    rows = []
+    for unit in sorted(units, key=lambda item: -(item.get("continuity_usage") or 0)):
+        share = unit.get("returning_share")
+        rows.append({
+            "unit": group_label(unit.get("position_group")),
+            "unit_sub": (unit.get("dataset") or "").replace("_", " ").title(),
+            "prior_grade": unit.get("prior_grade"),
+            "returning": None if share is None else round(share * 100, 1),
+            "snaps_back": unit.get("returning_usage"),
+            "snaps_back_sub": (f"of {unit['continuity_usage']:,.0f}"
+                               if unit.get("continuity_usage") else None),
+            "adjusted": unit.get("blended_grade"),
+            "adjusted_sub": unit.get("blend_basis"),
+        })
+    return Table(
+        columns=[
+            Column(key="unit", label="Unit", align="left", emphasis=True),
+            Column(key="prior_grade", label=f"{season} grade", format="f1",
+                   title="Usage-weighted PFF grade for the group"),
+            Column(key="returning", label="Returning", format="pct",
+                   title="Share of the snaps behind that grade that are on this "
+                         "year's roster"),
+            Column(key="snaps_back", label="Snaps back", format="num"),
+            Column(key="adjusted", label="Adjusted", format="f1",
+                   title="Prior grade weighted against current-season play by how "
+                         "much of the unit returned"),
+        ],
+        rows=rows,
+        caption="Unit grades and continuity",
+        note=(f"{season} usage-weighted. Adjusted equals the {season} grade until "
+              "this season's own grades exist, then shifts toward current play at "
+              "a rate set by how much of the unit returned."),
+        empty="No qualifying unit rollups are stored for this team.",
+        dense=True,
+    )
+
+
 def pff_position_groups_table(groups: Sequence[dict[str, Any]]) -> Table:
     """Usage-weighted position-group grades."""
     rows = [{
@@ -1092,26 +1136,36 @@ def weekly_matchups_table(matchups: Sequence[dict[str, Any]], season: int) -> Ta
     )
 
 
+def _share_percent(share: float | None) -> float | None:
+    return None if share is None else round(share * 100, 1)
+
+
 def pff_units_table(units: Sequence[dict[str, Any]], away_team: str, home_team: str) -> Table:
     """Side-by-side unit grades for the two teams in a game."""
     rows = [{
         "label": unit.get("label"),
         "away_grade": unit.get("away_grade"),
+        "away_returning": _share_percent(unit.get("away_returning_share")),
         "away_usage": unit.get("away_usage"),
         "home_grade": unit.get("home_grade"),
+        "home_returning": _share_percent(unit.get("home_returning_share")),
         "home_usage": unit.get("home_usage"),
     } for unit in units]
     return Table(
         columns=[
             Column(key="label", label="Unit", align="left", emphasis=True),
             Column(key="away_grade", label=f"{away_team} grade", format="f1"),
+            Column(key="away_returning", label="Ret.", format="pct",
+                   title=f"Share of the graded snaps {away_team} returns"),
             Column(key="away_usage", label="Usage", format="num"),
             Column(key="home_grade", label=f"{home_team} grade", format="f1"),
+            Column(key="home_returning", label="Ret.", format="pct",
+                   title=f"Share of the graded snaps {home_team} returns"),
             Column(key="home_usage", label="Usage", format="num"),
         ],
         rows=rows,
         caption="Unit grades",
-        note="2025 PFF usage-weighted",
+        note="2025 PFF usage-weighted, with the share of those snaps still on each roster",
         empty="No unit grades are stored for these teams.",
     )
 

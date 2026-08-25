@@ -102,6 +102,16 @@ Presentation is its own boundary rather than template logic:
 - `sports_aggregator/bootstrap.py` is the single entry point: `initial`,
   `refresh`, `status` and `plan`. Each step runs isolated so one unavailable
   source cannot stop the rest.
+- `sports_aggregator/cfb/unit_continuity.py` answers, for a graded unit, how
+  much of the snaps behind last season's PFF grade are still on the roster, and
+  blends the prior grade against current-season play by credibility. Continuity
+  is decided against the current roster, never against PFF's stored
+  `cfbd_player_id`: that link is written against the roster of the season being
+  imported, so a departed player is unresolved, and counting only linked players
+  reports a unit that lost its five highest-snap players as fully returning.
+  Before a snap is played the adjusted grade is exactly last season's; as games
+  accumulate it shifts toward current play, retaining a residual proportional to
+  how much of the unit carried over.
 - `sports_aggregator/cfb/roster_production.py` splits prior-season production
   into returning, arrived and departed, so a preseason page says what is on the
   roster rather than who led the team last year. Arrived production always names

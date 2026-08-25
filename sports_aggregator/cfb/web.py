@@ -29,6 +29,8 @@ from sports_aggregator.cfb.search import search as search_entities
 from sports_aggregator.cfb.situations import game_situation
 from sports_aggregator.cfb.roster_production import projected_depth, team_production
 from sports_aggregator.cfb.transfers import notable_transfers, rank_transfers
+from sports_aggregator.cfb.unit_continuity import (
+    unit_continuity, units_with_continuity)
 from sports_aggregator.cfb.matchups import game_matchup_report
 from sports_aggregator.cfb.player_matchups import player_matchups
 from sports_aggregator.cfb.pff import pff_summary
@@ -438,6 +440,10 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
         "opponent_quality_table": views.team_opponent_quality_table(
             packet["team"]["school"], opponent_quality, stats_year),
         "fpi_season": fpi_team_season(_repository(), season, packet["team"]["team_id"]),
+        "unit_continuity_table": views.unit_continuity_table(
+            units_with_continuity(_repository(), packet["team"]["team_id"],
+                                  prior_season=2025, current_season=season),
+            2025),
         "pff_players_table": views.pff_players_table(
             [row for row in packet["pff"]["players"]
              if row.get("roster_status") == "RETURNING"],
@@ -548,6 +554,18 @@ def game_preview(game_id: int):
         game["home_team_id"]: repository.team_metrics(
             game["home_team"], season).get("core"),
     }
+    # Unit grades describe last season's players; the share still on each
+    # roster is what tells a reader how much of that grade to believe.
+    pff_game_units = repository.pff_game_units(
+        game["home_team_id"], game["away_team_id"], 2025)
+    away_carry = unit_continuity(repository, game["away_team_id"],
+                                 prior_season=2025, current_season=season)
+    home_carry = unit_continuity(repository, game["home_team_id"],
+                                 prior_season=2025, current_season=season)
+    for unit in pff_game_units:
+        key = (unit["dataset"], unit["position_group"])
+        unit["away_returning_share"] = (away_carry.get(key) or {}).get("returning_share")
+        unit["home_returning_share"] = (home_carry.get(key) or {}).get("returning_share")
     return render_template(
         "cfb_game.html",
         meta=page_meta_for.game_meta(
@@ -594,8 +612,7 @@ def game_preview(game_id: int):
             player_matchups(repository, game["home_team_id"], game["away_team_id"]),
             season),
         pff_units_table=views.pff_units_table(
-            repository.pff_game_units(game["home_team_id"], game["away_team_id"], 2025),
-            game["away_team"], game["home_team"],
+            pff_game_units, game["away_team"], game["home_team"],
         ),
         game=game,
         metrics_table=views.matchup_metrics_table(game),
