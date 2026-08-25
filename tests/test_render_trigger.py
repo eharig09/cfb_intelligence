@@ -32,11 +32,13 @@ class RenderTriggerTests(unittest.TestCase):
         self.assertEqual(called, [])
 
     @patch.dict(os.environ, {
-        "CFB_REFRESH_TIMEZONE": "America/New_York", "CFB_REFRESH_HOURS": "6,12,18,23",
+        "CFB_REFRESH_TIMEZONE": "America/New_York",
+        "CFB_REFRESH_HOURS": "6,12,18,23",
+        "CFB_REFRESH_HEAVY_HOURS": "6,23",
         "CFB_REFRESH_URL": "https://example.onrender.com/internal/cfb-refresh",
         "CFB_REFRESH_TOKEN": "test-token",
     }, clear=False)
-    def test_scheduled_hour_posts_authenticated_request(self):
+    def test_morning_refresh_is_heavy(self):
         requests = []
 
         def opener(request, **_kwargs):
@@ -46,8 +48,28 @@ class RenderTriggerTests(unittest.TestCase):
         report = trigger_if_due(
             now=datetime(2026, 8, 23, 10, tzinfo=timezone.utc), opener=opener)
         self.assertEqual(report["status"], "triggered")
-        self.assertEqual(requests[0].method, "POST")
+        self.assertEqual(report["profile"], "heavy")
+        self.assertIn("profile=heavy", requests[0].full_url)
         self.assertEqual(requests[0].get_header("Authorization"), "Bearer test-token")
+
+    @patch.dict(os.environ, {
+        "CFB_REFRESH_TIMEZONE": "America/New_York",
+        "CFB_REFRESH_HOURS": "6,12,18,23",
+        "CFB_REFRESH_HEAVY_HOURS": "6,23",
+        "CFB_REFRESH_URL": "https://example.onrender.com/internal/cfb-refresh",
+        "CFB_REFRESH_TOKEN": "test-token",
+    }, clear=False)
+    def test_midday_refresh_is_light(self):
+        requests = []
+
+        def opener(request, **_kwargs):
+            requests.append(request)
+            return _Response()
+
+        report = trigger_if_due(
+            now=datetime(2026, 8, 23, 16, tzinfo=timezone.utc), opener=opener)
+        self.assertEqual(report["profile"], "light")
+        self.assertIn("profile=light", requests[0].full_url)
 
 
 if __name__ == "__main__":
