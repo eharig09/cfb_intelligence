@@ -3,15 +3,29 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-import subprocess
-import sys
 from typing import Any, Callable
 
 from dotenv import load_dotenv
+
+from sports_aggregator.bootstrap import run_phase
+
+
+LIGHT_REFRESH_STEPS = [
+    "cfbd-sync",
+    "articles",
+    "cfbd-lines",
+    "weather",
+    "bluesky",
+    "reddit",
+    "youtube",
+    "podcasts",
+    "local-articles",
+]
 
 
 def _acquire_lock(path: Path, started: datetime, stale_hours: float) -> bool:
@@ -30,48 +44,24 @@ def _acquire_lock(path: Path, started: datetime, stale_hours: float) -> bool:
     return True
 
 
-def _degraded_steps(log_path: Path) -> list[dict[str, str]]:
-    """Return bootstrap steps that failed even though the phase stayed non-fatal.
-
-    Bootstrap prints a ``[ ] step-name: description`` line before each command and
-    a ``[!!] failed`` or ``[!!] timeout`` result line afterward. A zero process
-    exit code with one of those result markers means an optional step failed. That
-    should not abort the data refresh, but it must not be reported as fully healthy.
-    """
-    try:
-        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return []
-
-    current_step = "unknown"
-    degraded: list[dict[str, str]] = []
-    for raw in lines:
-        line = raw.strip()
-        if line.startswith("[ ] "):
-            heading = line[4:]
-            current_step = heading.split(":", 1)[0].strip() or "unknown"
-            continue
-        if not line.startswith("[!!]"):
-            continue
-        remainder = line[4:].strip()
-        status = remainder.split(" ", 1)[0].strip().casefold()
-        if status not in {"failed", "timeout"}:
-            continue
-        degraded.append({
-            "step": current_step,
-            "status": status,
-            "message": remainder[:240],
-        })
-    return degraded
-
-
 def run_scheduled_refresh(
     season: int,
     *,
+    profile: str = "heavy",
     repo_root: str | Path | None = None,
     stale_lock_hours: float = 6,
-    runner: Callable[..., Any] = subprocess.run,
+    phase_runner: Callable[..., list[dict[str, Any]]] = run_phase,
 ) -> dict[str, Any]:
+    """Run a scheduled refresh without spawning an intermediate Python process.
+
+    ``light`` runs the latency-sensitive live-data jobs. ``heavy`` runs the full
+    current-season refresh plan. Individual bootstrap steps still execute in
+    isolated subprocesses so their memory is released between datasets.
+    """
+    normalized_profile = profile.strip().casefold()
+    if normalized_profile not in {"light", "heavy"}:
+        raise ValueError("profile must be 'light' or 'heavy'")
+
     root = Path(repo_root) if repo_root else Path(__file__).resolve().parents[1]
     state_override = (os.getenv("CFB_REFRESH_STATE_PATH") or "").strip()
     database_override = (os.getenv("CFB_DATABASE_PATH") or "").strip()
@@ -86,6 +76,7 @@ def run_scheduled_refresh(
         instance = database.parent
     else:
         instance = root / "instance"
+
     logs = instance / "refresh_logs"
     logs.mkdir(parents=True, exist_ok=True)
     started = datetime.now(timezone.utc)
@@ -95,29 +86,54 @@ def run_scheduled_refresh(
 
     stamp = started.strftime("%Y%m%dT%H%M%SZ")
     log_path = logs / f"refresh-{stamp}.log"
-    command = [sys.executable, "-m", "sports_aggregator.bootstrap",
-               "refresh", "--season", str(season)]
+    only = LIGHT_REFRESH_STEPS if normalized_profile == "light" else None
+
     try:
         with log_path.open("w", encoding="utf-8") as log:
-            completed = runner(command, cwd=str(root), stdout=log,
-                               stderr=subprocess.STDOUT, text=True)
+            with redirect_stdout(log), redirect_stderr(log):
+                print(
+                    f"scheduled refresh: profile={normalized_profile} "
+                    f"season={season} pid={os.getpid()}"
+                )
+                results = phase_runner("refresh", season, only=only)
+
         finished = datetime.now(timezone.utc)
-        degraded_steps = _degraded_steps(log_path) if completed.returncode == 0 else []
-        if completed.returncode != 0:
+        required_failures = [
+            row for row in results
+            if row.get("status") not in {"success", "skipped"}
+            and not row.get("optional", False)
+        ]
+        degraded_steps = [
+            {
+                "step": str(row.get("step", "unknown")),
+                "status": str(row.get("status", "failed")),
+                "message": str(row.get("message", ""))[:240],
+            }
+            for row in results
+            if row.get("status") not in {"success", "skipped"}
+            and row.get("optional", False)
+        ]
+        exit_code = 1 if required_failures else 0
+        if required_failures:
             status = "failed"
         elif degraded_steps:
             status = "degraded"
         else:
             status = "success"
+
         report = {
             "status": status,
-            "season": season, "started_at": started.isoformat(),
+            "profile": normalized_profile,
+            "season": season,
+            "started_at": started.isoformat(),
             "finished_at": finished.isoformat(),
             "seconds": round((finished - started).total_seconds(), 1),
-            "exit_code": completed.returncode,
+            "exit_code": exit_code,
             "log": str(log_path.relative_to(root)),
+            "step_count": len(results),
             "degraded_steps": degraded_steps,
             "degraded_count": len(degraded_steps),
+            "required_failure_count": len(required_failures),
         }
         history = instance / "scheduled_refresh_history.jsonl"
         with history.open("a", encoding="utf-8") as handle:
@@ -132,10 +148,15 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(root / ".env")
     parser = argparse.ArgumentParser(description="Run one lock-safe scheduled refresh")
     parser.add_argument("--season", type=int, default=datetime.now().year)
+    parser.add_argument("--profile", choices=("light", "heavy"), default="heavy")
     parser.add_argument("--stale-lock-hours", type=float, default=6)
     args = parser.parse_args(argv)
-    report = run_scheduled_refresh(args.season, repo_root=root,
-                                   stale_lock_hours=args.stale_lock_hours)
+    report = run_scheduled_refresh(
+        args.season,
+        profile=args.profile,
+        repo_root=root,
+        stale_lock_hours=args.stale_lock_hours,
+    )
     print(json.dumps(report, sort_keys=True))
     if report["status"] == "skipped":
         return 0
