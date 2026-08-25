@@ -2154,28 +2154,55 @@ class CFBRepository:
                 "home_usage":home["usage_count"] if home else None,"away_usage":away["usage_count"] if away else None})
         return result
 
-    def pff_matchups(self, home_team_id: int, away_team_id: int,
-                     season: int = 2025) -> list[dict[str, Any]]:
-        """Build directional offense-vs-defense comparisons from licensed PFF rows."""
+    def pff_matchup_rows(self, team_ids: Iterable[int],
+                         season: int = 2025) -> dict[int, list[dict[str, Any]]]:
+        """Grade rows for many teams in one round trip, keyed by team.
+
+        `pff_matchups` reads exactly two teams, which is fine for a matchup page
+        and wasteful for the dashboard: the weekly slate calls it once per game,
+        so twenty games meant forty queries fetching two teams each. Fetching
+        the whole slate at once turns that into two.
+        """
+        wanted = sorted({int(team_id) for team_id in team_ids if team_id})
+        if not wanted:
+            return {}
         self.initialize()
+        placeholders = ",".join("?" for _ in wanted)
+        grouped: dict[int, list[dict[str, Any]]] = {team_id: [] for team_id in wanted}
         with closing(self._connect()) as connection:
-            rows = [dict(row) for row in connection.execute(
-                """SELECT p.cfbd_team_id,p.position,m.dataset,m.primary_grade,
-                   m.usage_count,m.metrics_json FROM pff_players p
-                   JOIN pff_player_metrics m ON m.season=p.season
-                   AND m.pff_player_id=p.pff_player_id
-                   WHERE p.season=? AND p.cfbd_team_id IN (?,?)""",
-                (season, home_team_id, away_team_id),
-            )]
-            rows.extend(dict(row) for row in connection.execute(
-                """SELECT p.cfbd_team_id,p.position,m.dataset,m.primary_grade,
-                   m.usage_count,m.metrics_json FROM pff_players p
-                   JOIN pff_supplemental_metrics m ON m.season=p.season
-                   AND m.pff_player_id=p.pff_player_id
-                   WHERE p.season=? AND p.cfbd_team_id IN (?,?)
-                   AND m.dataset='run_defense_detail'""",
-                (season, home_team_id, away_team_id),
-            ))
+            statements = (
+                f"""SELECT p.cfbd_team_id,p.position,m.dataset,m.primary_grade,
+                    m.usage_count,m.metrics_json FROM pff_players p
+                    JOIN pff_player_metrics m ON m.season=p.season
+                    AND m.pff_player_id=p.pff_player_id
+                    WHERE p.season=? AND p.cfbd_team_id IN ({placeholders})""",
+                f"""SELECT p.cfbd_team_id,p.position,m.dataset,m.primary_grade,
+                    m.usage_count,m.metrics_json FROM pff_players p
+                    JOIN pff_supplemental_metrics m ON m.season=p.season
+                    AND m.pff_player_id=p.pff_player_id
+                    WHERE p.season=? AND p.cfbd_team_id IN ({placeholders})
+                    AND m.dataset='run_defense_detail'""",
+            )
+            for statement in statements:
+                for row in connection.execute(statement, (season, *wanted)):
+                    item = dict(row)
+                    grouped.setdefault(item["cfbd_team_id"], []).append(item)
+        return grouped
+
+    def pff_matchups(self, home_team_id: int, away_team_id: int,
+                     season: int = 2025, *,
+                     prefetched: dict[int, list[dict[str, Any]]] | None = None,
+                     ) -> list[dict[str, Any]]:
+        """Build directional offense-vs-defense comparisons from licensed PFF rows.
+
+        `prefetched` lets a caller comparing many games load every team's rows
+        once; without it this fetches the two teams it needs.
+        """
+        if prefetched is not None:
+            rows = [*prefetched.get(home_team_id, ()), *prefetched.get(away_team_id, ())]
+        else:
+            grouped = self.pff_matchup_rows((home_team_id, away_team_id), season)
+            rows = [*grouped.get(home_team_id, ()), *grouped.get(away_team_id, ())]
 
         def grade(team_id: int, dataset: str, groups: set[str],
                   raw_field: str | None = None) -> dict[str, Any] | None:

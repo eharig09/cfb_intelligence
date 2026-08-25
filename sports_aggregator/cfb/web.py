@@ -192,6 +192,12 @@ def _weekly_matchup_watches(repository: CFBRepository, games: list[dict],
                             limit: int = 12) -> list[dict]:
     """Blend the best player/unit and unit/unit watches across one week."""
     watches = []
+    # Every game in the slate needs the same kind of grade rows, so load them
+    # for the whole week at once rather than twice per game.
+    prefetched = repository.pff_matchup_rows(
+        [team for game in games
+         for team in (game.get("home_team_id"), game.get("away_team_id"))],
+        2025)
     for game in games:
         attention = float(game.get("attention_score") or 0)
         for matchup in player_matchups(
@@ -211,7 +217,8 @@ def _weekly_matchup_watches(repository: CFBRepository, games: list[dict],
                 "weekly_score": round(0.8 * matchup["interest"] + 0.2 * attention, 1),
             })
         report = game_matchup_report(
-            repository.pff_matchups(game["home_team_id"], game["away_team_id"], 2025),
+            repository.pff_matchups(game["home_team_id"], game["away_team_id"], 2025,
+                                    prefetched=prefetched),
             game["away_team"], game["home_team"], limit=1)
         for matchup in report["matchups"]:
             watches.append({

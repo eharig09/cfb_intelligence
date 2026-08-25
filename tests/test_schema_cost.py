@@ -143,3 +143,76 @@ class PlannerStatisticsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BatchedMatchupRowTests(unittest.TestCase):
+    """The weekly slate loads grade rows once, not twice per game.
+
+    `pff_matchups` reads exactly two teams, which suits a matchup page and not
+    the dashboard: the weekly slate called it once per game, so twenty games
+    issued forty queries fetching two teams each.
+    """
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        os.unlink(self.path)
+        forget_initialized_schemas()
+        self.repository = CFBRepository(self.path)
+        self.repository.initialize()
+        with self.repository.transaction() as connection:
+            for team_id, name in ((1, "Michigan"), (2, "Ohio State")):
+                connection.execute(
+                    """INSERT INTO pff_players(season,pff_player_id,player_name,
+                       normalized_name,position,pff_team_name,cfbd_team_id,cfbd_team,
+                       cfbd_player_id,candidate_cfbd_player_id,match_status,
+                       match_confidence,interest_score,updated_at)
+                       VALUES(2025,?,?,?, 'ED',?,?,?,?,NULL,'exact_name_same_team',
+                       1.0,70.0,'2026-01-01')""",
+                    (f"p{team_id}", name + " Edge", name.lower() + " edge",
+                     name, team_id, name, f"c{team_id}"))
+                connection.execute(
+                    """INSERT INTO pff_player_metrics(season,pff_player_id,dataset,
+                       source_file,game_count,primary_grade,usage_count,metrics_json,
+                       imported_at) VALUES(2025,?, 'defense','t.csv',12,70.0,500.0,
+                       '{}','2026-01-01')""", (f"p{team_id}",))
+
+    def tearDown(self):
+        forget_initialized_schemas()
+        if os.path.exists(self.path):
+            os.unlink(self.path)
+
+    def test_prefetched_rows_produce_the_same_matchups(self):
+        """The optimization must be invisible in the output."""
+        direct = self.repository.pff_matchups(1, 2, 2025)
+        prefetched = self.repository.pff_matchup_rows([1, 2], 2025)
+        batched = self.repository.pff_matchups(1, 2, 2025, prefetched=prefetched)
+        self.assertEqual(direct, batched)
+
+    def test_the_whole_slate_is_fetched_in_one_pass(self):
+        seen = {"n": 0}
+        real_connect = sqlite3.connect
+
+        def traced(*args, **kwargs):
+            connection = real_connect(*args, **kwargs)
+            connection.set_trace_callback(
+                lambda sql: seen.__setitem__(
+                    "n", seen["n"] + (1 if "pff_players" in str(sql) else 0)))
+            return connection
+
+        sqlite3.connect = traced
+        try:
+            self.repository.pff_matchup_rows([1, 2], 2025)
+        finally:
+            sqlite3.connect = real_connect
+        # One statement per metrics table, regardless of how many teams.
+        self.assertLessEqual(seen["n"], 2)
+
+    def test_a_team_missing_from_the_prefetch_behaves_as_no_data(self):
+        prefetched = self.repository.pff_matchup_rows([1], 2025)
+        self.assertEqual(
+            self.repository.pff_matchups(999, 998, 2025, prefetched=prefetched), [])
+
+    def test_empty_and_invalid_team_lists_are_handled(self):
+        self.assertEqual(self.repository.pff_matchup_rows([], 2025), {})
+        self.assertEqual(self.repository.pff_matchup_rows([None, 0], 2025), {})
