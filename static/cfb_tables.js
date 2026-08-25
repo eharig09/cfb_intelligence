@@ -51,7 +51,7 @@
 (function () {
     "use strict";
 
-    var mobile = window.matchMedia("(max-width: 559px)");
+    var mobile = window.matchMedia("(max-width: 767px)");
 
     function setup(nav) {
         var buttons = Array.prototype.slice.call(nav.querySelectorAll("[data-mobile-tab]"));

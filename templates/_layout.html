@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}College Football{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='cfb.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='cfb.css', v='20260824-mobile-matchup') }}">
     {% block head %}{% endblock %}
 </head>
 <body{% block body_attrs %}{% endblock %}>
@@ -23,6 +23,6 @@
 {% block content %}{% endblock %}
 </main>
 {% block scripts %}{% endblock %}
-<script src="{{ url_for('static', filename='cfb_tables.js') }}" defer></script>
+<script src="{{ url_for('static', filename='cfb_tables.js', v='20260824-mobile-matchup') }}" defer></script>
 </body>
 </html>
