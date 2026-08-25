@@ -22,6 +22,8 @@
     --green: #166534;
     --blue: #1d4ed8;
     --red: #991b1b;
+    --edge: #3f7652;
+    --edge-soft: #edf4ee;
 
     --team: var(--rust);
     --team-fill: var(--rust);
@@ -138,9 +140,10 @@ h1, h2, h3 { overflow-wrap: anywhere; }
     width: 100%; max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    margin-bottom: 12px;
+    margin-bottom: 12px; border-radius: 6px;
     overscroll-behavior-inline: contain;
     scrollbar-gutter: stable;
+    box-shadow: 0 3px 10px #2b21150b;
 }
 .table-wrap:focus-visible { outline: 3px solid var(--team); outline-offset: 2px; }
 .mobile-scroll-note { display: none; }
@@ -148,7 +151,7 @@ h1, h2, h3 { overflow-wrap: anywhere; }
 .table-caption {
     display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px;
     padding: 8px 11px; border-bottom: 1px solid var(--line);
-    background: #f0e8db;
+    background: linear-gradient(90deg, #eee5d8, #f7f2e9);
 }
 .table-caption strong { font: 700 .9rem Georgia, serif; }
 .table-caption span { color: var(--muted); font-size: .66rem; }
@@ -164,24 +167,24 @@ table.data {
 
 table.data thead th {
     position: sticky; top: 0; z-index: 1;
-    background: #ede5d9;
-    color: var(--muted);
-    font-size: .63rem; font-weight: 700;
+    background: #e8dfd2;
+    color: #4d453d;
+    font-size: .63rem; font-weight: 800;
     text-transform: uppercase; letter-spacing: .05em;
     padding: 8px 9px;
-    border-bottom: 2px solid var(--line-strong);
+    border-bottom: 2px solid #a99b87;
     white-space: nowrap;
 }
 table.data thead th[title] { cursor: help; }
 
 table.data tbody td {
-    padding: 8px 9px; border-bottom: 1px solid var(--line); vertical-align: top;
+    padding: 8px 9px; border-bottom: 1px solid #e6ded2; vertical-align: top;
     overflow-wrap: normal; word-break: keep-all;
 }
 /* Names and schools stay on one line and ellipsize rather than stacking. */
 table.data td.col-left.emphasis { white-space: nowrap; }
-table.data tbody tr:nth-child(even) { background: var(--zebra); }
-table.data tbody tr:hover { background: var(--hover); }
+table.data tbody tr:nth-child(even) { background: #fbf8f2; }
+table.data tbody tr:hover { background: #f5eee2; }
 table.data tbody tr:last-child td { border-bottom: 0; }
 
 table.data tfoot td {
@@ -324,17 +327,28 @@ table.data td.state-departed .sub { color: var(--red); }
 .tabs { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 10px; }
 .tabs button {
     font: 700 .7rem/1 Arial, sans-serif; text-transform: uppercase; letter-spacing: .05em;
-    padding: 8px 11px; border: 1px solid var(--line); background: var(--paper);
-    color: var(--muted); cursor: pointer; min-height: 34px;
+    padding: 8px 11px; border: 1px solid var(--line); border-radius: 5px 5px 2px 2px;
+    background: #f3ede3; color: #5d554d; cursor: pointer; min-height: 34px;
 }
-.tabs button[aria-selected="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.tabs button:hover { background: #ebe1d3; color: var(--ink); }
+.tabs button[aria-selected="true"] {
+    background: var(--paper); color: var(--ink); border-color: #b8aa96;
+    box-shadow: inset 0 -3px var(--rust); font-weight: 900;
+}
 .tabpanel[hidden] { display: none; }
 
 /* Every shared data table is sortable without changing its server-side default. */
 table.data th[data-sortable="true"] { cursor: pointer; user-select: none; white-space: nowrap; }
+table.data th[aria-sort="ascending"], table.data th[aria-sort="descending"] {
+    background: #ded2c1; color: var(--ink); box-shadow: inset 0 -3px var(--rust);
+}
+table.data th[aria-sort="ascending"]::after,
+table.data th[aria-sort="descending"]::after { color: var(--rust); }
 table.data th[data-sortable="true"]::after { content: " ↕"; color: var(--muted); font-size: .72em; }
 table.data th[aria-sort="ascending"]::after { content: " ↑"; color: currentColor; }
 table.data th[aria-sort="descending"]::after { content: " ↓"; color: currentColor; }
+table.data th[aria-sort="ascending"]::after,
+table.data th[aria-sort="descending"]::after { color: var(--rust); }
 table.data th[data-sortable="true"]:focus-visible { outline: 2px solid var(--rust); outline-offset: -2px; }
 
 /* Compact, shareable server-rendered controls for season/stat perspectives. */
@@ -353,8 +367,41 @@ table.data th[data-sortable="true"]:focus-visible { outline: 2px solid var(--rus
 }
 .metric-switch a.active { background: var(--ink); border-color: var(--ink); color: #fff; }
 table.data td.advantage {
-    background: #e7f2e8; color: #174d28; font-weight: 900;
-    box-shadow: inset 3px 0 #2f7a45;
+    background: linear-gradient(90deg, var(--edge-soft), transparent 82%);
+    color: var(--ink); font-weight: 850;
+    box-shadow: inset 0 -2px var(--edge);
+}
+table.data td.advantage::after {
+    content: ""; display: inline-block; width: 5px; height: 5px;
+    margin-left: 6px; vertical-align: .12em; border-radius: 50%;
+    background: var(--edge); box-shadow: 0 0 0 2px #fff;
+}
+
+/* Comparison tables read as team blocks instead of one uninterrupted matrix.
+   Rails carry identity without tinting the values or reducing contrast. */
+.matchup-page table.data :is(.col-key-away-offense, .col-key-away) {
+    border-left: 2px solid var(--away-team, var(--line-strong));
+}
+.matchup-page table.data :is(.col-key-away-defense) {
+    border-right: 2px solid var(--away-team, var(--line-strong));
+}
+.matchup-page table.data :is(.col-key-home-offense, .col-key-home) {
+    border-left: 2px solid var(--home-team, var(--team));
+}
+.matchup-page table.data :is(.col-key-home-defense) {
+    border-right: 2px solid var(--home-team, var(--team));
+}
+.matchup-page table.data thead :is(
+    .col-key-away-offense, .col-key-away-defense, .col-key-away
+) { box-shadow: inset 0 3px var(--away-team, var(--line-strong)); }
+.matchup-page table.data thead :is(
+    .col-key-home-offense, .col-key-home-defense, .col-key-home
+) { box-shadow: inset 0 3px var(--home-team, var(--team)); }
+.matchup-page table.data :is(.col-key-edge, .col-key-advantage) {
+    border-left: 2px solid #8f816d;
+}
+.matchup-page table.data thead :is(.col-key-edge, .col-key-advantage) {
+    box-shadow: inset 0 3px #8f816d;
 }
 
 /* Page-level navigation is activated only on phones by cfb_tables.js. */

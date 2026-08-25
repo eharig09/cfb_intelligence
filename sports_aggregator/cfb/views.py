@@ -1233,7 +1233,7 @@ def matchup_summary_table(game: dict[str, Any], away_metrics: dict[str, Any],
         Column("home_defense", f"{game['home_team']} opp", align="right"),
         Column("edge", "Edge", align="left", emphasis=True)], rows=rows, dense=True,
         caption=f"{season} production · {'per game' if mode == 'per_game' else 'totals'}",
-        note="Green marks the better offense or defense in this two-team comparison",
+        note="A subtle underline and dot mark the better offense or defense in each comparison",
         empty=f"No comparable {season} totals are stored.")
 
 

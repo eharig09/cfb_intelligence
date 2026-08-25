@@ -199,6 +199,13 @@ class ResponsiveTests(unittest.TestCase):
         self.assertIn("overflow-x: auto", self.css)
         self.assertIn("width: max-content", self.css)
 
+    def test_matchup_comparison_columns_have_team_group_rails(self):
+        self.assertIn(".col-key-away-offense", self.css)
+        self.assertIn("var(--away-team", self.css)
+        self.assertIn(".col-key-home-offense", self.css)
+        self.assertIn("var(--home-team", self.css)
+        self.assertIn(".col-key-edge", self.css)
+
 
 class PlayerMatchupTests(unittest.TestCase):
     """Individual matchups pair opposing positions and weight draft standing."""

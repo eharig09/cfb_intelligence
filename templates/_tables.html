@@ -73,12 +73,14 @@
                     {%- set text = row.get(column.key) | cell(column.format) %}
                     {%- set href = row.get(column.key ~ '_url') %}
                     {%- set sub = row.get(column.key ~ '_sub') %}
+                    {%- set state_class = row.get(column.key ~ '_class') %}
                     <td class="col-{{ column.align }} col-key-{{ column.key | replace('_', '-') }}
                         {{- ' num' if column.numeric }}
                         {{- ' emphasis' if column.emphasis }}
                         {{- ' is-empty' if text == '—' }}
-                        {{- ' ' ~ row.get(column.key ~ '_class') if row.get(column.key ~ '_class') }}"
+                        {{- ' ' ~ state_class if state_class }}"
                         data-label="{{ column.label }}"
+                        {%- if state_class == 'advantage' %} title="Comparison edge"{% endif %}
                         data-sort-value="{{ row.get(column.key ~ '_sort', row.get(column.key)) if row.get(column.key) is not none else '' }}">
                         {%- set logo = row.get(column.key ~ '_logo') %}
                         {%- set color = row.get(column.key ~ '_color') %}

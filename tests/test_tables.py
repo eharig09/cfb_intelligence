@@ -78,6 +78,18 @@ class FormatTests(unittest.TestCase):
         self.assertIn("window.sessionStorage.getItem(storageKey)", html)
         self.assertIn("window.sessionStorage.setItem(storageKey", html)
 
+    def test_comparison_edge_cells_explain_the_visual_marker(self):
+        app = create_app({"TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False})
+        template = app.jinja_env.from_string(
+            '{% from "_tables.html" import data_table %}{{ data_table(table) }}')
+        with app.test_request_context():
+            html = template.render(table=Table(
+                columns=[Column("value", "Value", format="f1")],
+                rows=[{"value": 42.0, "value_class": "advantage"}],
+            ))
+        self.assertIn('class="col-right col-key-value num advantage"', html)
+        self.assertIn('title="Comparison edge"', html)
+
 
 class StatLineTests(unittest.TestCase):
     def test_long_form_rows_collapse_into_one_row_per_season(self):

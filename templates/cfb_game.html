@@ -92,7 +92,7 @@
 </style>
 {% endblock %}
 
-{% block body_attrs %} class="matchup-page" style="--team:{{ home_brand.accent }};--conference:{{ home_brand.conference_color }}"{% endblock %}
+{% block body_attrs %} class="matchup-page" style="--team:{{ home_brand.accent }};--away-team:{{ away_brand.accent }};--home-team:{{ home_brand.accent }};--conference:{{ home_brand.conference_color }}"{% endblock %}
 
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.today') }}">&larr; College Football Today</a>
