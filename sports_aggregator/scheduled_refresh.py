@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import resource
+import sqlite3
 import subprocess
 import sys
 from typing import Any, Callable
@@ -71,6 +72,36 @@ def _children_rss_mb() -> float:
     return round(raw / divisor, 1)
 
 
+def _database_path(root: Path) -> Path:
+    configured = (os.getenv("CFB_DATABASE_PATH") or "").strip()
+    database = Path(configured) if configured else root / "instance" / "cfb.sqlite3"
+    return database if database.is_absolute() else root / database
+
+
+def _sqlite_values(database: Path, sql: str) -> list[str]:
+    if not database.exists():
+        return []
+    try:
+        with sqlite3.connect(database) as connection:
+            return [str(row[0]) for row in connection.execute(sql).fetchall() if row[0]]
+    except sqlite3.Error:
+        return []
+
+
+def _fbs_teams(root: Path) -> list[str]:
+    return _sqlite_values(
+        _database_path(root),
+        "SELECT school FROM teams WHERE lower(classification)='fbs' ORDER BY school",
+    )
+
+
+def _conferences(root: Path) -> list[str]:
+    return _sqlite_values(
+        _database_path(root),
+        "SELECT DISTINCT conference FROM teams WHERE conference IS NOT NULL ORDER BY conference",
+    )
+
+
 def _run_command(command: list[str], *, timeout: int, log) -> tuple[str, str, float]:
     started = datetime.now(timezone.utc)
     try:
@@ -93,10 +124,42 @@ def _run_command(command: list[str], *, timeout: int, log) -> tuple[str, str, fl
         return "failed", str(exc)[:240], 0.0
 
 
-def _run_cfbd_split(season: int, *, timeout: int, log) -> dict[str, Any]:
-    """Run each CFBD dataset in its own interpreter so memory is fully released."""
+def _run_scoped_commands(
+    label: str,
+    scopes: list[str],
+    command_for: Callable[[str], list[str]],
+    *,
+    timeout: int,
+    log,
+) -> list[str]:
+    failures: list[str] = []
+    total = len(scopes)
+    for index, scope in enumerate(scopes, start=1):
+        print(
+            f"        [{label}] {index}/{total} {scope} start "
+            f"parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()}",
+            file=log,
+            flush=True,
+        )
+        status, message, seconds = _run_command(
+            command_for(scope), timeout=timeout, log=log
+        )
+        print(
+            f"        [{label}] {index}/{total} {scope} {status} ({seconds}s) "
+            f"parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()} {message}",
+            file=log,
+            flush=True,
+        )
+        if status != "success":
+            failures.append(scope)
+    return failures
+
+
+def _run_cfbd_split(season: int, *, root: Path, timeout: int, log) -> dict[str, Any]:
+    """Run CFBD datasets independently, with the roster split one team at a time."""
     started = datetime.now(timezone.utc)
     failures: list[str] = []
+
     for dataset in CFBD_DATASET_STEPS:
         print(
             f"    [cfbd] {dataset} start parent_rss_mb={_rss_mb()} "
@@ -104,19 +167,56 @@ def _run_cfbd_split(season: int, *, timeout: int, log) -> dict[str, Any]:
             file=log,
             flush=True,
         )
-        status, message, seconds = _run_command(
-            ["sports_aggregator.cfb.dataset_cli", dataset, "--year", str(season)],
-            timeout=timeout,
-            log=log,
-        )
+
+        if dataset == "players":
+            teams = _fbs_teams(root)
+            if not teams:
+                status, message, seconds = _run_command(
+                    ["sports_aggregator.cfb.dataset_cli", "players", "--year", str(season)],
+                    timeout=timeout,
+                    log=log,
+                )
+                if status != "success":
+                    failures.append("players")
+            else:
+                scoped_failures = _run_scoped_commands(
+                    "roster",
+                    teams,
+                    lambda team: [
+                        "sports_aggregator.cfb.dataset_cli",
+                        "players",
+                        "--year",
+                        str(season),
+                        "--team",
+                        team,
+                    ],
+                    timeout=timeout,
+                    log=log,
+                )
+                status = "failed" if scoped_failures else "success"
+                message = (
+                    f"failed teams: {', '.join(scoped_failures[:8])}"
+                    if scoped_failures
+                    else f"{len(teams)} team rosters complete"
+                )
+                seconds = 0.0
+                if scoped_failures:
+                    failures.append("players")
+        else:
+            status, message, seconds = _run_command(
+                ["sports_aggregator.cfb.dataset_cli", dataset, "--year", str(season)],
+                timeout=timeout,
+                log=log,
+            )
+            if status != "success":
+                failures.append(dataset)
+
         print(
             f"    [cfbd] {dataset} {status} ({seconds}s) "
             f"parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()} {message}",
             file=log,
             flush=True,
         )
-        if status != "success":
-            failures.append(dataset)
 
     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
     return {
@@ -124,10 +224,57 @@ def _run_cfbd_split(season: int, *, timeout: int, log) -> dict[str, Any]:
         "status": "failed" if failures else "success",
         "message": (
             f"failed datasets: {', '.join(failures)}" if failures
-            else f"{len(CFBD_DATASET_STEPS)} isolated datasets complete"
+            else f"{len(CFBD_DATASET_STEPS)} datasets complete; roster team-scoped"
         ),
         "seconds": round(elapsed, 1),
         "optional": False,
+        "parent_rss_mb": _rss_mb(),
+        "child_peak_rss_mb": _children_rss_mb(),
+    }
+
+
+def _run_player_stats_split(
+    season: int, *, root: Path, timeout: int, log, optional: bool
+) -> dict[str, Any]:
+    """Run current player production one conference per Python interpreter."""
+    started = datetime.now(timezone.utc)
+    conferences = _conferences(root)
+    if not conferences:
+        status, message, seconds = _run_command(
+            ["sports_aggregator.cfb.cli", "sync-player-stats", "--year", str(season)],
+            timeout=timeout,
+            log=log,
+        )
+        failures = [] if status == "success" else ["all"]
+    else:
+        failures = _run_scoped_commands(
+            "player-stats",
+            conferences,
+            lambda conference: [
+                "sports_aggregator.cfb.cli",
+                "sync-player-stats",
+                "--year",
+                str(season),
+                "--conference",
+                conference,
+            ],
+            timeout=timeout,
+            log=log,
+        )
+        status = "failed" if failures else "success"
+        message = (
+            f"failed conferences: {', '.join(failures[:8])}"
+            if failures
+            else f"{len(conferences)} conferences complete"
+        )
+        seconds = round((datetime.now(timezone.utc) - started).total_seconds(), 1)
+
+    return {
+        "step": "cfbd-current-player-stats",
+        "status": status,
+        "message": message,
+        "seconds": seconds,
+        "optional": optional,
         "parent_rss_mb": _rss_mb(),
         "child_peak_rss_mb": _children_rss_mb(),
     }
@@ -137,6 +284,7 @@ def _run_low_memory_phase(
     phase: str,
     season: int,
     *,
+    root: Path,
     only: list[str] | None = None,
     timeout: int = 1800,
     log,
@@ -169,7 +317,11 @@ def _run_low_memory_phase(
                 "child_peak_rss_mb": _children_rss_mb(),
             }
         elif step.name == "cfbd-sync":
-            result = _run_cfbd_split(season, timeout=timeout, log=log)
+            result = _run_cfbd_split(season, root=root, timeout=timeout, log=log)
+        elif step.name == "cfbd-current-player-stats":
+            result = _run_player_stats_split(
+                season, root=root, timeout=timeout, log=log, optional=step.optional
+            )
         else:
             status, message, seconds = _run_command(step.command, timeout=timeout, log=log)
             result = {
@@ -241,7 +393,9 @@ def run_scheduled_refresh(
                 flush=True,
             )
             if phase_runner is None:
-                results = _run_low_memory_phase("refresh", season, only=only, log=log)
+                results = _run_low_memory_phase(
+                    "refresh", season, root=root, only=only, log=log
+                )
             else:
                 results = phase_runner("refresh", season, only=only)
 
