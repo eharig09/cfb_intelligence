@@ -43,17 +43,17 @@
 
 {% macro data_table(table, extra_class='') %}
     {%- if table.rows %}
-    {%- set mobile_cards = (table.columns | length) <= 9 %}
-    <div class="table-wrap {{ 'mobile-cards' if mobile_cards else 'mobile-scroll' }}"
+    {%- set mobile_compact = (table.columns | length) <= 9 %}
+    <div class="table-wrap {{ 'mobile-compact' if mobile_compact else 'mobile-scroll' }}"
          role="region" tabindex="0"
-         aria-label="{{ table.caption or ('Data table' if mobile_cards else 'Scrollable data table') }}">
+         aria-label="{{ table.caption or ('Compact data table' if mobile_compact else 'Scrollable data table') }}">
         {%- if table.caption or table.note %}
         <div class="table-caption">
             <strong>{{ table.caption or '' }}</strong>
             {%- if table.note %}<span>{{ table.note }}</span>{% endif %}
         </div>
         {%- endif %}
-        {%- if not mobile_cards %}<div class="mobile-scroll-note" aria-hidden="true">Swipe to see all columns &rarr;</div>{%- endif %}
+        {%- if not mobile_compact %}<div class="mobile-scroll-note" aria-hidden="true">Swipe to see all columns &rarr;</div>{%- endif %}
         <table class="data{{ ' dense' if table.dense }}{{ ' ' ~ extra_class if extra_class }}">
             <thead>
                 <tr>

@@ -41,7 +41,7 @@ class FormatTests(unittest.TestCase):
         self.assertFalse(Table(columns=[Column("a", "A")]))
         self.assertTrue(Table(columns=[Column("a", "A")], rows=[{"a": 1}]))
 
-    def test_compact_tables_render_as_labeled_mobile_cards(self):
+    def test_compact_tables_remain_mobile_data_tables(self):
         app = create_app({"TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False})
         template = app.jinja_env.from_string(
             '{% from "_tables.html" import data_table %}{{ data_table(table) }}')
@@ -50,7 +50,8 @@ class FormatTests(unittest.TestCase):
                 columns=[Column("team", "Team"), Column("record", "Record")],
                 rows=[{"team": "Michigan", "record": "10-2"}],
             ))
-        self.assertIn("mobile-cards", html)
+        self.assertIn("mobile-compact", html)
+        self.assertIn("<thead>", html)
         self.assertIn('data-label="Team"', html)
         self.assertIn('data-label="Record"', html)
 

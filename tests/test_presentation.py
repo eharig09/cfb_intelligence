@@ -195,8 +195,8 @@ class ResponsiveTests(unittest.TestCase):
     def test_phone_navigation_and_tabs_do_not_squeeze_content(self):
         self.assertIn(".site-header .nav { flex-wrap: wrap", self.css)
         self.assertIn(".tabs { display: grid; grid-template-columns: repeat(2", self.css)
-        self.assertIn(".table-wrap.mobile-cards", self.css)
-        self.assertIn("overflow: visible", self.css)
+        self.assertIn(".table-wrap.mobile-compact", self.css)
+        self.assertIn("overflow-x: auto", self.css)
         self.assertIn("width: max-content", self.css)
 
 

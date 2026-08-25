@@ -397,56 +397,23 @@ table.data td.advantage {
     table.data { font-size: .78rem; }
     table.data thead th, table.data tbody td { padding: 7px 7px; }
 
-    /* Most app tables are comparisons, schedules, or short leaderboards. On a
-       phone each record becomes a labeled card, preserving every value without
-       forcing the whole page sideways. Very wide stat matrices retain a local
-       swipe region below instead of widening the document. */
-    .table-wrap.mobile-cards {
-        overflow: visible; border: 0; background: transparent;
-        scrollbar-gutter: auto;
+    /* Structured information remains a real table on phones. Keep rows dense
+       and scannable; when a dataset genuinely needs more columns, scrolling is
+       confined to the table rather than widening the document. */
+    .table-wrap.mobile-compact {
+        overflow-x: auto; border: 1px solid var(--line); background: var(--paper);
+        scrollbar-gutter: stable;
     }
-    .mobile-cards .table-caption { border: 1px solid var(--line); }
-    .mobile-cards table.data,
-    .mobile-cards table.data tbody,
-    .mobile-cards table.data tfoot { display: block; width: 100%; min-width: 0; }
-    .mobile-cards table.data thead {
-        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-        overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    .mobile-compact table.data { width: 100%; min-width: max-content; font-size: .69rem; }
+    .mobile-compact table.data thead th {
+        padding: 6px 5px; font-size: .54rem; line-height: 1.15;
     }
-    .mobile-cards table.data tbody { display: grid; gap: 8px; }
-    .mobile-cards table.data tbody tr,
-    .mobile-cards table.data tfoot tr {
-        display: block; width: 100%; background: var(--paper);
-        border: 1px solid var(--line); border-left: 4px solid var(--line-strong);
-    }
-    .mobile-cards table.data tbody tr:hover { background: var(--paper); }
-    .mobile-cards table.data tbody td,
-    .mobile-cards table.data tfoot td {
-        display: grid; grid-template-columns: minmax(5.25rem, .72fr) minmax(0, 1.28fr);
-        gap: 8px; width: 100%; padding: 6px 9px; text-align: right;
-        white-space: normal; overflow-wrap: anywhere; word-break: normal;
-        border-bottom: 1px solid var(--line);
-    }
-    .mobile-cards table.data td.col-left.emphasis { white-space: normal; }
-    .mobile-cards table.data tbody td:last-child,
-    .mobile-cards table.data tfoot td:last-child { border-bottom: 0; }
-    .mobile-cards table.data td::before {
-        content: attr(data-label); color: var(--muted); font-size: .58rem;
-        font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
-        text-align: left; align-self: start; padding-top: 1px;
-    }
-    .mobile-cards table.data td .team-cell {
-        justify-self: end; justify-content: flex-end; min-width: 0;
-    }
-    .mobile-cards table.data td .team-cell a,
-    .mobile-cards table.data td .team-cell > span {
-        white-space: normal; overflow: visible; text-overflow: clip; text-align: right;
-    }
-    .mobile-cards table.data td .sub {
-        grid-column: 2; text-align: right; overflow-wrap: anywhere;
-    }
-    .mobile-cards table.data tfoot { margin-top: 8px; }
-    .mobile-cards table.data tfoot tr { border-left-color: var(--ink); }
+    .mobile-compact table.data tbody td,
+    .mobile-compact table.data tfoot td { padding: 6px 5px; }
+    .mobile-compact table.data .sub { font-size: .57rem; line-height: 1.25; }
+    .mobile-compact table.data .team-cell { gap: 4px; }
+    .mobile-compact table.data .team-logo { width: 17px; height: 17px; }
+    .mobile-compact table.data .team-rule { width: 2px; }
 
     .mobile-scroll-note {
         display: block; position: sticky; left: 0; width: fit-content;
