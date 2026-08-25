@@ -6,7 +6,8 @@ from datetime import datetime
 import os
 from zoneinfo import ZoneInfo
 
-from flask import Blueprint, abort, current_app, jsonify, render_template, request
+from flask import (Blueprint, Response, abort, current_app, jsonify,
+                   render_template, request, url_for)
 
 from sports_aggregator.catalog import get_league
 from sports_aggregator.social.roles import role_label
@@ -21,6 +22,8 @@ from sports_aggregator.cfb.history import (
     matchup_history, matchup_player_history, team_game_history,
     team_historical_stats, upcoming_player_opponent_history)
 from sports_aggregator.cfb.lines import game_lines, lines_by_game
+from sports_aggregator.cfb import meta as page_meta_for
+from sports_aggregator.cfb import syndication
 from sports_aggregator.cfb.search import search as search_entities
 from sports_aggregator.cfb.situations import game_situation
 from sports_aggregator.cfb.roster_production import projected_depth, team_production
@@ -238,8 +241,11 @@ def today():
     market = lines_by_game(repository, season)
     for game in slate:
         game['market'] = market.get(game['game_id']) or {}
+    national_stories = _story_repository().list_stories(limit=16)
     return render_template(
         "cfb_today.html",
+        meta=page_meta_for.today_meta(
+            season, game_count=len(slate), story_count=len(national_stories)),
         season=season,
         status=repository.status(season),
         rankings=rankings,
@@ -250,7 +256,7 @@ def today():
             _weekly_matchup_watches(repository, weekly_slate), season),
         nearest_week=nearest_week,
         conferences=repository.conferences(),
-        national_stories=_story_repository().list_stories(limit=16),
+        national_stories=national_stories,
         streams=_content_repository().source_streams(limit=8),
         content_summary=_content_repository().summary(),
         developments=_labelled_developments(_content_repository().top_developments(limit=16)),
@@ -281,6 +287,7 @@ def conference_preview(slug: str):
     games = _label_games(repository.conference_games(name, season, limit=24))
     return render_template(
         "cfb_conference.html",
+        meta=page_meta_for.conference_meta(conference, season, game_count=len(games)),
         season=season,
         conference=conference,
         conference_color=conference_color(name),
@@ -338,8 +345,14 @@ def team_preview(team_id: int):
                          "label": f"Upcoming ({current_schedule_year})"}]
     if prior_year is not None:
         schedule_options.append({"year": prior_year, "label": str(prior_year)})
+    next_game = next((game for game in selected_schedule
+                      if not game.get("completed")), None)
     return render_template(
         "cfb_team.html", **packet,
+        meta=page_meta_for.team_meta(
+            packet["team"], repository.brand_for(team_id), season,
+            record=(packet.get("metrics") or {}).get("record"),
+            next_game=next_game),
         **_team_tables(packet, season, schedule_year=schedule_year,
                        schedule_is_upcoming=schedule_is_upcoming,
                        stats_year=stats_year, stats_mode=stats_mode),
@@ -457,6 +470,8 @@ def player_preview(player_id: str):
         if player.get("team_id") else {"game": None, "performances": []})
     return render_template(
         "cfb_player.html", season=season, player=player,
+        meta=page_meta_for.player_meta(
+            player, repository.brand_for(player.get("team_id"))),
         identity=team_identity(_repository().brand_for(player.get("team_id"))),
         stat_groups=views.player_stat_groups(player),
         pff_table=views.pff_grades_table(
@@ -523,6 +538,10 @@ def game_preview(game_id: int):
     }
     return render_template(
         "cfb_game.html",
+        meta=page_meta_for.game_meta(
+            game, away_identity, home_identity,
+            weather=weather_for_game(repository, game_id),
+            story_count=len(direct_stories)),
         away_brand=away_identity,
         home_brand=home_identity,
         situation=game_situation(repository, game, elo),
@@ -1038,3 +1057,84 @@ def resolve_team_api():
         return jsonify({"error": "q must contain at least two characters"}), 400
     matches = _repository().resolve_team_alias(query)
     return jsonify({"query": query, "count": len(matches), "matches": matches})
+
+
+# ---------------------------------------------------------------------------
+# Syndication and discovery
+#
+# These endpoints are the only outbound surfaces. Feeds link to the original
+# publisher rather than back into this site, so attribution survives the hop;
+# see sports_aggregator.cfb.syndication for the reasoning.
+# ---------------------------------------------------------------------------
+
+def _absolute(path: str) -> str:
+    return request.url_root.rstrip("/") + path
+
+
+def _xml(body: str, content_type: str) -> Response:
+    response = Response(body, mimetype=content_type)
+    response.headers["Cache-Control"] = "public, max-age=900"
+    return response
+
+
+@cfb_pages.get("/college-football/feed.xml")
+def national_feed():
+    stories = _story_repository().list_stories(limit=syndication.RSS_ITEM_LIMIT)
+    return _xml(syndication.rss_feed(
+        title="College Football Reporting",
+        description="Clustered college-football reporting, attributed to the "
+                    "publisher that filed it.",
+        link=_absolute("/college-football/"),
+        self_url=_absolute("/college-football/feed.xml"),
+        items=syndication.story_items(stories),
+    ), "application/rss+xml")
+
+
+@cfb_pages.get("/college-football/teams/<int:team_id>/feed.xml")
+def team_feed(team_id: int):
+    team = _repository().get_team(team_id)
+    if team is None:
+        abort(404)
+    stories = _story_repository().list_stories(
+        team_id=team_id, limit=syndication.RSS_ITEM_LIMIT)
+    return _xml(syndication.rss_feed(
+        title=f"{team['school']} Reporting",
+        description=f"Reporting linked to {team['school']}, attributed to the "
+                    "publisher that filed it.",
+        link=_absolute(f"/college-football/teams/{team_id}/"),
+        self_url=_absolute(f"/college-football/teams/{team_id}/feed.xml"),
+        items=syndication.story_items(stories),
+    ), "application/rss+xml")
+
+
+@cfb_pages.get("/sitemap.xml")
+def sitemap_xml():
+    repository = _repository()
+    season = _current_season()
+    entries: list[dict] = [
+        {"loc": _absolute("/college-football/"), "changefreq": "hourly", "priority": 1.0},
+        {"loc": _absolute("/college-football/draft/"), "changefreq": "weekly", "priority": 0.6},
+    ]
+    for conference in repository.conferences():
+        if conference.get("slug"):
+            entries.append({
+                "loc": _absolute(f"/college-football/conferences/{conference['slug']}/"),
+                "changefreq": "daily", "priority": 0.7})
+    for team_id in sorted(repository.team_brands()):
+        entries.append({"loc": _absolute(f"/college-football/teams/{team_id}/"),
+                        "changefreq": "daily", "priority": 0.8})
+    # Only games that exist on the schedule; a preview for an unplayed game is
+    # the most valuable page here, so it outranks the static sections.
+    for game in repository.upcoming_games(season, limit=400):
+        entries.append({"loc": _absolute(f"/college-football/games/{game['game_id']}/"),
+                        "lastmod": game.get("start_date"),
+                        "changefreq": "daily", "priority": 0.9})
+    return _xml(syndication.sitemap(entries), "application/xml")
+
+
+@cfb_pages.get("/robots.txt")
+def robots_txt():
+    response = Response(syndication.robots(_absolute("/sitemap.xml")),
+                        mimetype="text/plain")
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response

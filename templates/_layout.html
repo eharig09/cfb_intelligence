@@ -4,7 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}College Football{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='cfb.css', v='20260824-edge-scale') }}">
+
+    {#- Sharing and discovery metadata. Pages pass a `meta` packet built by
+        sports_aggregator.cfb.meta so the card, the canonical URL, and the
+        structured data are assembled from stored data in one place. Pages that
+        do not build one still get a description and a valid card. -#}
+    {%- set share = meta | default(none) %}
+    {%- set share_title = share.title if share else self.title() %}
+    {%- set share_description = share.description if share else
+        "College football intelligence: ranked matchups, team and player pages, and reporting attributed to its source." %}
+    {%- set canonical = (request.url_root.rstrip('/') + share.path) if share and share.path else request.base_url %}
+    <meta name="description" content="{{ share_description }}">
+    <link rel="canonical" href="{{ canonical }}">
+
+    <meta property="og:type" content="{{ share.kind if share else 'website' }}">
+    <meta property="og:site_name" content="Sports News Aggregator">
+    <meta property="og:title" content="{{ share_title }}">
+    <meta property="og:description" content="{{ share_description }}">
+    <meta property="og:url" content="{{ canonical }}">
+    {%- if share and share.image %}
+    <meta property="og:image" content="{{ share.image }}">
+    <meta name="twitter:card" content="summary">
+    {%- else %}
+    <meta name="twitter:card" content="summary">
+    {%- endif %}
+    <meta name="twitter:title" content="{{ share_title }}">
+    <meta name="twitter:description" content="{{ share_description }}">
+    {%- if share and share.structured_data %}
+    <script type="application/ld+json">{{ share.structured_data | tojson }}</script>
+    {%- endif %}
+
+    <link rel="alternate" type="application/rss+xml"
+          title="College Football reporting"
+          href="{{ url_for('cfb.national_feed') }}">
+    {%- block feeds %}{% endblock %}
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='cfb.css', v='20260825-share') }}">
     {% block head %}{% endblock %}
 </head>
 <body{% block body_attrs %}{% endblock %}>
@@ -23,6 +58,6 @@
 {% block content %}{% endblock %}
 </main>
 {% block scripts %}{% endblock %}
-<script src="{{ url_for('static', filename='cfb_tables.js', v='20260824-tab-state') }}" defer></script>
+<script src="{{ url_for('static', filename='cfb_tables.js', v='20260825-a11y') }}" defer></script>
 </body>
 </html>
