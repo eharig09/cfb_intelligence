@@ -5,27 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ league.name }} News | Sports News Aggregator</title>
     <style>
-        :root { --accent: {{ league.accent_color }}; --ink: #17202a; --muted: #667085; --line: #e4e7ec; }
+        :root { --accent: {{ league.accent_color }}; --ink: #07182c; --muted: #5f6b7a; --line: #d5dde7; }
         * { box-sizing: border-box; }
-        body { margin: 0; background: #f8f7f3; color: var(--ink); font-family: Inter, Arial, sans-serif; }
-        header { background: var(--accent); color: white; padding: 16px 24px; }
+        body { margin: 0; background: #f2f5f9; color: var(--ink); font-family: "Segoe UI", Arial, sans-serif; }
+        header { background: var(--ink); color: white; padding: 16px 24px; border-bottom: 4px solid var(--accent); }
         .header-inner, main { max-width: 1040px; margin: 0 auto; }
         .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
         header a { color: white; text-decoration: none; font-weight: 700; }
         main { padding: 44px 20px 64px; }
         .eyebrow { color: var(--accent); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; font-size: .75rem; }
-        h1 { font-family: Georgia, serif; font-size: clamp(2.4rem, 7vw, 5rem); margin: 8px 0 12px; line-height: .95; }
+        h1 { font-family: "Arial Narrow", "Segoe UI", Arial, sans-serif; font-size: clamp(2.4rem, 7vw, 5rem); margin: 8px 0 12px; line-height: .95; letter-spacing: -.04em; }
         .dek { color: var(--muted); max-width: 720px; font-size: 1.05rem; line-height: 1.65; }
         .meta { color: var(--muted); font-size: .82rem; margin: 24px 0; }
         .notice { border-left: 4px solid #d97706; background: #fffbeb; padding: 12px 16px; margin: 20px 0; }
         .feed { display: grid; gap: 14px; }
-        article { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
-        article h2 { font-family: Georgia, serif; font-size: 1.35rem; line-height: 1.25; margin: 0 0 8px; }
+        article { background: white; border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 20px; }
+        article h2 { font-family: "Arial Narrow", "Segoe UI", Arial, sans-serif; font-size: 1.35rem; line-height: 1.25; margin: 0 0 8px; }
         article h2 a { color: var(--ink); text-decoration: none; }
         article h2 a:hover { color: var(--accent); }
         .source { color: var(--accent); font-weight: 800; }
         .summary { color: var(--muted); line-height: 1.55; margin: 10px 0 0; }
-        .empty { background: white; border: 1px solid var(--line); border-radius: 14px; padding: 28px; }
+        .empty { background: white; border: 1px solid var(--line); padding: 28px; }
     </style>
 </head>
 <body>

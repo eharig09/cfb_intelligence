@@ -90,6 +90,23 @@ class FormatTests(unittest.TestCase):
         self.assertIn('class="col-right col-key-value num advantage"', html)
         self.assertIn('title="Comparison edge"', html)
 
+    def test_comparison_scale_is_compact_and_accessibly_labeled(self):
+        app = create_app({"TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False})
+        template = app.jinja_env.from_string(
+            '{% from "_tables.html" import data_table %}{{ data_table(table) }}')
+        row = {
+            "edge": "Michigan", "edge_scale_position": "72.0",
+            "edge_scale_left": "50.0", "edge_scale_width": "22.0",
+            "edge_scale_side": "home",
+            "edge_scale_label": "Wisconsin left, Michigan right; Michigan holds the edge",
+        }
+        with app.test_request_context():
+            html = template.render(table=Table(
+                columns=[Column("edge", "Edge")], rows=[row]))
+        self.assertIn('class="comparison-scale scale-home"', html)
+        self.assertIn('--edge-position:72.0%', html)
+        self.assertIn('aria-label="Wisconsin left, Michigan right; Michigan holds the edge"', html)
+
 
 class StatLineTests(unittest.TestCase):
     def test_long_form_rows_collapse_into_one_row_per_season(self):
@@ -242,6 +259,7 @@ class ViewTableTests(unittest.TestCase):
         self.assertEqual(points["home_offense_class"], "advantage")
         self.assertEqual(points["away_defense_class"], "advantage")
         self.assertEqual(points["edge"], "Even")
+        self.assertIn("% better", points["home_offense_sub"])
 
     def test_box_score_groups_follow_offense_defense_special_teams_order(self):
         rows = []

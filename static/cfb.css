@@ -9,21 +9,24 @@
    breakpoint adds structure rather than clawing it back. */
 
 :root {
-    --ink: #17130f;
-    --muted: #6b625a;
-    --cream: #f5f0e7;
-    --paper: #fffdf8;
-    --rust: #9a3412;
-    --gold: #d4a72c;
-    --line: #ddd4c6;
-    --line-strong: #c3b7a4;
-    --zebra: #faf6ee;
-    --hover: #f2ebdf;
+    --ink: #07182c;
+    --muted: #5f6b7a;
+    --cream: #f2f5f9;
+    --paper: #ffffff;
+    --accent: #1473e6;
+    --rust: var(--accent);
+    --gold: #f6b73c;
+    --line: #d5dde7;
+    --line-strong: #aeb9c7;
+    --zebra: #f7f9fc;
+    --hover: #edf4fc;
     --green: #166534;
     --blue: #1d4ed8;
     --red: #991b1b;
     --edge: #3f7652;
     --edge-soft: #edf4ee;
+    --display-font: "Arial Narrow", "Roboto Condensed", "Segoe UI", Arial, sans-serif;
+    --body-font: "Segoe UI", Arial, Helvetica, sans-serif;
 
     --team: var(--rust);
     --team-fill: var(--rust);
@@ -41,9 +44,12 @@ html { -webkit-text-size-adjust: 100%; }
 
 body {
     margin: 0;
-    background: var(--cream);
+    background:
+        radial-gradient(circle at 100% 0,
+            color-mix(in srgb, var(--team) 5%, transparent), transparent 32rem),
+        var(--cream);
     color: var(--ink);
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: var(--body-font);
 }
 
 /* Ingested text can contain unbroken URLs that would widen the page. Break
@@ -59,14 +65,14 @@ img { max-width: 100%; }
 .site-header { background: var(--ink); padding: 11px var(--pad); border-bottom: 3px solid var(--team); }
 .site-header > div, main { max-width: var(--shell); margin: 0 auto; }
 .site-header a { color: #fff; text-decoration: none; font-weight: 800; }
-.site-header .tagline { display: none; color: #d7c8b5; font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; }
+.site-header .tagline { display: none; color: #b9c7d8; font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; }
 .site-header .nav { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
 .header-search { flex: 0 0 auto; }
 .header-search input {
     width: 8.5rem; padding: 6px 9px; font-size: .78rem;
-    border: 1px solid #49423b; background: #241e18; color: #fff;
+    border: 1px solid #52647a; background: #10253e; color: #fff;
 }
-.header-search input::placeholder { color: #8c8178; }
+.header-search input::placeholder { color: #9aabbd; }
 .header-search input:focus { outline: 2px solid var(--team); width: 12rem; }
 @media (min-width: 860px) { .header-search input { width: 12rem; } }
 
@@ -78,14 +84,14 @@ code { overflow-wrap: anywhere; }
     color: var(--rust); font-weight: 900; text-transform: uppercase;
     letter-spacing: .12em; font-size: .66rem;
 }
-h1 { font: 700 clamp(1.75rem, 6vw, 3.2rem)/1.02 Georgia, serif; margin: 6px 0 8px; }
+h1 { font: 800 clamp(1.75rem, 6vw, 3.2rem)/1 var(--display-font); letter-spacing: -.035em; margin: 6px 0 8px; }
 h1, h2, h3 { overflow-wrap: anywhere; }
-.dek { color: var(--muted); font: .92rem/1.5 Georgia, serif; max-width: 68ch; }
+.dek { color: var(--muted); font: .92rem/1.5 var(--body-font); max-width: 68ch; }
 .meta { color: var(--muted); font-size: .72rem; line-height: 1.5; }
 
 .section { margin-top: 26px; }
 .section > h2, .section-title h2 {
-    font: 700 clamp(1.3rem, 3.4vw, 1.75rem) Georgia, serif; margin: 0 0 8px;
+    font: 800 clamp(1.3rem, 3.4vw, 1.75rem)/1.05 var(--display-font); letter-spacing: -.02em; margin: 0 0 8px;
     border-bottom: 2px solid var(--ink); padding-bottom: 7px;
 }
 .section-title { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
@@ -99,15 +105,15 @@ h1, h2, h3 { overflow-wrap: anywhere; }
     padding: 15px; color: var(--muted); font-size: .82rem;
 }
 .badge, .chip {
-    display: inline-block; background: #eee5d8; padding: 2px 6px;
+    display: inline-block; background: #edf1f6; padding: 2px 6px;
     font-size: .62rem; margin: 4px 3px 0 0;
 }
 
 /* Key figures. Two across on a phone, six on a desktop. */
 .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); background: var(--ink); color: #fff; margin: 14px 0 4px; }
-.fact { padding: 9px 11px; border-right: 1px solid #49423b; border-bottom: 1px solid #49423b; }
-.fact b { display: block; font: 700 1.15rem/1.2 Georgia, serif; font-variant-numeric: tabular-nums; }
-.fact span { color: #d7c8b5; font-size: .58rem; text-transform: uppercase; letter-spacing: .06em; }
+.fact { padding: 9px 11px; border-right: 1px solid #34475d; border-bottom: 1px solid #34475d; }
+.fact b { display: block; font: 800 1.15rem/1.2 var(--display-font); font-variant-numeric: tabular-nums; }
+.fact span { color: #b9c7d8; font-size: .58rem; text-transform: uppercase; letter-spacing: .06em; }
 
 .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 
@@ -116,7 +122,7 @@ h1, h2, h3 { overflow-wrap: anywhere; }
 .team-bar { border-left: 6px solid var(--team); padding-left: 14px; }
 .team-head { display: flex; align-items: center; gap: 12px; }
 .team-head img { width: 44px; height: 44px; object-fit: contain; flex: 0 0 auto; }
-.team-head .team-name { font: 700 1.15rem Georgia, serif; }
+.team-head .team-name { font: 800 1.15rem var(--display-font); }
 .team-head .team-name a { text-decoration: none; }
 
 .conference-tag {
@@ -151,9 +157,9 @@ h1, h2, h3 { overflow-wrap: anywhere; }
 .table-caption {
     display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px;
     padding: 8px 11px; border-bottom: 1px solid var(--line);
-    background: linear-gradient(90deg, #eee5d8, #f7f2e9);
+    background: linear-gradient(90deg, #e8eef6, #f7f9fc);
 }
-.table-caption strong { font: 700 .9rem Georgia, serif; }
+.table-caption strong { font: 800 .9rem var(--display-font); letter-spacing: -.01em; }
 .table-caption span { color: var(--muted); font-size: .66rem; }
 
 table.data {
@@ -167,29 +173,29 @@ table.data {
 
 table.data thead th {
     position: sticky; top: 0; z-index: 1;
-    background: #e8dfd2;
-    color: #4d453d;
+    background: #e7edf4;
+    color: #344257;
     font-size: .63rem; font-weight: 800;
     text-transform: uppercase; letter-spacing: .05em;
     padding: 8px 9px;
-    border-bottom: 2px solid #a99b87;
+    border-bottom: 2px solid #9daaba;
     white-space: nowrap;
 }
 table.data thead th[title] { cursor: help; }
 
 table.data tbody td {
-    padding: 8px 9px; border-bottom: 1px solid #e6ded2; vertical-align: top;
+    padding: 8px 9px; border-bottom: 1px solid #e3e8ef; vertical-align: top;
     overflow-wrap: normal; word-break: keep-all;
 }
 /* Names and schools stay on one line and ellipsize rather than stacking. */
 table.data td.col-left.emphasis { white-space: nowrap; }
-table.data tbody tr:nth-child(even) { background: #fbf8f2; }
-table.data tbody tr:hover { background: #f5eee2; }
+table.data tbody tr:nth-child(even) { background: #f8fafc; }
+table.data tbody tr:hover { background: var(--hover); }
 table.data tbody tr:last-child td { border-bottom: 0; }
 
 table.data tfoot td {
     padding: 8px 9px; border-top: 2px solid var(--line-strong);
-    font-weight: 800; background: #f0e8db;
+    font-weight: 800; background: #edf2f7;
 }
 
 table.data .col-right { text-align: right; }
@@ -263,11 +269,11 @@ table.data td.state-departed .sub { color: var(--red); }
     display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
     padding: 9px 11px; background: var(--ink); color: #fff;
 }
-.stream-column-head strong { font: 700 .95rem Georgia, serif; }
-.stream-column-head span { color: #d7c8b5; font-size: .66rem; font-variant-numeric: tabular-nums; }
+.stream-column-head strong { font: 800 .95rem var(--display-font); }
+.stream-column-head span { color: #b9c7d8; font-size: .66rem; font-variant-numeric: tabular-nums; }
 .stream-column-note {
     margin: 0; padding: 6px 11px; color: var(--muted); font-size: .64rem;
-    border-bottom: 1px solid var(--line); background: #f0e8db;
+    border-bottom: 1px solid var(--line); background: #edf2f7;
 }
 .stream-entry { padding: 9px 11px; border-bottom: 1px solid var(--line); }
 .stream-entry:last-child { border-bottom: 0; }
@@ -284,7 +290,7 @@ table.data td.state-departed .sub { color: var(--red); }
 .stream-team {
     display: inline-flex; align-items: center; gap: 4px;
     font-size: .62rem; font-weight: 700; padding: 2px 5px;
-    background: #eee5d8; border-left: 3px solid var(--row-team, var(--line-strong));
+    background: #edf1f6; border-left: 3px solid var(--row-team, var(--line-strong));
 }
 .stream-team img { width: 13px; height: 13px; object-fit: contain; }
 .stream-source { color: var(--muted); font-size: .62rem; }
@@ -293,7 +299,7 @@ table.data td.state-departed .sub { color: var(--red); }
 .situation { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
 @media (min-width: 780px) { .situation { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); } }
 .situation-card { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--gold); padding: 12px 14px; }
-.situation-card h3 { font: 700 .95rem Georgia, serif; margin: 0 0 6px; }
+.situation-card h3 { font: 800 .95rem var(--display-font); margin: 0 0 6px; }
 .situation-card p { margin: 0; font-size: .78rem; line-height: 1.5; }
 .situation-card .meta { margin-top: 5px; }
 .situation-list { margin: 6px 0 0; padding-left: 16px; font-size: .76rem; line-height: 1.55; }
@@ -317,7 +323,7 @@ table.data td.state-departed .sub { color: var(--red); }
 .story-entry-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 5px; color: var(--muted); font-size: .63rem; }
 .story-team {
     display: inline-flex; align-items: center; gap: 4px;
-    background: #eee5d8; padding: 2px 6px; font-size: .62rem; font-weight: 700;
+    background: #edf1f6; padding: 2px 6px; font-size: .62rem; font-weight: 700;
     text-decoration: none; border-left: 3px solid var(--row-team, var(--team));
 }
 .story-team img { width: 13px; height: 13px; object-fit: contain; }
@@ -328,11 +334,11 @@ table.data td.state-departed .sub { color: var(--red); }
 .tabs button {
     font: 700 .7rem/1 Arial, sans-serif; text-transform: uppercase; letter-spacing: .05em;
     padding: 8px 11px; border: 1px solid var(--line); border-radius: 5px 5px 2px 2px;
-    background: #f3ede3; color: #5d554d; cursor: pointer; min-height: 34px;
+    background: #eef2f7; color: #556274; cursor: pointer; min-height: 34px;
 }
-.tabs button:hover { background: #ebe1d3; color: var(--ink); }
+.tabs button:hover { background: #e4ebf3; color: var(--ink); }
 .tabs button[aria-selected="true"] {
-    background: var(--paper); color: var(--ink); border-color: #b8aa96;
+    background: var(--paper); color: var(--ink); border-color: #aab6c5;
     box-shadow: inset 0 -3px var(--rust); font-weight: 900;
 }
 .tabpanel[hidden] { display: none; }
@@ -340,7 +346,7 @@ table.data td.state-departed .sub { color: var(--red); }
 /* Every shared data table is sortable without changing its server-side default. */
 table.data th[data-sortable="true"] { cursor: pointer; user-select: none; white-space: nowrap; }
 table.data th[aria-sort="ascending"], table.data th[aria-sort="descending"] {
-    background: #ded2c1; color: var(--ink); box-shadow: inset 0 -3px var(--rust);
+    background: #dce5ef; color: var(--ink); box-shadow: inset 0 -3px var(--rust);
 }
 table.data th[aria-sort="ascending"]::after,
 table.data th[aria-sort="descending"]::after { color: var(--rust); }
@@ -354,7 +360,7 @@ table.data th[data-sortable="true"]:focus-visible { outline: 2px solid var(--rus
 /* Compact, shareable server-rendered controls for season/stat perspectives. */
 .metric-switch {
     display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin: 9px 0;
-    padding: 6px; width: fit-content; max-width: 100%; background: #f0e8db;
+    padding: 6px; width: fit-content; max-width: 100%; background: #edf2f7;
     border: 1px solid var(--line);
 }
 .metric-switch-label {
@@ -367,16 +373,37 @@ table.data th[data-sortable="true"]:focus-visible { outline: 2px solid var(--rus
 }
 .metric-switch a.active { background: var(--ink); border-color: var(--ink); color: #fff; }
 table.data td.advantage {
-    background: linear-gradient(90deg, var(--edge-soft), transparent 82%);
     color: var(--ink); font-weight: 850;
-    box-shadow: inset 0 -2px var(--edge);
 }
-table.data td.advantage::after {
-    content: ""; display: inline-block; width: 5px; height: 5px;
-    margin-left: 6px; vertical-align: .12em; border-radius: 50%;
-    background: var(--edge); box-shadow: 0 0 0 2px #fff;
+table.data td.advantage::before {
+    content: ""; display: inline-block; width: 2px; height: .92em;
+    margin-right: 5px; vertical-align: -.08em; border-radius: 1px;
+    background: var(--edge);
 }
 
+/* A compact diverging scale supplements the explicit gap without tinting the
+   data cells. Left represents the first/away unit and right the second/home. */
+.comparison-scale {
+    --edge-color: var(--edge);
+    display: block; position: relative; width: 76px; height: 9px;
+    margin-top: 4px; background: linear-gradient(var(--line-strong), var(--line-strong)) center / 100% 2px no-repeat;
+}
+.comparison-scale::before {
+    content: ""; position: absolute; left: 50%; top: 1px; width: 1px; height: 7px;
+    background: #748296; transform: translateX(-.5px);
+}
+.comparison-scale-fill {
+    position: absolute; left: var(--edge-left); top: 3px;
+    width: var(--edge-width); height: 3px; background: var(--edge-color);
+}
+.comparison-scale-marker {
+    position: absolute; left: var(--edge-position); top: 1px;
+    width: 7px; height: 7px; border: 1px solid #fff; border-radius: 50%;
+    background: var(--edge-color); box-shadow: 0 0 0 1px var(--edge-color);
+    transform: translateX(-50%);
+}
+.comparison-scale.scale-away { --edge-color: var(--away-team, var(--edge)); }
+.comparison-scale.scale-home { --edge-color: var(--home-team, var(--team)); }
 /* Comparison tables read as team blocks instead of one uninterrupted matrix.
    Rails carry identity without tinting the values or reducing contrast. */
 .matchup-page table.data :is(.col-key-away-offense, .col-key-away) {
@@ -398,10 +425,10 @@ table.data td.advantage::after {
     .col-key-home-offense, .col-key-home-defense, .col-key-home
 ) { box-shadow: inset 0 3px var(--home-team, var(--team)); }
 .matchup-page table.data :is(.col-key-edge, .col-key-advantage) {
-    border-left: 2px solid #8f816d;
+    border-left: 2px solid #8593a4;
 }
 .matchup-page table.data thead :is(.col-key-edge, .col-key-advantage) {
-    box-shadow: inset 0 3px #8f816d;
+    box-shadow: inset 0 3px #8593a4;
 }
 
 /* Page-level navigation is activated only on phones by cfb_tables.js. */
@@ -465,7 +492,7 @@ table.data td.advantage::after {
     .mobile-scroll-note {
         display: block; position: sticky; left: 0; width: fit-content;
         padding: 5px 8px; color: var(--muted); font-size: .6rem;
-        background: #f0e8db; border-right: 1px solid var(--line);
+        background: #edf2f7; border-right: 1px solid var(--line);
     }
     .mobile-scroll table.data { font-size: .74rem; }
     .mobile-scroll table.data thead th,
@@ -485,12 +512,12 @@ table.data td.advantage::after {
         display: grid; grid-auto-flow: column; grid-auto-columns: minmax(5.3rem, 1fr);
         position: sticky; top: 0; z-index: 20; width: 100%; margin: 12px 0 4px;
         overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none;
-        background: var(--ink); border: 1px solid var(--ink); box-shadow: 0 3px 9px #1c171133;
+        background: var(--ink); border: 1px solid var(--ink); box-shadow: 0 3px 9px #07182c33;
     }
     .mobile-page-tabs::-webkit-scrollbar { display: none; }
     .mobile-page-tabs button {
         min-height: 42px; padding: 7px 8px; border: 0; border-right: 1px solid #ffffff26;
-        background: transparent; color: #d7c8b5; font: 800 .66rem/1.15 Arial, sans-serif;
+        background: transparent; color: #b9c7d8; font: 800 .66rem/1.15 var(--display-font);
         text-transform: uppercase; letter-spacing: .045em; white-space: nowrap;
     }
     .mobile-page-tabs button[aria-selected="true"] {
@@ -504,7 +531,7 @@ table.data td.advantage::after {
     .matchup-page main > .eyebrow { text-align: center; margin-top: 2px; }
     .matchup-page .mobile-page-tabs {
         border-radius: 7px; margin-top: 10px;
-        box-shadow: 0 5px 14px #17130f30;
+        box-shadow: 0 5px 14px #07182c30;
     }
     .matchup-page [data-mobile-tab-panel]:not([hidden]) {
         background: color-mix(in srgb, var(--paper) 94%, var(--team));
@@ -535,12 +562,12 @@ table.data td.advantage::after {
         display: grid; grid-auto-flow: column; grid-auto-columns: minmax(5.3rem, 1fr);
         position: sticky; top: 0; z-index: 20; width: 100%; margin: 12px 0 4px;
         overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none;
-        background: var(--ink); border: 1px solid var(--ink); box-shadow: 0 3px 9px #1c171133;
+        background: var(--ink); border: 1px solid var(--ink); box-shadow: 0 3px 9px #07182c33;
     }
     .mobile-page-tabs::-webkit-scrollbar { display: none; }
     .mobile-page-tabs button {
         min-height: 42px; padding: 7px 8px; border: 0; border-right: 1px solid #ffffff26;
-        background: transparent; color: #d7c8b5; font: 800 .66rem/1.15 Arial, sans-serif;
+        background: transparent; color: #b9c7d8; font: 800 .66rem/1.15 var(--display-font);
         text-transform: uppercase; letter-spacing: .045em; white-space: nowrap;
     }
     .mobile-page-tabs button[aria-selected="true"] {
@@ -551,13 +578,13 @@ table.data td.advantage::after {
 
     .matchup-page main > .eyebrow { text-align: center; margin-top: 2px; }
     .matchup-page .mobile-page-tabs {
-        border-radius: 7px; margin-top: 10px; box-shadow: 0 5px 14px #17130f30;
+        border-radius: 7px; margin-top: 10px; box-shadow: 0 5px 14px #07182c30;
     }
     .matchup-page [data-mobile-tab-panel]:not([hidden]) {
         background: color-mix(in srgb, var(--paper) 94%, var(--team));
         border: 1px solid var(--line); border-top: 4px solid var(--team);
         border-radius: 7px; padding: 12px 10px; margin-top: 12px;
-        box-shadow: 0 5px 16px #2b211512; animation: mobile-panel-in .16s ease-out;
+        box-shadow: 0 5px 16px #07182c12; animation: mobile-panel-in .16s ease-out;
     }
     .matchup-page [data-mobile-tab-panel] > h2 {
         font-size: 1.18rem; padding-bottom: 6px; margin-bottom: 7px;

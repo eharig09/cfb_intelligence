@@ -22,7 +22,7 @@ _LEAGUES = MappingProxyType(
                 "National college-football headlines through a normalized, "
                 "provider-independent feed. Team and conference views can build on this base."
             ),
-            accent_color="#9a3412",
+            accent_color="#1473e6",
             feeds=(
                 FeedConfig(
                     name="ESPN",

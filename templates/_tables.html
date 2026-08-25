@@ -74,6 +74,7 @@
                     {%- set href = row.get(column.key ~ '_url') %}
                     {%- set sub = row.get(column.key ~ '_sub') %}
                     {%- set state_class = row.get(column.key ~ '_class') %}
+                    {%- set scale_position = row.get(column.key ~ '_scale_position') %}
                     <td class="col-{{ column.align }} col-key-{{ column.key | replace('_', '-') }}
                         {{- ' num' if column.numeric }}
                         {{- ' emphasis' if column.emphasis }}
@@ -91,6 +92,14 @@
                         </span>
                         {%- elif href %}<a href="{{ href }}"{{ external(href) }}>{{ text }}</a>{% else %}{{ text }}{% endif %}
                         {%- if sub %}<span class="sub">{{ sub }}</span>{% endif %}
+                        {%- if scale_position is not none %}
+                        <span class="comparison-scale scale-{{ row.get(column.key ~ '_scale_side', 'neutral') }}"
+                              style="--edge-position:{{ scale_position }}%;--edge-left:{{ row.get(column.key ~ '_scale_left', 50) }}%;--edge-width:{{ row.get(column.key ~ '_scale_width', 0) }}%;{% if color %}--edge-color:{{ color }};{% endif %}"
+                              role="img" aria-label="{{ row.get(column.key ~ '_scale_label', 'Centered comparison scale') }}">
+                            <i class="comparison-scale-fill" aria-hidden="true"></i>
+                            <i class="comparison-scale-marker" aria-hidden="true"></i>
+                        </span>
+                        {%- endif %}
                     </td>
                     {%- endfor %}
                 </tr>

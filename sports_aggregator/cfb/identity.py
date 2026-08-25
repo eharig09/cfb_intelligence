@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 
-#: Editorial conference palette. Values are chosen for separation on a cream
+#: Editorial conference palette. Values are chosen for separation on a cool-gray
 #: page, not as official league marks.
 CONFERENCE_COLORS: dict[str, str] = {
     "SEC": "#12457b",
@@ -32,10 +32,10 @@ CONFERENCE_COLORS: dict[str, str] = {
     "FBS Independents": "#5a4a3a",
 }
 
-DEFAULT_CONFERENCE_COLOR = "#6b625a"
+DEFAULT_CONFERENCE_COLOR = "#41556d"
 
 #: Page background these colors are checked against.
-PAGE_BACKGROUND = (245, 240, 231)
+PAGE_BACKGROUND = (242, 245, 249)
 
 
 def conference_color(conference: str | None) -> str:
@@ -98,7 +98,7 @@ def foreground_for(color: str | None) -> str:
     rgb = _channels(color)
     if rgb is None:
         return "#ffffff"
-    return "#17130f" if contrast_ratio(rgb, (255, 255, 255)) < 3.2 else "#ffffff"
+    return "#0b1728" if contrast_ratio(rgb, (255, 255, 255)) < 3.2 else "#ffffff"
 
 
 def team_identity(brand: dict[str, Any] | None) -> dict[str, Any]:

@@ -72,7 +72,7 @@ class IdentityTests(unittest.TestCase):
         self.assertIsNotNone(accent)
         self.assertGreaterEqual(
             contrast_ratio((int(accent[1:3], 16), int(accent[3:5], 16),
-                            int(accent[5:7], 16)), (245, 240, 231)), 3.0)
+                            int(accent[5:7], 16)), (242, 245, 249)), 3.0)
 
     def test_a_pale_gold_keeps_its_hue_rather_than_becoming_grey(self):
         accent = readable_accent("#FFCB05")
@@ -83,7 +83,7 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(readable_accent("#00274C"), "#00274c")
 
     def test_foreground_flips_to_dark_text_on_a_light_fill(self):
-        self.assertEqual(foreground_for("#FFCB05"), "#17130f")
+        self.assertEqual(foreground_for("#FFCB05"), "#0b1728")
         self.assertEqual(foreground_for("#00274C"), "#ffffff")
 
     def test_missing_colors_do_not_raise(self):
@@ -161,6 +161,7 @@ class ContextSeparationTests(unittest.TestCase):
 
     def test_pages_carry_contrast_checked_identity_variables(self):
         body = self.app.test_client().get("/college-football/teams/68/").get_data(as_text=True)
+        self.assertRegex(body, r"--accent:#[0-9a-f]{6}")
         self.assertRegex(body, r"--team:#[0-9a-f]{6}")
         self.assertRegex(body, r"--conference:#[0-9a-f]{6}")
         # A single hash only; the double-hash bug produced invalid CSS.
@@ -205,6 +206,21 @@ class ResponsiveTests(unittest.TestCase):
         self.assertIn(".col-key-home-offense", self.css)
         self.assertIn("var(--home-team", self.css)
         self.assertIn(".col-key-edge", self.css)
+
+    def test_national_theme_uses_cool_broadcast_surfaces(self):
+        self.assertIn("--ink: #07182c", self.css)
+        self.assertIn("--cream: #f2f5f9", self.css)
+        self.assertIn("--accent: #1473e6", self.css)
+        self.assertIn("--display-font:", self.css)
+
+    def test_comparison_edges_avoid_cell_fills_and_use_a_centered_scale(self):
+        start = self.css.index("table.data td.advantage {")
+        rule = self.css[start:self.css.index("}", start)]
+        self.assertNotIn("background:", rule)
+        self.assertNotIn("box-shadow:", rule)
+        self.assertIn("table.data td.advantage::before", self.css)
+        self.assertIn(".comparison-scale", self.css)
+        self.assertIn("left: 50%", self.css)
 
 
 class PlayerMatchupTests(unittest.TestCase):

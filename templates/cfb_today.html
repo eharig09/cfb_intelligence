@@ -8,7 +8,7 @@
     .hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; border-bottom: 3px solid var(--ink); padding-bottom: 14px; }
     .hero h1 { font-size: clamp(2rem, 4.5vw, 3.2rem); margin: 4px 0 6px; }
     .hero .dek { font-size: .92rem; max-width: 640px; }
-    .season { font-family: Georgia, serif; font-size: 1.6rem; color: var(--rust); }
+    .season { font-family: var(--display-font); font-size: 1.6rem; font-weight: 800; color: var(--rust); }
     .notice { padding: 12px 15px; background: #fff7d6; border-left: 5px solid var(--gold); margin: 14px 0 0; font-size: .85rem; line-height: 1.5; }
 
     /* Three panels across on a wide screen: the slate, what happened, and who
@@ -18,8 +18,8 @@
     @media (min-width: 1300px) { .briefing { grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.14fr) minmax(0, .92fr); } }
     .panel { background: var(--paper); border: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; }
     .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 12px; background: var(--ink); color: #fff; }
-    .panel-head strong { font: 700 1.02rem Georgia, serif; }
-    .panel-head span { color: #d7c8b5; font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; }
+    .panel-head strong { font: 800 1.02rem var(--display-font); }
+    .panel-head span { color: #b9c7d8; font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; }
     .panel-body { overflow-y: auto; max-height: 31rem; }
     .panel .table-wrap { border: 0; margin: 0; }
     .games-table-display { display: none; }
@@ -51,7 +51,7 @@
         position: relative; display: grid; place-items: center;
         width: 68px; height: 68px; margin: 0 auto 7px; border-radius: 50%;
         background: #fff; border: 3px solid var(--side);
-        box-shadow: 0 4px 10px #17130f20, 0 0 0 4px color-mix(in srgb, var(--side) 10%, transparent);
+        box-shadow: 0 4px 10px #07182c20, 0 0 0 4px color-mix(in srgb, var(--side) 10%, transparent);
     }
     .watch-team-mark img { width: 53px; height: 53px; object-fit: contain; }
     .watch-team-mark b { color: var(--side); font-size: .74rem; }
@@ -63,13 +63,13 @@
     }
     .watch-team-name {
         display: block; overflow: hidden; text-overflow: ellipsis;
-        font: 700 .92rem/1.15 Georgia, serif; white-space: nowrap;
+        font: 800 .92rem/1.15 var(--display-font); white-space: nowrap;
     }
     .watch-vs {
         display: grid; place-items: center; width: 42px; height: 42px;
         border-radius: 50%; background: var(--ink); color: #fff;
         font-size: .68rem; font-weight: 900; letter-spacing: .05em;
-        box-shadow: 0 3px 8px #17130f2b;
+        box-shadow: 0 3px 8px #07182c2b;
     }
     .watch-card-bottom {
         display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px;
@@ -105,7 +105,7 @@
     .why dt { color: var(--rust); font-weight: 900; text-transform: uppercase; font-size: .57rem; letter-spacing: .06em; margin-top: 6px; }
     .why dt:first-child { margin-top: 0; }
     .why dd { margin: 2px 0 0; color: var(--ink); }
-    .why code { background: #eee5d8; padding: 0 3px; }
+    .why code { background: #edf1f6; padding: 0 3px; }
 
     .conference-strip { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
     .conference-chip { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--rust); padding: 5px 9px; font-size: .72rem; font-weight: 700; text-decoration: none; }

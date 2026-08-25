@@ -17,7 +17,7 @@
 </style>
 {% endblock %}
 
-{% block body_attrs %} style="--team:{{ conference_color }};--conference:{{ conference_color }}"{% endblock %}
+{% block body_attrs %} style="--accent:{{ conference_color }};--team:{{ conference_color }};--conference:{{ conference_color }}"{% endblock %}
 
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.today') }}">&larr; College Football Today</a>

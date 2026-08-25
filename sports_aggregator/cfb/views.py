@@ -890,6 +890,32 @@ ADVANCED_METRICS = (
 )
 
 
+def _scale_visual(gap: float, left_wins: bool, *,
+                  full_scale_gap: float = 30.0) -> dict[str, float]:
+    offset = min(45.0, gap / full_scale_gap * 45.0)
+    position = 50.0 - offset if left_wins else 50.0 + offset
+    return {
+        "gap": gap,
+        "position": position,
+        "left": min(50.0, position),
+        "width": abs(position - 50.0),
+    }
+
+
+def _comparison_visual(left: Any, right: Any, left_wins: bool, *,
+                       full_scale_gap: float = 30.0) -> dict[str, float]:
+    """Place a comparison on a compact, symmetric left/right scale.
+
+    The percentage gap uses the mean magnitude as its denominator so swapping
+    the teams never changes the displayed separation. The visual saturates at
+    ``full_scale_gap`` to keep extreme outliers from distorting every row.
+    """
+    left_value, right_value = float(left), float(right)
+    baseline = max((abs(left_value) + abs(right_value)) / 2, 1.0)
+    gap = abs(left_value - right_value) / baseline * 100
+    return _scale_visual(gap, left_wins, full_scale_gap=full_scale_gap)
+
+
 def matchup_metrics_table(game: dict[str, Any]) -> Table:
     """Advanced metrics for both teams, one metric per row.
 
@@ -944,6 +970,21 @@ def matchup_watch_table(report: dict[str, Any], brands_by_school: dict[str, dict
         brand_cell(entry, "attack", (brands_by_school or {}).get(item["attack_team"]))
         brand_cell(entry, "defend", (brands_by_school or {}).get(item["defend_team"]))
         brand_cell(entry, "advantage", (brands_by_school or {}).get(item["advantage"]))
+        if item["advantage"]:
+            attack_wins = item["advantage"] == item["attack_team"]
+            visual = _comparison_visual(item["attack_grade"], item["defend_grade"],
+                                        attack_wins, full_scale_gap=20.0)
+            winner_key = "attack_grade" if attack_wins else "defend_grade"
+            entry[f"{winner_key}_class"] = "advantage"
+            entry[f"{winner_key}_sub"] = f"{item['margin']:.1f}-point edge"
+            entry["advantage_scale_position"] = f"{visual['position']:.1f}"
+            entry["advantage_scale_left"] = f"{visual['left']:.1f}"
+            entry["advantage_scale_width"] = f"{visual['width']:.1f}"
+            entry["advantage_scale_label"] = (
+                f"{item['attack_team']} attack on the left, "
+                f"{item['defend_team']} defense on the right; "
+                f"{item['advantage']} holds a {item['margin']:.1f}-point edge"
+            )
         rows.append(entry)
     return Table(
         columns=[
@@ -952,8 +993,6 @@ def matchup_watch_table(report: dict[str, Any], brands_by_school: dict[str, dict
             Column(key="attack_grade", label="Grade", format="f1"),
             Column(key="defend", label="Defending unit", align="left"),
             Column(key="defend_grade", label="Grade", format="f1"),
-            Column(key="margin", label="Gap", format="f1",
-                   title="Difference in graded units, in grade points"),
             Column(key="advantage", label="Edge", align="left"),
             Column(key="interest", label="Watch", format="f1",
                    title="How interesting this matchup is: quality, separation, and mutual strength"),
@@ -1209,6 +1248,7 @@ def matchup_summary_table(game: dict[str, Any], away_metrics: dict[str, Any],
                "away_defense": a.get("defense"), "home_offense": h.get("offense"),
                "home_defense": h.get("defense")}
         away_edges = home_edges = 0
+        signed_gaps = []
         for suffix, higher in (("offense", a.get("offense_higher", h.get("offense_higher", True))),
                                ("defense", a.get("defense_higher", h.get("defense_higher", False)))):
             av, hv = row[f"away_{suffix}"], row[f"home_{suffix}"]
@@ -1217,10 +1257,26 @@ def matchup_summary_table(game: dict[str, Any], away_metrics: dict[str, Any],
             away_wins = av > hv if higher else av < hv
             winner = "away" if away_wins else "home"
             row[f"{winner}_{suffix}_class"] = "advantage"
+            visual = _comparison_visual(av, hv, away_wins)
+            row[f"{winner}_{suffix}_sub"] = f"{visual['gap']:.1f}% better"
+            signed_gaps.append(-visual["gap"] if away_wins else visual["gap"])
             away_edges += int(away_wins); home_edges += int(not away_wins)
         row["edge"] = (game["away_team"] if away_edges > home_edges else
                        game["home_team"] if home_edges > away_edges else "Even")
         row["edge_class"] = "advantage" if row["edge"] != "Even" else "pending"
+        if row["edge"] != "Even" and signed_gaps:
+            average_gap = sum(abs(gap) for gap in signed_gaps) / len(signed_gaps)
+            home_wins = row["edge"] == game["home_team"]
+            visual = _scale_visual(average_gap, not home_wins, full_scale_gap=30.0)
+            row["edge_sub"] = f"{average_gap:.1f}% average gap"
+            row["edge_scale_position"] = f"{visual['position']:.1f}"
+            row["edge_scale_left"] = f"{visual['left']:.1f}"
+            row["edge_scale_width"] = f"{visual['width']:.1f}"
+            row["edge_scale_side"] = "home" if home_wins else "away"
+            row["edge_scale_label"] = (
+                f"{game['away_team']} on the left, {game['home_team']} on the right; "
+                f"{row['edge']} holds the edge"
+            )
         fmt = a.get("format") or h.get("format") or "f1"
         for key in ("away_offense", "away_defense", "home_offense", "home_defense"):
             row[key] = format_value(row[key], fmt)
@@ -1233,7 +1289,7 @@ def matchup_summary_table(game: dict[str, Any], away_metrics: dict[str, Any],
         Column("home_defense", f"{game['home_team']} opp", align="right"),
         Column("edge", "Edge", align="left", emphasis=True)], rows=rows, dense=True,
         caption=f"{season} production · {'per game' if mode == 'per_game' else 'totals'}",
-        note="A subtle underline and dot mark the better offense or defense in each comparison",
+        note="A slim tick marks the better value; the edge scale runs away team left to home team right",
         empty=f"No comparable {season} totals are stored.")
 
 
@@ -1262,6 +1318,18 @@ def opponent_quality_table(away_team: str, away: dict[str, Any], home_team: str,
                "edge_class": "advantage" if edge != "Even" else "pending"}
         if edge == away_team: row["away_class"] = "advantage"
         if edge == home_team: row["home_class"] = "advantage"
+        if edge != "Even":
+            visual = _comparison_visual(av, hv, away_wins)
+            winner_key = "away" if away_wins else "home"
+            row[f"{winner_key}_sub"] = f"{visual['gap']:.1f}% better"
+            row["edge_sub"] = f"{visual['gap']:.1f}% difference"
+            row["edge_scale_position"] = f"{visual['position']:.1f}"
+            row["edge_scale_left"] = f"{visual['left']:.1f}"
+            row["edge_scale_width"] = f"{visual['width']:.1f}"
+            row["edge_scale_side"] = "away" if away_wins else "home"
+            row["edge_scale_label"] = (
+                f"{away_team} on the left, {home_team} on the right; {edge} holds the edge"
+            )
         row["away"] = format_value(av, fmt)
         row["home"] = format_value(hv, fmt)
         rows.append(row)
@@ -1270,7 +1338,7 @@ def opponent_quality_table(away_team: str, away: dict[str, Any], home_team: str,
                           Column("home", home_team, align="right"),
                           Column("edge", "Tougher slate", align="left", emphasis=True)],
                  rows=rows, caption=f"{season} opponent quality", dense=True,
-                 note="Pregame Elo is at kickoff; latest Elo, CORE, and AP are shown separately",
+                 note="Pregame Elo is at kickoff; the centered scale runs away team left to home team right",
                  empty=f"No completed {season} opponents have model coverage.")
 
 

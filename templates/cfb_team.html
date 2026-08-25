@@ -10,7 +10,7 @@
     .logo { width: 64px; height: 64px; object-fit: contain; flex: 0 0 auto; }
     @media (min-width: 860px) { .logo { width: 92px; height: 92px; } }
     .depth-unit { margin: 20px 0; }
-    .depth-unit > h3 { font: 700 1.4rem Georgia, serif; margin: 0 0 10px; }
+    .depth-unit > h3 { font: 800 1.4rem var(--display-font); margin: 0 0 10px; }
     .stories { display: grid; gap: 9px; }
     .stories a { text-decoration: none; }
     .stream-label { display: flex; justify-content: space-between; gap: 8px; }
@@ -29,7 +29,7 @@
 </style>
 {% endblock %}
 
-{% block body_attrs %} style="--team:{{ identity.accent }};--team-fill:{{ identity.fill }};--team-on-fill:{{ identity.on_fill }};--conference:{{ identity.conference_color }}"{% endblock %}
+{% block body_attrs %} style="--accent:{{ identity.accent }};--team:{{ identity.accent }};--team-fill:{{ identity.fill }};--team-on-fill:{{ identity.on_fill }};--conference:{{ identity.conference_color }}"{% endblock %}
 
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.conference_preview', slug=team.conference | lower | replace(' ', '-'), season=season) if team.conference else url_for('cfb.today', season=season) }}">&larr; {{ team.conference or 'College Football Today' }}</a>

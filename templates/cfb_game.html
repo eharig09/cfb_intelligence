@@ -10,7 +10,7 @@
         display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
         align-items: stretch; gap: 0; margin: 18px 0 8px; position: relative;
         border: 1px solid var(--line); background: var(--paper); overflow: hidden;
-        box-shadow: 0 8px 24px #2b21151a;
+        box-shadow: 0 8px 24px #07182c1a;
     }
     .scoreboard .team {
         min-width: 0; padding: 17px 14px 15px; text-align: center;
@@ -22,7 +22,7 @@
         position: relative; display: flex; align-items: center; justify-content: center;
         width: 78px; height: 78px; margin: 0 auto 8px; border-radius: 50%;
         background: #fff; border: 3px solid color-mix(in srgb, var(--team) 70%, #fff);
-        box-shadow: 0 5px 13px #17130f24, 0 0 0 5px color-mix(in srgb, var(--team) 10%, transparent);
+        box-shadow: 0 5px 13px #07182c24, 0 0 0 5px color-mix(in srgb, var(--team) 10%, transparent);
     }
     .matchup-logo img { width: 62px; height: 62px; object-fit: contain; }
     .matchup-logo-fallback { color: var(--team); font: 900 1.05rem Arial, sans-serif; }
@@ -32,7 +32,7 @@
         background: var(--ink); color: #fff; border: 2px solid var(--paper);
         font-size: .67rem; font-weight: 900; font-variant-numeric: tabular-nums;
     }
-    .scoreboard .team-name { font: 700 clamp(1rem, 2.6vw, 1.3rem)/1.08 Georgia, serif; }
+    .scoreboard .team-name { font: 800 clamp(1rem, 2.6vw, 1.3rem)/1.05 var(--display-font); }
     .scoreboard .team-name a { text-decoration: none; }
     .scoreboard .team-name a:hover { text-decoration: underline; }
     .matchup-record { margin-top: 5px; font-size: .72rem; font-weight: 800; }
@@ -43,7 +43,7 @@
         box-shadow: 0 0 0 1px #ffffff18;
     }
     .matchup-versus strong { font: 900 .78rem Arial, sans-serif; letter-spacing: .06em; }
-    .matchup-versus span { color: #d7c8b5; font-size: .52rem; margin-top: 3px; text-transform: uppercase; }
+    .matchup-versus span { color: #b9c7d8; font-size: .52rem; margin-top: 3px; text-transform: uppercase; }
     .matchup-event-line {
         display: flex; justify-content: center; flex-wrap: wrap; gap: 5px 12px;
         margin: 0 0 8px; color: var(--muted); font-size: .7rem;
@@ -56,16 +56,16 @@
     .split { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
     @media (min-width: 780px) { .split { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .matchup-summary { display: flex; gap: 18px; flex-wrap: wrap; margin: 0 0 13px; font-size: .8rem; color: var(--muted); }
-    .matchup-summary b { font: 700 1.15rem Georgia, serif; color: var(--rust); margin-right: 4px; }
+    .matchup-summary b { font: 800 1.15rem var(--display-font); color: var(--rust); margin-right: 4px; }
     .content-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); align-items: start; }
     @media (min-width: 780px) { .content-grid { grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); } }
     .content-layer { background: var(--paper); border: 1px solid var(--line); min-width: 0; }
     .content-layer h3 {
         display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
-        font: 700 .95rem Georgia, serif; margin: 0; padding: 8px 12px;
+        font: 800 .95rem var(--display-font); margin: 0; padding: 8px 12px;
         background: var(--ink); color: #fff;
     }
-    .content-layer h3 span { color: #d7c8b5; font-size: .66rem; font-variant-numeric: tabular-nums; }
+    .content-layer h3 span { color: #b9c7d8; font-size: .66rem; font-variant-numeric: tabular-nums; }
     .content-item { border-top: 1px solid var(--line); padding: 9px 12px; }
     .content-item:first-of-type { border-top: 0; }
     .content-item-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 3px; }
@@ -92,7 +92,7 @@
 </style>
 {% endblock %}
 
-{% block body_attrs %} class="matchup-page" style="--team:{{ home_brand.accent }};--away-team:{{ away_brand.accent }};--home-team:{{ home_brand.accent }};--conference:{{ home_brand.conference_color }}"{% endblock %}
+{% block body_attrs %} class="matchup-page" style="--accent:{{ home_brand.accent }};--team:{{ home_brand.accent }};--away-team:{{ away_brand.accent }};--home-team:{{ home_brand.accent }};--conference:{{ home_brand.conference_color }}"{% endblock %}
 
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.today') }}">&larr; College Football Today</a>
