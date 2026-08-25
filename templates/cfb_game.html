@@ -227,12 +227,12 @@
         <span class="metric-switch-label">Season</span>
         {% for year in stats_year_options %}
         <a class="{{ 'active' if year == stats_year }}"
-           href="{{ url_for('cfb.game_preview', game_id=game.game_id, stats_year=year, stats_mode=stats_mode) }}">{{ year }}</a>
+           href="{{ url_for('cfb.game_preview', game_id=game.game_id, stats_year=year, stats_mode=stats_mode) }}#tab-stats">{{ year }}</a>
         {% endfor %}
         <span class="metric-switch-label">View</span>
         {% for mode, label in [('per_game', 'Per game'), ('total', 'Totals')] %}
         <a class="{{ 'active' if mode == stats_mode }}"
-           href="{{ url_for('cfb.game_preview', game_id=game.game_id, stats_year=stats_year, stats_mode=mode) }}">{{ label }}</a>
+           href="{{ url_for('cfb.game_preview', game_id=game.game_id, stats_year=stats_year, stats_mode=mode) }}#tab-stats">{{ label }}</a>
         {% endfor %}
     </nav>
     {{ data_table(totals_table) }}

@@ -147,18 +147,30 @@
 document.querySelectorAll('.tabset').forEach(function (tabset) {
     var tabs = Array.prototype.slice.call(tabset.querySelectorAll('[role="tab"]'));
     var panels = Array.prototype.slice.call(tabset.querySelectorAll('.tabpanel'));
-    function select(index) {
+    var storageKey = 'cfb-table-tab:' + window.location.pathname + ':' +
+                     (tabset.dataset.tabset || 'table');
+    function select(index, persist) {
+        if (!Number.isInteger(index) || index < 0 || index >= tabs.length) index = 0;
         tabs.forEach(function (tab, position) {
             tab.setAttribute('aria-selected', position === index ? 'true' : 'false');
+            tab.tabIndex = position === index ? 0 : -1;
         });
         panels.forEach(function (panel, position) {
             panel.hidden = position !== index;
         });
+        if (persist) {
+            try { window.sessionStorage.setItem(storageKey, String(index)); } catch (error) {}
+        }
     }
     tabs.forEach(function (tab, index) {
-        tab.addEventListener('click', function () { select(index); });
+        tab.addEventListener('click', function (event) {
+            event.preventDefault();
+            select(index, true);
+        });
     });
-    if (tabs.length) { select(0); }
+    var initial = 0;
+    try { initial = Number(window.sessionStorage.getItem(storageKey) || 0); } catch (error) {}
+    if (tabs.length) { select(initial, false); }
 });
 </script>
 {% endmacro %}

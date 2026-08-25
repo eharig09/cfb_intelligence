@@ -68,6 +68,16 @@ class FormatTests(unittest.TestCase):
         self.assertIn("mobile-scroll", html)
         self.assertIn("Swipe to see all columns", html)
 
+    def test_table_tabs_cancel_navigation_and_restore_the_selection(self):
+        app = create_app({"TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False})
+        template = app.jinja_env.from_string(
+            '{% from "_tables.html" import tabs_script %}{{ tabs_script() }}')
+        with app.test_request_context("/college-football/teams/1/"):
+            html = template.render()
+        self.assertIn("event.preventDefault()", html)
+        self.assertIn("window.sessionStorage.getItem(storageKey)", html)
+        self.assertIn("window.sessionStorage.setItem(storageKey", html)
+
 
 class StatLineTests(unittest.TestCase):
     def test_long_form_rows_collapse_into_one_row_per_season(self):

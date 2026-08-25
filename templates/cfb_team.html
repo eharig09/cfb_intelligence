@@ -82,7 +82,7 @@
             <nav class="schedule-switch" aria-label="Schedule season">
                 {% for option in schedule_options %}
                 <a class="{{ 'active' if option.year == schedule_year else '' }}"
-                   href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=option.year) }}">{{ option.label }}</a>
+                   href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=option.year) }}#tab-overview">{{ option.label }}</a>
                 {% endfor %}
             </nav>
             {{ data_table(schedule_table) }}
@@ -171,12 +171,12 @@
                 <span class="metric-switch-label">Season</span>
                 {% for year in stats_year_options %}
                 <a class="{{ 'active' if year == stats_year }}"
-                   href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=schedule_year, stats_year=year, stats_mode=stats_mode) }}">{{ year }}</a>
+                   href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=schedule_year, stats_year=year, stats_mode=stats_mode) }}#tab-stats">{{ year }}</a>
                 {% endfor %}
                 <span class="metric-switch-label">View</span>
                 {% for mode, label in [('per_game', 'Per game'), ('total', 'Totals')] %}
                 <a class="{{ 'active' if mode == stats_mode }}"
-                   href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=schedule_year, stats_year=stats_year, stats_mode=mode) }}">{{ label }}</a>
+                   href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=schedule_year, stats_year=stats_year, stats_mode=mode) }}#tab-stats">{{ label }}</a>
                 {% endfor %}
             </nav>
             {{ data_table(team_stats_table) }}
