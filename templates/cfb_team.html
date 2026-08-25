@@ -122,12 +122,25 @@
         </section>
 
         <section class="section" data-mobile-tab-panel="roster">
+            <h2>Signing class</h2>
+            <div class="section-note">
+                Recruiting ratings are opinion about players who have not taken a college
+                snap. Class points sum the ratings of the best 20 signees, so the score
+                measures quality rather than class size, and the components are listed
+                below to be checked.
+            </div>
+            {{ data_table(signing_class_table) }}
+        </section>
+
+        <section class="section" data-mobile-tab-panel="roster">
             <h2>Experience-first depth board</h2>
             <div class="section-note">
                 Roster architecture, not an official depth chart. Ordering favors production
                 signals, continuity, and class experience. An arriving player carries the
                 production he earned elsewhere, so a proven transfer is not buried behind a
-                returning reserve.
+                returning reserve, and a highly rated signee is not buried behind a backup
+                who barely played. The Prior production column names which evidence placed
+                each player.
             </div>
             {% for unit in depth_units %}
             <div class="depth-unit">

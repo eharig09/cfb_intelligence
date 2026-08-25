@@ -15,6 +15,9 @@ import unittest
 
 from sports_aggregator.cfb.models import Player, Team
 from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb.recruiting import (
+    evidence_basis, evidence_score, rating_strength,
+)
 from sports_aggregator.cfb.unit_continuity import (
     PRIOR_CREDIBILITY_GAMES, blend_unit_grade, unit_continuity,
     units_with_continuity,
@@ -200,3 +203,62 @@ class ContinuityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RecruitingEvidenceTests(unittest.TestCase):
+    """Ranking a recruiting rating against a college grade.
+
+    The `recruits` table was synced and read by nothing, so a five-star ranked
+    tenth in the country sat fourth on his own depth chart behind three backups
+    in the 7th, 12th and 29th percentiles of graded players, and never appeared
+    under key arrivals because transfers were ordered ahead of signees by
+    category rather than by quality.
+    """
+
+    def test_an_elite_recruit_outranks_a_barely_graded_backup(self):
+        """The case that was visibly wrong on the page."""
+        five_star = evidence_score(pff_interest=None, recruit_rating=0.9939)
+        backup = evidence_score(pff_interest=30.3, recruit_rating=None)
+        self.assertGreater(five_star, backup)
+
+    def test_a_genuine_starter_still_outranks_an_elite_recruit(self):
+        """The case that would be wrong if rating simply won."""
+        starter = evidence_score(pff_interest=85.0, recruit_rating=None)
+        five_star = evidence_score(pff_interest=None, recruit_rating=0.9939)
+        self.assertGreater(starter, five_star)
+
+    def test_production_wins_at_equal_standing(self):
+        """Projection is discounted; a grade describes someone who has played."""
+        rating = 0.875                      # mid-range recruiting
+        graded = evidence_score(pff_interest=50.0, recruit_rating=None)
+        projected = evidence_score(pff_interest=None, recruit_rating=rating)
+        self.assertAlmostEqual(rating_strength(rating), 0.5, places=3)
+        self.assertGreater(graded, projected)
+
+    def test_a_player_keeps_his_better_evidence_rather_than_an_average(self):
+        both = evidence_score(pff_interest=20.0, recruit_rating=0.99)
+        rating_only = evidence_score(pff_interest=None, recruit_rating=0.99)
+        self.assertEqual(both, rating_only)
+
+    def test_a_player_with_no_evidence_scores_zero(self):
+        self.assertEqual(evidence_score(pff_interest=None, recruit_rating=None), 0.0)
+        self.assertIsNone(evidence_basis(pff_interest=None, recruit_rating=None,
+                                         stars=None))
+
+    def test_the_basis_names_which_evidence_placed_him(self):
+        self.assertEqual(
+            evidence_basis(pff_interest=None, recruit_rating=0.99, stars=5),
+            "5-star rating")
+        self.assertEqual(
+            evidence_basis(pff_interest=80.0, recruit_rating=0.80, stars=3),
+            "prior-season grade")
+
+    def test_the_basis_does_not_call_a_transfer_a_signee(self):
+        """Transfers carry a high-school rating too."""
+        self.assertNotIn("signee",
+                         evidence_basis(pff_interest=None, recruit_rating=0.9, stars=4))
+
+    def test_ratings_outside_the_expected_band_are_clamped(self):
+        self.assertEqual(rating_strength(0.5), 0.0)
+        self.assertEqual(rating_strength(1.5), 1.0)
+        self.assertEqual(rating_strength(None), 0.0)

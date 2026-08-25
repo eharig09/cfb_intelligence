@@ -28,6 +28,7 @@ from sports_aggregator.cfb import syndication
 from sports_aggregator.page_cache import cached_page
 from sports_aggregator.cfb.search import search as search_entities
 from sports_aggregator.cfb.situations import game_situation
+from sports_aggregator.cfb.recruiting import signing_class
 from sports_aggregator.cfb.roster_production import projected_depth, team_production
 from sports_aggregator.cfb.transfers import notable_transfers, rank_transfers
 from sports_aggregator.cfb.unit_continuity import (
@@ -454,6 +455,8 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
             movements["departures"][:20], season, arrivals=False
         ),
         "quality_table": views.quality_cards_table(packet["quality"]),
+        "signing_class_table": views.signing_class_table(
+            signing_class(_repository(), packet["team"]["team_id"], season)),
         "team_stats_table": views.team_summary_table(selected_metrics, stats_year, stats_mode),
         "opponent_quality_table": views.team_opponent_quality_table(
             packet["team"]["school"], opponent_quality, schedule_year,

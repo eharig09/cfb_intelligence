@@ -805,6 +805,74 @@ def pff_position_groups_table(groups: Sequence[dict[str, Any]]) -> Table:
 # Roster construction
 # --------------------------------------------------------------------------
 
+def signing_class_table(signing: dict[str, Any]) -> Table:
+    """A signing class, best first, with what each signee brings.
+
+    The class summary sits in the caption rather than in a separate panel: a
+    reader wants the headline and the names in one glance, not two blocks
+    separated by whitespace.
+    """
+    rows = [{
+        "name": row.get("name"),
+        "position": row.get("position"),
+        "stars": row.get("stars"),
+        "rating": row.get("rating"),
+        "ranking": row.get("ranking"),
+        "home": " ".join(part for part in (row.get("home_city"),
+                                           row.get("home_state")) if part) or None,
+    } for row in (signing.get("signees") or [])]
+
+    rank = signing.get("national_rank")
+    points = signing.get("points")
+    note_parts = []
+    if rank and signing.get("classes_ranked"):
+        note_parts.append(f"#{rank} of {signing['classes_ranked']} classes")
+    if points is not None:
+        note_parts.append(f"{points:g} pts from the top "
+                          f"{signing.get('scored_class_size', 20)}")
+    counts = signing.get("counts") or {}
+    tiers = " · ".join(f"{counts[key]} {key}" for key in
+                       ("5-star", "4-star", "3-star") if counts.get(key))
+    if tiers:
+        note_parts.append(tiers)
+
+    return Table(
+        columns=[
+            Column(key="name", label="Signee", align="left", emphasis=True),
+            Column(key="position", label="Pos", align="left"),
+            Column(key="stars", label="★", format="int",
+                   title="Recruiting stars"),
+            Column(key="rating", label="Rating", format="f3",
+                   title="CFBD composite rating"),
+            Column(key="ranking", label="Natl", format="rank", align="right",
+                   title="National ranking within the class"),
+            Column(key="home", label="From", align="left"),
+        ],
+        rows=rows,
+        caption=f"{signing.get('season')} signing class ({signing.get('signee_count', 0)})",
+        note="; ".join(note_parts) or None,
+        empty="No signing class is stored for this team.",
+        dense=True,
+    )
+
+
+def _recruit_summary(player: dict[str, Any]) -> str | None:
+    """What a player with no college record brings instead.
+
+    Previously "N-star signee" and nothing else, which said no more than the
+    class-year column already did. The national ranking is the part that
+    distinguishes the tenth-best recruit in the country from the four hundredth.
+    """
+    stars = player.get("recruit_stars")
+    if not stars:
+        return None
+    rating = player.get("recruit_rating")
+    detail = f"{stars}-star"
+    if rating:
+        detail += f" · {rating:.3f}"
+    return detail
+
+
 def depth_chart_tables(depth_chart: dict[str, Any], season: int,
                        projection: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Position groups as tables so class, size, and origin line up per player."""
@@ -832,8 +900,7 @@ def depth_chart_tables(depth_chart: dict[str, Any], season: int,
                     "weight": player.get("weight"),
                     "origin": origin,
                     "production": (evidence.get("summary")
-                                   or (f"{player['recruit_stars']}-star signee"
-                                       if player.get("recruit_stars") else None)),
+                                    or _recruit_summary(player)),
                     "pff_interest": player.get("pff_interest"),
                     "pff_interest_sub": (player.get("pff_graded_at")
                                          if player.get("pff_graded_at")

@@ -13,14 +13,33 @@
 
     /* Three panels across on a wide screen: the slate, what happened, and who
        to watch. They collapse to two and then one as width runs out. */
-    .briefing { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 18px; }
-    @media (min-width: 900px) { .briefing { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-    @media (min-width: 1300px) { .briefing { grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.14fr) minmax(0, .92fr); } }
+    /* Panels size to their own content. Stretching them to the tallest in the
+       row left blank space below the shorter ones, inside their own border. */
+    .briefing { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px;
+                margin-top: 18px; align-items: start; }
+    @media (min-width: 900px) {
+        .briefing { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+        /* Three panels in two columns left the third alone on its own row with
+           an empty cell beside it, which is most of a laptop screen of nothing.
+           It spans instead, and the draft table is wide enough to want it. */
+        .briefing > .panel:nth-child(3) { grid-column: 1 / -1; }
+    }
+    /* Three across as soon as the columns are usable, rather than holding the
+       two-column arrangement until 1300px. */
+    @media (min-width: 1180px) {
+        .briefing { grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.14fr) minmax(0, .92fr); }
+        .briefing > .panel:nth-child(3) { grid-column: auto; }
+    }
     .panel { background: var(--paper); border: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; }
     .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 12px; background: var(--surface-strong); color: var(--on-strong); }
     .panel-head strong { font: 800 1.02rem var(--display-font); }
     .panel-head span { color: var(--on-strong-muted); font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; }
     .panel-body { overflow-y: auto; max-height: 31rem; }
+    /* Spanning the full width, the draft panel has room to show more before
+       scrolling; capping it at the column height wasted the width it gained. */
+    @media (min-width: 900px) and (max-width: 1179px) {
+        .briefing > .panel:nth-child(3) .panel-body { max-height: 22rem; }
+    }
     .panel .table-wrap { border: 0; margin: 0; }
     .games-table-display { display: none; }
     .watch-cards { display: grid; gap: 10px; padding: 10px; }

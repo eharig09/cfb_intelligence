@@ -1812,9 +1812,17 @@ class CFBRepository:
                 "draft_pick": drafted["overall_pick"] if drafted else None,
                 "interest_score": interest.get(name), "evidence": evidence,
             })
+        # Movement type is a label, not a rank. Sorting on it first meant every
+        # transfer preceded every signee whatever their quality, so a three-star
+        # transfer rated 0.85 was shown while a five-star signee rated 0.99 --
+        # the tenth-ranked recruit in the country -- fell to twenty-first and
+        # off the end of the table. Both ratings come from CFBD on the same
+        # scale, so they compare directly; type only breaks a tie, where a
+        # player with college snaps is the better-evidenced of the two.
         arrivals.sort(key=lambda row: (
+            -(row["rating"] or 0),
             {"TRANSFER_IN": 0, "SIGNEE": 1}.get(row["movement_type"], 2),
-            -(row["rating"] or 0), row["name"]))
+            row["name"]))
         departures.sort(key=lambda row: (
             {"DRAFTED": 0, "TRANSFER_OUT": 1, "ELIGIBILITY_DEPARTURE": 2}.get(row["movement_type"], 3),
             -(row["interest_score"] or 0), row["name"],
@@ -1826,6 +1834,10 @@ class CFBRepository:
                 "arrivals": arrivals, "departures": departures, "counts": counts}
 
     def team_depth_chart(self, team_id: int, season: int) -> dict[str, Any]:
+        # Imported here rather than at module scope: cfb.recruiting depends on
+        # this class, so a top-level import would be circular.
+        from sports_aggregator.cfb.recruiting import evidence_score
+
         team = self.get_team(team_id)
         if team is None:
             return {"season": season, "units": {}, "summary": {}}
@@ -1873,8 +1885,16 @@ class CFBRepository:
             unit_rows.setdefault(unit, {}).setdefault(group, []).append(item)
         for groups in unit_rows.values():
             for players in groups.values():
+                # Rank on the strongest prior evidence a player has, whichever
+                # kind it is. Grade alone put a five-star ranked tenth in the
+                # country fourth on his own depth chart, behind three backups in
+                # the 7th, 12th and 29th percentiles of graded players, because
+                # any grade outranked any recruit. See cfb.recruiting for how
+                # the two are made comparable and why projection is discounted.
                 players.sort(key=lambda row: (
-                    -(row["pff_interest"] or 0), not row["is_returner"],
+                    -evidence_score(pff_interest=row.get("pff_interest"),
+                                    recruit_rating=row.get("recruit_rating")),
+                    not row["is_returner"],
                     -(row.get("class_year") or 0), row.get("jersey") or 999, row["name"],
                 ))
         ordered_units = {
