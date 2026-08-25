@@ -103,15 +103,27 @@ def create_app(test_config: dict | None = None) -> Flask:
             abort(503, description="CFB_REFRESH_TOKEN is not configured")
         if not provided or not secrets.compare_digest(provided, expected):
             abort(401)
+
+        profile = (request.args.get("profile") or "light").strip().casefold()
+        if profile not in {"light", "heavy"}:
+            abort(400, description="profile must be light or heavy")
+
         season = app.config.get("CFB_DEFAULT_SEASON") or datetime.now().year
         root = Path(__file__).resolve().parent
         subprocess.Popen(
-            [sys.executable, "-m", "sports_aggregator.scheduled_refresh",
-             "--season", str(season)],
+            [
+                sys.executable,
+                "-m",
+                "sports_aggregator.scheduled_refresh",
+                "--season",
+                str(season),
+                "--profile",
+                profile,
+            ],
             cwd=str(root), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             close_fds=True,
         )
-        return jsonify({"status": "accepted", "season": season}), 202
+        return jsonify({"status": "accepted", "season": season, "profile": profile}), 202
 
     # One number formatter for every template, so the same statistic cannot
     # render as 0.686, 68.6% and 0.7% on three different pages.
