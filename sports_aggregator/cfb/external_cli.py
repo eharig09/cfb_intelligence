@@ -21,7 +21,7 @@ from sports_aggregator.cfb.external import (
 )
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.providers.sportsdataverse import SportsDataverseClient, utc_now
-from sports_aggregator.providers.weather import OpenMeteoClient, weather_flags
+from sports_aggregator.providers.weather import OpenMeteoClient, weather_flags, WeatherQuotaExhausted
 
 
 def _repository(path: str | None = None) -> CFBRepository:
@@ -92,6 +92,7 @@ def ingest_weather(repository: CFBRepository, season: int, *,
             (season, datetime.now(timezone.utc).isoformat(), limit))]
     stored = skipped = outside = indoor_count = 0
     failures: list[str] = []
+    quota_exhausted: str | None = None
     venue_payloads: dict[tuple[float, float], dict] = {}
     venue_errors: dict[tuple[float, float], str] = {}
     for game in games:
@@ -113,6 +114,13 @@ def ingest_weather(repository: CFBRepository, season: int, *,
                 payload = client.venue_forecast(venue["latitude"], venue["longitude"],
                                                 force=force)
                 venue_payloads[key] = payload
+            except WeatherQuotaExhausted as exc:
+                # Nothing will succeed until the allowance resets, and each
+                # venue costs several seconds of retry backoff on the way to
+                # the same answer. Stop rather than confirm it 56 times.
+                quota_exhausted = str(exc)[:220]
+                failures.append(f"{game['game_id']}: {quota_exhausted}")
+                break
             except Exception as exc:
                 message = str(exc)[:220]
                 venue_errors[key] = message
@@ -136,6 +144,10 @@ def ingest_weather(repository: CFBRepository, season: int, *,
                message="; ".join(failures[:3]))
     print(f"game_weather {season}: stored {stored} ({indoor_count} indoor), "
           f"outside horizon {outside}, no venue {skipped}, failures {len(failures)}")
+    if quota_exhausted:
+        # Say it stopped on purpose, so the log does not read as a silent gap.
+        print(f"weather stopped early: {quota_exhausted}. "
+              "Remaining venues were not requested; the allowance resets daily.")
     if failures:
         print("weather failure samples:")
         for failure in failures[:3]:

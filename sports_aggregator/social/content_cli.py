@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 from dataclasses import replace
 from datetime import datetime, timezone
 import json
@@ -21,7 +22,30 @@ from sports_aggregator.catalog import get_league
 from sports_aggregator.service import build_default_service
 
 
+#: Virtual address space each worker thread reserves for its stack.
+#:
+#: The refresh runs its steps under an RLIMIT_AS ceiling, and that limit counts
+#: *address space*, not resident memory. glibc reserves 8 MB per thread stack,
+#: so an eight-worker pool asks for 64 MB of address space it will never touch.
+#: With the ceiling already accounted for by real data, local-articles died on
+#: `RuntimeError: can't start new thread` while resident memory sat at 273 MB,
+#: comfortably inside the 320 MB cap. Half a megabyte is ample for fetching and
+#: parsing a feed, and drops the pool's reservation from 64 MB to 4 MB.
+WORKER_STACK_BYTES = 512 * 1024
+
+
+def _use_small_thread_stacks() -> None:
+    """Ask for modest thread stacks, where the platform allows it."""
+    try:
+        threading.stack_size(WORKER_STACK_BYTES)
+    except (ValueError, RuntimeError):
+        # Some platforms enforce a larger minimum; the default still works when
+        # no address-space ceiling is in force.
+        pass
+
+
 def main(argv=None) -> int:
+    _use_small_thread_stacks()
     load_dotenv(); parser=argparse.ArgumentParser()
     parser.add_argument("command",choices=("ingest","ingest-reddit","ingest-youtube",
                                           "ingest-podcasts","ingest-reporting",

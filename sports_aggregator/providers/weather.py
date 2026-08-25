@@ -74,6 +74,21 @@ EXTREME_HEAT_F = 88.0
 EXTREME_COLD_F = 28.0
 
 
+class WeatherQuotaExhausted(RuntimeError):
+    """Open-Meteo's daily allowance is spent; nothing will succeed until tomorrow.
+
+    Distinct from a transient 429 because retrying cannot help. The scheduled
+    refresh deduplicates by venue and then retries each one with backoff, so
+    treating a spent daily quota as transient cost 622 seconds -- ten minutes of
+    a seventeen-minute refresh -- across 56 venues that were all going to fail.
+    """
+
+
+#: Marks the daily allowance in Open-Meteo's 429 body, as opposed to a burst
+#: limit that clears in seconds.
+DAILY_LIMIT_MARKERS = ("daily api request limit",)
+
+
 @dataclass(frozen=True)
 class Forecast:
     """One hourly forecast, aligned to a kickoff."""
@@ -183,6 +198,11 @@ class OpenMeteoClient:
         except requests.HTTPError as exc:
             detail = (response.text or "").strip().replace("\n", " ")[:240]
             suffix = f" response={detail}" if detail else ""
+            lowered = detail.casefold()
+            if response.status_code == 429 and any(
+                    marker in lowered for marker in DAILY_LIMIT_MARKERS):
+                raise WeatherQuotaExhausted(
+                    f"Open-Meteo daily quota exhausted{suffix}") from exc
             raise RuntimeError(
                 f"Open-Meteo HTTP {response.status_code} for "
                 f"{latitude:.3f},{longitude:.3f}{suffix}"
