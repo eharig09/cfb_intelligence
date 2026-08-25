@@ -67,10 +67,6 @@
     --field-bg: #10253e;
     --field-border: #52647a;
     --field-placeholder: #9aabbd;
-    /* School logos are drawn for white grounds; on charcoal a few dark
-       wordmarks vanish. A faint plate keeps every mark readable without
-       recoloring anyone's. Invisible on the light page. */
-    --logo-plate: transparent;
     /* Deliberately theme-independent: school marks are drawn for white
        grounds, so the disc behind one stays white on both themes. */
     --logo-ground: #ffffff;
@@ -108,6 +104,7 @@ body, [data-identity] {
     --away-team: var(--away-team-light, var(--team-light));
     --home-team: var(--home-team-light, var(--team-light));
     --story-team: var(--story-team-light, var(--team-light));
+    --row-team: var(--row-team-light, var(--line-strong));
 }
 
 /* ---------- dark theme ----------
@@ -166,7 +163,6 @@ body, [data-identity] {
     --field-bg: #0d1621;
     --field-border: #3a4c60;
     --field-placeholder: #8496aa;
-    --logo-plate: #ffffff0f;
     --notice-bg: #3a3320;
     --notice-ink: #f7edd2;
 
@@ -184,6 +180,7 @@ body, [data-identity] {
     --away-team: var(--away-team-dark, var(--team-dark));
     --home-team: var(--home-team-dark, var(--team-dark));
     --story-team: var(--story-team-dark, var(--team-dark));
+    --row-team: var(--row-team-dark, var(--line-strong));
     }
 }
 
@@ -231,7 +228,6 @@ body, [data-identity] {
     --field-bg: #0d1621;
     --field-border: #3a4c60;
     --field-placeholder: #8496aa;
-    --logo-plate: #ffffff0f;
     --notice-bg: #3a3320;
     --notice-ink: #f7edd2;
 
@@ -250,6 +246,7 @@ body, [data-identity] {
     --away-team: var(--away-team-dark, var(--team-dark));
     --home-team: var(--home-team-dark, var(--team-dark));
     --story-team: var(--story-team-dark, var(--team-dark));
+    --row-team: var(--row-team-dark, var(--line-strong));
 }
 
 /* The toggle itself. Sits in the header, inherits the chrome palette. */
@@ -277,9 +274,24 @@ body, [data-identity] {
 .theme-toggle { display: none; }
 :root.js .theme-toggle { display: inline-flex; }
 
-/* One rule, both themes: --logo-plate is transparent on the light page. */
-.team-head img, table.data .team-logo, .stream-team img, .story-team img {
-    background: var(--logo-plate); border-radius: 3px;
+/* A team mark that follows the theme.
+
+   CFBD publishes both variants for every school -- logos/500/N.png and
+   logos-dark/500/N.png -- and the light one was the only one being read, so a
+   dark wordmark disappeared against a dark page. Both URLs are handed to the
+   element and the rules below choose, which a <picture> element cannot do:
+   <picture> answers only to the media query, never to the manual toggle.
+   Because the choice happens in CSS, only the chosen image is ever fetched. */
+.team-mark {
+    display: inline-block; flex: 0 0 auto;
+    background-image: var(--mark);
+    background-size: contain; background-repeat: no-repeat; background-position: center;
+}
+:root[data-theme="dark"] .team-mark { background-image: var(--mark-dark, var(--mark)); }
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .team-mark {
+        background-image: var(--mark-dark, var(--mark));
+    }
 }
 
 * { box-sizing: border-box; }
@@ -365,7 +377,7 @@ h1, h2, h3 { overflow-wrap: anywhere; }
 
 .team-bar { border-left: 6px solid var(--team); padding-left: 14px; }
 .team-head { display: flex; align-items: center; gap: 12px; }
-.team-head img { width: 44px; height: 44px; object-fit: contain; flex: 0 0 auto; }
+.team-head :is(img, .team-mark) { width: 44px; height: 44px; object-fit: contain; flex: 0 0 auto; }
 .team-head .team-name { font: 800 1.15rem var(--display-font); }
 .team-head .team-name a { text-decoration: none; }
 
@@ -536,7 +548,7 @@ table.data td.state-departed .sub { color: var(--red); }
     font-size: .62rem; font-weight: 700; padding: 2px 5px;
     background: var(--tint); border-left: 3px solid var(--row-team, var(--line-strong));
 }
-.stream-team img { width: 13px; height: 13px; object-fit: contain; }
+.stream-team :is(img, .team-mark) { width: 13px; height: 13px; object-fit: contain; }
 .stream-source { color: var(--muted); font-size: .62rem; }
 
 /* Situational notes: schedule spots, travel and availability beside a game. */
@@ -570,7 +582,7 @@ table.data td.state-departed .sub { color: var(--red); }
     background: var(--tint); padding: 2px 6px; font-size: .62rem; font-weight: 700;
     text-decoration: none; border-left: 3px solid var(--row-team, var(--team));
 }
-.story-team img { width: 13px; height: 13px; object-fit: contain; }
+.story-team :is(img, .team-mark) { width: 13px; height: 13px; object-fit: contain; }
 
 /* ---------- provenance ----------
 
@@ -726,7 +738,7 @@ table.data td.advantage::before {
     .fact:last-child { border-right: 0; }
     .layout { grid-template-columns: minmax(0, 1.6fr) minmax(280px, .78fr); gap: 24px; }
     .stream-columns { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-    .team-head img { width: 54px; height: 54px; }
+    .team-head :is(img, .team-mark) { width: 54px; height: 54px; }
 }
 
 @media (min-width: 1280px) {

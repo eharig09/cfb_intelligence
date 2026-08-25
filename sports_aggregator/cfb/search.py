@@ -16,7 +16,7 @@ from typing import Any
 
 from sports_aggregator.cfb.identity import readable_accent
 from sports_aggregator.cfb.models import normalize_alias, normalize_person_name
-from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb.repository import CFBRepository, _logo_pair
 
 
 MIN_QUERY = 2
@@ -91,7 +91,8 @@ def _search_teams(connection, query: str, season: int, limit: int) -> list[dict[
         best[row["team_id"]] = {
             "team_id": row["team_id"], "school": row["school"],
             "mascot": row["mascot"], "conference": row["conference"],
-            "logo": logos[0] if logos else None,
+            "logo": _logo_pair(logos)[0],
+            "logo_dark": _logo_pair(logos)[1],
             "accent": readable_accent(row["color"]),
             "score": strength,
             "reason": f"{reason} on alias '{row['normalized_alias']}'",
@@ -118,7 +119,8 @@ def _search_players(connection, query: str, season: int, limit: int) -> list[dic
             "player_id": row["player_id"], "name": name, "team": row["team"],
             "team_id": row["team_id"], "position": row["position"],
             "jersey": row["jersey"], "season": row["season"],
-            "logo": logos[0] if logos else None,
+            "logo": _logo_pair(logos)[0],
+            "logo_dark": _logo_pair(logos)[1],
             "accent": readable_accent(row["color"]),
             "score": strength, "reason": reason,
         })

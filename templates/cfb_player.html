@@ -6,7 +6,7 @@
 {% block head %}
 <style>
     .hero { border-left: 9px solid var(--team); padding: 8px 0 14px 22px; display: grid; grid-template-columns: 1fr auto; }
-    .logo { width: 86px; height: 86px; object-fit: contain; }
+    .logo { width: 86px; height: 86px; object-fit: contain; display: block; }
     .facts { grid-template-columns: repeat(5, 1fr); }
     .timeline { border-left: 3px solid var(--line); padding-left: 15px; }
     .event { position: relative; margin-bottom: 9px; }
@@ -39,7 +39,8 @@
         <h1>{{ player.name }}</h1>
         <div class="meta">{{ player.position or 'Position TBD' }} &middot; {{ player.team }} &middot; #{{ player.jersey or '—' }}</div>
     </div>
-    {% if player.logos %}<img class="logo" src="{{ player.logos[0] }}" alt="{{ player.team }} logo">{% endif %}
+    {% if player.logos %}{% set marks = player.logos | logo_pair %}<span class="logo team-mark" role="img" aria-label="{{ player.team }} logo"
+          style="--mark:url('{{ marks[0] }}');--mark-dark:url('{{ marks[1] }}')"></span>{% endif %}
 </section>
 
 <div class="facts">

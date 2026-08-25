@@ -96,6 +96,12 @@ DEFAULT_EXPERTISE = "reporting_score"
 ROLE_WEIGHT: dict[str, float] = {
     "ORIGINAL_REPORT": 1.00,
     "OFFICIAL_CONFIRMATION": 0.92,
+    # Reporting with no origin marker in the text. This is the most common
+    # verdict the classifier reaches, and it had no entry here: it fell through
+    # to the 0.5 default, so determining an item's role *lowered* its score
+    # below the REPORTING_UNDETERMINED placeholder it replaced. The two mean the
+    # same thing to a reader, so they weigh the same.
+    "REPORTING": 0.85,
     "REPORTING_UNDETERMINED": 0.85,
     "CORROBORATION": 0.72,
     "ANALYSIS": 0.70,

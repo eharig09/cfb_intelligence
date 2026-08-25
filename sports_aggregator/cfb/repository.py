@@ -410,6 +410,22 @@ def conference_slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
 
 
+def _logo_pair(logos: list[str]) -> tuple[str | None, str | None]:
+    """The light mark and its dark-background counterpart, if one is published.
+
+    CFBD ships both variants for every team, interleaved by size:
+    ``logos/500/2.png`` then ``logos-dark/500/2.png``. Taking ``logos[0]`` kept
+    only the light mark, so a school with a dark wordmark disappeared against a
+    dark page. The dark variant is the school's own alternate, not a filter, so
+    it is preferred over tinting the light one.
+    """
+    light = next((url for url in logos if "-dark" not in url), None)
+    dark = next((url for url in logos if "-dark" in url), None)
+    # A team with only one published mark uses it on both themes rather than
+    # rendering nothing on one of them.
+    return light or dark, dark or light
+
+
 class CFBRepository:
     def __init__(self, database_path: str | Path) -> None:
         self._brands: dict[int, dict[str, Any]] | None = None
@@ -1553,13 +1569,15 @@ class CFBRepository:
             brands: dict[int, dict[str, Any]] = {}
             for row in rows:
                 logos = json.loads(row["logos_json"] or "[]")
+                light, dark = _logo_pair(logos)
                 brands[row["team_id"]] = {
                     "team_id": row["team_id"], "school": row["school"],
                     "abbreviation": row["abbreviation"], "mascot": row["mascot"],
                     "conference": row["conference"],
                     "color": _hex_color(row["color"]),
                     "alternate_color": _hex_color(row["alternate_color"]),
-                    "logo": logos[0] if logos else None,
+                    "logo": light,
+                    "logo_dark": dark,
                 }
             self._brands = brands
         return self._brands

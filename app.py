@@ -20,6 +20,7 @@ from sports_aggregator.social.registry import SourceRegistry
 from sports_aggregator.social.unified import UnifiedSourceRegistry
 from sports_aggregator.social.content import ContentRepository
 from sports_aggregator.social.stories import StoryRepository
+from sports_aggregator.cfb.repository import _logo_pair
 from sports_aggregator.cfb.views import height_label
 from sports_aggregator.social.roles import role_label
 from sports_aggregator.tables import format_value
@@ -187,6 +188,8 @@ def create_app(test_config: dict | None = None) -> Flask:
     # Story provenance is rendered from stored role codes; the reader-facing
     # name for each belongs in one place.
     app.jinja_env.filters["role"] = role_label
+    # (light, dark) marks from a raw CFBD logos list.
+    app.jinja_env.filters["logo_pair"] = _logo_pair
 
     app.register_blueprint(league_pages)
     app.register_blueprint(cfb_pages)

@@ -84,10 +84,13 @@
                         {%- if state_class == 'advantage' %} title="Comparison edge"{% endif %}
                         data-sort-value="{{ row.get(column.key ~ '_sort', row.get(column.key)) if row.get(column.key) is not none else '' }}">
                         {%- set logo = row.get(column.key ~ '_logo') %}
+                        {%- set logo_dark = row.get(column.key ~ '_logo_dark') %}
                         {%- set color = row.get(column.key ~ '_color') %}
-                        {%- if logo or color %}<span class="team-cell"{% if color %} style="--row-team:{{ color }}"{% endif %}>
+                        {%- set color_dark = row.get(column.key ~ '_color_dark') %}
+                        {%- if logo or color %}<span class="team-cell"{% if color %} data-identity style="--row-team-light:{{ color }};--row-team-dark:{{ color_dark or color }}"{% endif %}>
                             {%- if color %}<i class="team-rule" aria-hidden="true"></i>{% endif %}
-                            {%- if logo %}<img class="team-logo" src="{{ logo }}" alt="" loading="lazy">{% endif %}
+                            {%- if logo %}<span class="team-logo team-mark" aria-hidden="true"
+                              style="--mark:url('{{ logo }}');--mark-dark:url('{{ logo_dark or logo }}')"></span>{% endif %}
                             {%- if href %}<a href="{{ href }}"{{ external(href) }}>{{ text }}</a>{% else %}<span>{{ text }}</span>{% endif %}
                         </span>
                         {%- elif href %}<a href="{{ href }}"{{ external(href) }}>{{ text }}</a>{% else %}{{ text }}{% endif %}
@@ -227,8 +230,9 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
                 {%- if item.teams %}
                 <span class="stream-teams">
                     {%- for team in item.teams %}
-                    <span class="stream-team" {% if team.color %}style="--row-team:{{ team.color }}"{% endif %}>
-                        {%- if team.logo %}<img src="{{ team.logo }}" alt="" loading="lazy">{% endif %}
+                    <span class="stream-team"{% if team.color %} data-identity style="--row-team-light:{{ team.color }};--row-team-dark:{{ team.accent_dark or team.color }}"{% endif %}>
+                        {%- if team.logo %}<span class="team-mark" aria-hidden="true"
+                              style="--mark:url('{{ team.logo }}');--mark-dark:url('{{ team.logo_dark or team.logo }}')"></span>{% endif %}
                         {{- team.school -}}
                     </span>
                     {%- endfor %}
@@ -310,7 +314,7 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
     <div class="story-list{{ ' is-context' if context }}">
         {%- for story in stories %}
         <article class="story-entry{{ ' has-team' if story.accent }}"
-                 {% if story.accent %}style="--story-team:{{ story.accent }}"{% endif %}>
+                 {% if story.accent %}data-identity style="--story-team-light:{{ story.accent }};--story-team-dark:{{ story.accent_dark or story.accent }}"{% endif %}>
             <div class="story-entry-top">
                 <span class="story-type">{{ story.story_type | replace('_', ' ') | lower }}</span>
                 <span>{{ story.story_score | cell('f1') }}</span>
@@ -319,8 +323,9 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
             <div class="story-entry-meta">
                 {%- for team in story.teams[:3] %}
                 <a class="story-team" href="{{ url_for('cfb.team_preview', team_id=team.team_id) }}"
-                   {% if team.accent %}style="--row-team:{{ team.accent }}"{% endif %}>
-                    {%- if team.logo %}<img src="{{ team.logo }}" alt="" loading="lazy">{% endif %}
+                   {% if team.accent %}data-identity style="--row-team-light:{{ team.accent }};--row-team-dark:{{ team.accent_dark or team.accent }}"{% endif %}>
+                    {%- if team.logo %}<span class="team-mark" aria-hidden="true"
+                           style="--mark:url('{{ team.logo }}');--mark-dark:url('{{ team.logo_dark or team.logo }}')"></span>{% endif %}
                     {{- team.school -}}
                 </a>
                 {%- endfor %}

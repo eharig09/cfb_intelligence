@@ -7,7 +7,7 @@
 <style>
     .hero { display: flex; align-items: center; gap: 16px; border-left: 8px solid var(--team); padding: 8px 0 12px 16px; }
     .hero > div { flex: 1 1 auto; min-width: 0; }
-    .logo { width: 64px; height: 64px; object-fit: contain; flex: 0 0 auto; }
+    .logo { width: 64px; height: 64px; object-fit: contain; flex: 0 0 auto; display: block; }
     @media (min-width: 860px) { .logo { width: 92px; height: 92px; } }
     .depth-unit { margin: 20px 0; }
     .depth-unit > h3 { font: 800 1.4rem var(--display-font); margin: 0 0 10px; }
@@ -51,7 +51,8 @@
             <a href="{{ url_for('cfb.team_history_stats', team_id=team.team_id, season=season) }}">Historical stats &amp; identity</a>
         </div>
     </div>
-    {% if team.logos %}<img class="logo" src="{{ team.logos[0] }}" alt="{{ team.school }} logo">{% endif %}
+    {% if team.logos %}{% set marks = team.logos | logo_pair %}<span class="logo team-mark" role="img" aria-label="{{ team.school }} logo"
+          style="--mark:url('{{ marks[0] }}');--mark-dark:url('{{ marks[1] }}')"></span>{% endif %}
 </section>
 
 {% set record = metrics.record %}{% set summary = depth_chart.summary %}

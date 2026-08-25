@@ -14,9 +14,9 @@ from urllib.parse import urlparse
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sports_aggregator.cfb.identity import readable_accent
+from sports_aggregator.cfb.identity import readable_accent, dark_accent
 from sports_aggregator.cfb.models import normalize_alias, normalize_person_name
-from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb.repository import CFBRepository, _logo_pair
 from sports_aggregator.models import Article
 from sports_aggregator.social.context import (
     allows_unscoped_match, names_staff, strip_publisher_attribution, transfer_role)
@@ -1489,8 +1489,9 @@ class ContentRepository:
                            ORDER BY ct.confidence DESC LIMIT 3""", (item["content_id"],))]
                     for team in item["teams"]:
                         logos = json.loads(team.pop("logos_json") or "[]")
-                        team["logo"] = logos[0] if logos else None
+                        team["logo"], team["logo_dark"] = _logo_pair(logos)
                         team["accent"] = readable_accent(team.get("color"))
+                        team["accent_dark"] = dark_accent(team.get("color"))
                     item["headline"] = display_text(item, limit=110)
                     item["published_label"] = display_timestamp(item.get("published_at"))
                     items.append(label_linked_piece(item))

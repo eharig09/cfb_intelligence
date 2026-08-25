@@ -10,7 +10,7 @@
         display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
         align-items: stretch; gap: 0; margin: 18px 0 8px; position: relative;
         border: 1px solid var(--line); background: var(--paper); overflow: hidden;
-        box-shadow: 0 8px 24px #07182c1a;
+        box-shadow: var(--shadow-raised);
     }
     .scoreboard .team {
         min-width: 0; padding: 17px 14px 15px; text-align: center;
@@ -21,15 +21,15 @@
     .matchup-logo {
         position: relative; display: flex; align-items: center; justify-content: center;
         width: 78px; height: 78px; margin: 0 auto 8px; border-radius: 50%;
-        background: #fff; border: 3px solid color-mix(in srgb, var(--team) 70%, #fff);
-        box-shadow: 0 5px 13px #07182c24, 0 0 0 5px color-mix(in srgb, var(--team) 10%, transparent);
+        background: var(--logo-ground); border: 3px solid color-mix(in srgb, var(--team) 70%, var(--logo-ground));
+        box-shadow: var(--shadow-crest), 0 0 0 5px color-mix(in srgb, var(--team) 10%, transparent);
     }
     .matchup-logo img { width: 62px; height: 62px; object-fit: contain; }
     .matchup-logo-fallback { color: var(--team); font: 900 1.05rem Arial, sans-serif; }
     .matchup-rank {
         position: absolute; top: -8px; right: -8px; display: grid; place-items: center;
         min-width: 29px; height: 29px; padding: 0 4px; border-radius: 50%;
-        background: var(--ink); color: #fff; border: 2px solid var(--paper);
+        background: var(--surface-strong); color: var(--on-strong); border: 2px solid var(--paper);
         font-size: .67rem; font-weight: 900; font-variant-numeric: tabular-nums;
     }
     .scoreboard .team-name { font: 800 clamp(1rem, 2.6vw, 1.3rem)/1.05 var(--display-font); }
@@ -39,8 +39,9 @@
     .matchup-rating { margin-top: 4px; color: var(--muted); font-size: .64rem; }
     .matchup-versus {
         position: relative; z-index: 2; display: flex; flex-direction: column;
-        align-items: center; justify-content: center; background: var(--ink); color: #fff;
-        box-shadow: 0 0 0 1px #ffffff18;
+        align-items: center; justify-content: center;
+        background: var(--surface-strong); color: var(--on-strong);
+        box-shadow: 0 0 0 1px var(--on-strong-divider);
     }
     .matchup-versus strong { font: 900 .78rem Arial, sans-serif; letter-spacing: .06em; }
     .matchup-versus span { color: var(--on-strong-muted); font-size: .52rem; margin-top: 3px; text-transform: uppercase; }
@@ -63,7 +64,7 @@
     .content-layer h3 {
         display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
         font: 800 .95rem var(--display-font); margin: 0; padding: 8px 12px;
-        background: var(--ink); color: #fff;
+        background: var(--surface-strong); color: var(--on-strong);
     }
     .content-layer h3 span { color: var(--on-strong-muted); font-size: .66rem; font-variant-numeric: tabular-nums; }
     .content-item { border-top: 1px solid var(--line); padding: 9px 12px; }

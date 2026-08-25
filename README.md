@@ -171,6 +171,14 @@ Presentation is its own boundary rather than template logic:
 - Story lists disclose their own provenance: how the story was grouped, who
   filed it and in what role, and whether it has moved since. Every value was
   already stored by the clustering and role pipelines.
+- Team marks follow the theme. CFBD publishes both variants for every school
+  (`logos/500/N.png` and `logos-dark/500/N.png`); both reach the page and CSS
+  chooses, because a `<picture>` element answers only to the media query and
+  never to the manual toggle. Conferences have no logo in the CFBD data at all,
+  which is why they are represented by the editorial palette instead.
+- The `roles` step determines what each item is and records the evidence. It
+  runs after clustering, because determination reads an item's position in its
+  cluster, and before scoring, because relevance weights the role.
 
 The `sports_aggregator/cfb/` package adds the structured college-football path:
 

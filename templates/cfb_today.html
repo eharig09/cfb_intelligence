@@ -58,7 +58,7 @@
     .watch-team-rank {
         position: absolute; top: -6px; right: -7px; min-width: 26px; height: 26px;
         display: grid; place-items: center; padding: 0 3px; border-radius: 50%;
-        border: 2px solid var(--paper); background: var(--ink); color: #fff;
+        border: 2px solid var(--paper); background: var(--surface-strong); color: var(--on-strong);
         font-size: .59rem;
     }
     .watch-team-name {
@@ -67,9 +67,9 @@
     }
     .watch-vs {
         display: grid; place-items: center; width: 42px; height: 42px;
-        border-radius: 50%; background: var(--ink); color: #fff;
+        border-radius: 50%; background: var(--surface-strong); color: var(--on-strong);
         font-size: .68rem; font-weight: 900; letter-spacing: .05em;
-        box-shadow: 0 3px 8px #07182c2b;
+        box-shadow: var(--shadow-bar);
     }
     .watch-card-bottom {
         display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px;
@@ -215,7 +215,7 @@
         <div class="panel-body">
             {% for item in developments %}
             <article class="dev{{ ' has-team' if item.teams and item.teams[0].accent }}"
-                     {% if item.teams and item.teams[0].accent %}style="--story-team:{{ item.teams[0].accent }}"{% endif %}>
+                     {% if item.teams and item.teams[0].accent %}data-identity style="--story-team-light:{{ item.teams[0].accent }};--story-team-dark:{{ item.teams[0].accent_dark or item.teams[0].accent }}"{% endif %}>
                 <div class="dev-top">
                     <span class="dev-role">{{ item.role_label }}{% if item.topic %} &middot; {{ item.topic | replace('_', ' ') | lower }}{% endif %}</span>
                     <span class="dev-score">{{ item.score | cell('f1') }}</span>
@@ -225,7 +225,7 @@
                 </a>
                 <div class="dev-meta">
                     {%- for team in item.teams[:3] %}
-                    <span class="stream-team" {% if team.accent %}style="--row-team:{{ team.accent }}"{% endif %}>{{ team.school }}</span>
+                    <span class="stream-team"{% if team.accent %} data-identity style="--row-team-light:{{ team.accent }};--row-team-dark:{{ team.accent_dark or team.accent }}"{% endif %}>{{ team.school }}</span>
                     {%- endfor %}
                     {{ linked_piece_meta(item) }}
                 </div>
@@ -233,7 +233,15 @@
                     <summary>Why this ranks &amp; what it references</summary>
                     <dl class="why">
                         <dt>Role</dt>
-                        <dd>{{ item.role_label }} &mdash; {{ item.role_evidence | join('; ') or 'no role signal' }}</dd>
+                        {#- Determination always records at least one reason, so an
+                            empty list means this item has never been through the
+                            role step rather than that it produced no signal. -#}
+                        <dd>{{ item.role_label }}
+                            {%- if item.role_evidence %} &mdash; {{ item.role_evidence | join('; ') }}
+                            {%- if item.role_confidence is not none %}
+                            <em>({{ item.role_confidence | cell('f2') }} confidence)</em>{% endif %}
+                            {%- else %} &mdash; <em>not yet classified; role is the ingestion default
+                            until the role step next runs</em>{% endif %}</dd>
                         <dt>Ranking factors</dt>
                         <dd>{{ item.factors | join(' · ') }}</dd>
                         {% if item.tag_evidence %}

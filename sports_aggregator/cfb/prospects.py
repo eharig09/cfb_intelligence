@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from sports_aggregator.cfb.models import normalize_alias
-from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb.repository import CFBRepository, _logo_pair
 
 
 PROSPECT_SCHEMA = """
@@ -208,7 +208,7 @@ def consensus_board(repository: CFBRepository, *, draft_year: int = 2027,
     for row in rows:
         item = dict(row)
         logos = json.loads(item.pop("logos_json") or "[]")
-        item["logo"] = logos[0] if logos else None
+        item["logo"], item["logo_dark"] = _logo_pair(logos)
         item["draft_position"] = board_position(item["position"])
         board.append(item)
     return board
@@ -290,6 +290,7 @@ def reconcile(repository: CFBRepository, profile_board: dict[str, Any], *,
             "link_status": entry["link_status"],
             "link_evidence": entry["link_evidence"],
             "logo": entry.get("logo"),
+            "logo_dark": entry.get("logo_dark"),
             "color": entry.get("color"),
             "profile_percentile": profile["percentile"] if profile else None,
             "interest_score": profile["interest_score"] if profile else None,

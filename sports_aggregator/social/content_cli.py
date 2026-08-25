@@ -27,7 +27,7 @@ def main(argv=None) -> int:
                                           "ingest-podcasts","ingest-reporting",
                                           "ingest-local-reporting",
                                           "prune-local-non-football",
-                                          "retag","score","status","cluster",
+                                          "retag","roles","score","status","cluster",
                                           "review-export","review-import","review-report")); parser.add_argument("--season",type=int,default=datetime.now().year)
     parser.add_argument("--limit",type=int,default=15)
     parser.add_argument("--input")
@@ -59,6 +59,10 @@ def main(argv=None) -> int:
     if args.command=="prune-local-non-football":
         report=repository.prune_local_non_football(dry_run=args.dry_run)
         print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+    if args.command=="roles":
+        report=repository.redetermine_roles()
+        print(" ".join(f"{key}={value}" for key,value in report.items()))
         return 0
     if args.command=="score":
         print(" ".join(f"{key}={value}" for key,value in repository.rescore().items()))

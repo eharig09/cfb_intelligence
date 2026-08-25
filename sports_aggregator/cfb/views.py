@@ -15,6 +15,8 @@ from typing import Any, Iterable, Sequence
 from flask import url_for
 
 from sports_aggregator.cfb.draft import position_abbreviation
+from sports_aggregator.cfb.identity import dark_accent
+from sports_aggregator.cfb.repository import _logo_pair
 from sports_aggregator.cfb.statlines import (
     CATEGORY_ORDER, category_label, leader_table, player_stat_tables, sort_stat)
 from sports_aggregator.tables import Column, Table, format_value
@@ -54,8 +56,11 @@ def brand_cell(row: dict[str, Any], key: str, brand: dict[str, Any] | None) -> N
         return
     if brand.get("logo"):
         row[f"{key}_logo"] = brand["logo"]
+        # The school's own dark-background mark, so the cell follows the theme.
+        row[f"{key}_logo_dark"] = brand.get("logo_dark") or brand["logo"]
     if brand.get("color"):
         row[f"{key}_color"] = brand["color"]
+        row[f"{key}_color_dark"] = dark_accent(brand["color"]) or brand["color"]
 
 
 def historical_games_table(games: Sequence[dict[str, Any]], *,
@@ -310,8 +315,10 @@ def standings_table(standings: Sequence[dict[str, Any]], season: int) -> Table:
             "rank": row.get("rank"),
             "school": row["school"],
             "school_url": _team_url(row.get("team_id"), season),
-            "school_logo": logos[0] if logos else None,
+            "school_logo": _logo_pair(logos)[0],
+            "school_logo_dark": _logo_pair(logos)[1],
             "school_color": row.get("color"),
+            "school_color_dark": dark_accent(row.get("color")),
             "conference_record": _record(row, "conference_wins", "conference_losses", "conference_ties"),
             "overall_record": _record(row, "wins", "losses", "ties"),
             "games": row.get("games"),
@@ -1033,8 +1040,10 @@ def player_matchup_table(matchups: Sequence[dict[str, Any]], season: int) -> Tab
         }
         if attacker.get("accent"):
             entry["attacker_color"] = attacker["accent"]
+            entry["attacker_color_dark"] = attacker.get("accent_dark") or attacker["accent"]
         if defender.get("accent"):
             entry["defender_color"] = defender["accent"]
+            entry["defender_color_dark"] = defender.get("accent_dark") or defender["accent"]
         rows.append(entry)
     return Table(
         columns=[
@@ -1499,7 +1508,8 @@ def prospect_table(board: dict[str, Any], season: int, *,
             "percentile": (prospect.get("percentile") or 0) * 100,
             "percentile_sub": prospect.get("calibration_basis"),
         }
-        brand_cell(entry, "team", {"logo": prospect.get("logo"), "color": prospect.get("color")})
+        brand_cell(entry, "team", {"logo": prospect.get("logo"), "logo_dark": prospect.get("logo_dark"),
+                               "color": prospect.get("color")})
         rows.append(entry)
     columns = [
         Column(key="rank", label="#", format="rank", align="right"),
@@ -1549,7 +1559,8 @@ def draft_watch_table(entries: Sequence[dict[str, Any]], season: int, *,
             "profile": (profile * 100) if profile is not None else None,
             "verdict": entry.get("verdict"),
         }
-        brand_cell(item, "team", {"logo": entry.get("logo"), "color": entry.get("color")})
+        brand_cell(item, "team", {"logo": entry.get("logo"), "logo_dark": entry.get("logo_dark"),
+                            "color": entry.get("color")})
         rows.append(item)
     columns = [
         Column(key="rank", label="#", format="rank", align="right",
@@ -1590,7 +1601,8 @@ def draft_panel_table(entries: Sequence[dict[str, Any]], season: int) -> Table:
             "team": entry.get("team_school") or entry.get("school"),
             "profile": (profile * 100) if profile is not None else None,
         }
-        brand_cell(item, "team", {"logo": entry.get("logo"), "color": entry.get("color")})
+        brand_cell(item, "team", {"logo": entry.get("logo"), "logo_dark": entry.get("logo_dark"),
+                            "color": entry.get("color")})
         rows.append(item)
     return Table(
         columns=[
@@ -1620,7 +1632,8 @@ def consensus_table(board: list[dict[str, Any]], season: int) -> Table:
             "link_status": (entry.get("link_status") or "").replace("_", " ").title(),
             "link_status_sub": entry.get("link_evidence"),
         }
-        brand_cell(item, "team", {"logo": entry.get("logo"), "color": entry.get("color")})
+        brand_cell(item, "team", {"logo": entry.get("logo"), "logo_dark": entry.get("logo_dark"),
+                            "color": entry.get("color")})
         rows.append(item)
     return Table(
         columns=[
@@ -1655,7 +1668,8 @@ def divergence_table(entries: list[dict[str, Any]], season: int, *, caption: str
             "note": entry.get("note"),
         }
         item["profile"] = item["profile"] * 100
-        brand_cell(item, "team", {"logo": entry.get("logo"), "color": entry.get("color")})
+        brand_cell(item, "team", {"logo": entry.get("logo"), "logo_dark": entry.get("logo_dark"),
+                            "color": entry.get("color")})
         rows.append(item)
     columns = []
     if ranked:

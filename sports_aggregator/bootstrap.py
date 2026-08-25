@@ -134,6 +134,14 @@ def steps(season: int, *, history_from: int | None = None,
         Step("cluster", "Cross-source story clustering",
              ["sports_aggregator.social.content_cli", "cluster"],
              ("initial", "refresh"), optional=True),
+        # Determination reads the stored text plus the item's position in its
+        # cluster, so it follows clustering; relevance weights the role, so it
+        # precedes scoring. Without this step every newly ingested item kept the
+        # ingestion-time REPORTING_UNDETERMINED placeholder and carried no
+        # evidence, which is what made the on-page explanations empty.
+        Step("roles", "Determine source role and record the evidence",
+             ["sports_aggregator.social.content_cli", "roles"],
+             ("initial", "refresh"), optional=True),
         Step("score", "Relevance scoring",
              ["sports_aggregator.social.content_cli", "score"],
              ("initial", "refresh"), optional=True),

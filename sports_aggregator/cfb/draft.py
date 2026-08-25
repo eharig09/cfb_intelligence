@@ -23,7 +23,7 @@ from contextlib import closing
 import json
 from typing import Any
 
-from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb.repository import CFBRepository, _logo_pair
 
 
 #: PFF position codes mapped to the draft vocabulary CFBD publishes. Grouping
@@ -178,7 +178,8 @@ def prospect_board(repository: CFBRepository, *, roster_season: int = 2026,
                 "band": band,
                 "headline": headline,
                 "calibration_basis": basis,
-                "logo": logos[0] if logos else None,
+                "logo": _logo_pair(logos)[0],
+                "logo_dark": _logo_pair(logos)[1],
                 "reasons": reasons,
                 "eligibility": "class-year estimate",
             })

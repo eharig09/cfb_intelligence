@@ -12,7 +12,9 @@ import re
 import sqlite3
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from sports_aggregator.cfb.identity import conference_color, readable_accent
+from sports_aggregator.cfb.identity import (
+    conference_color, conference_color_dark, dark_accent, readable_accent)
+from sports_aggregator.cfb.repository import _logo_pair
 from sports_aggregator.social.content import ContentRepository, label_linked_piece
 
 
@@ -484,13 +486,16 @@ class StoryRepository:
                      FROM story_teams st JOIN teams t USING(team_id) WHERE story_id=?""",(sid,))]
                 for team in item["teams"]:
                     logos=json.loads(team.pop("logos_json") or "[]")
-                    team["logo"]=logos[0] if logos else None
+                    team["logo"],team["logo_dark"]=_logo_pair(logos)
                     team["accent"]=readable_accent(team.get("color"))
+                    team["accent_dark"]=dark_accent(team.get("color"))
                     team["conference_color"]=conference_color(team.get("conference"))
+                    team["conference_color_dark"]=conference_color_dark(team.get("conference"))
                 # The first resolved team paints the block, so a reader can scan a
                 # long list by color before reading a single headline.
                 primary=item["teams"][0] if item["teams"] else {}
                 item["accent"]=primary.get("accent")
+                item["accent_dark"]=primary.get("accent_dark")
                 item["primary_team"]=primary.get("school")
                 item["primary_logo"]=primary.get("logo")
                 result.append(item)

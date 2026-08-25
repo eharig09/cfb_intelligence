@@ -8,6 +8,7 @@ is legible against whichever background it will actually be painted on.
 
 from __future__ import annotations
 
+import glob
 import os
 import re
 import tempfile
@@ -65,6 +66,35 @@ class TokenDisciplineTests(unittest.TestCase):
         self.assertEqual(
             sorted(set(leftovers)), [],
             "hardcoded colors cannot follow the theme; move them into tokens")
+
+    def test_templates_carry_no_colors_the_theme_cannot_reach(self):
+        """Page-local <style> blocks are as binding as the stylesheet.
+
+        An earlier scan for these used a single-line pattern and silently missed
+        every multi-line rule, which is how the VS puck and the rank badges
+        shipped inverted.
+        """
+        leaks = []
+        for path in sorted(glob.glob(os.path.join(
+                os.path.dirname(STYLESHEET), "..", "templates", "*.html"))):
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            # Only pages on the shared shell inherit the theme; the standalone
+            # admin views carry their own self-contained palette.
+            if 'extends "_layout.html"' not in text:
+                continue
+            for style in re.findall(r"<style>(.*?)</style>", text, re.S):
+                for declaration in re.findall(r"[\w.#\[\]:>\-,\s]+\{[^}]*\}", style):
+                    body = declaration.split("{", 1)[1].rstrip("}")
+                    for property_ in body.split(";"):
+                        if re.search(r"#[0-9a-fA-F]{3,8}\b", property_):
+                            leaks.append(f"{os.path.basename(path)}: {property_.strip()}")
+                        # --ink is the body text color. Painting a background
+                        # with it inverts the element in dark mode.
+                        if re.search(r"background\s*:\s*var\(--ink\)", property_):
+                            leaks.append(f"{os.path.basename(path)}: {property_.strip()}"
+                                         " (use --surface-strong for chrome)")
+        self.assertEqual(leaks, [])
 
     def test_both_dark_entry_points_declare_the_same_tokens(self):
         """The media query and the attribute must not drift apart.
@@ -288,3 +318,36 @@ class ServedThemeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TeamMarkTests(unittest.TestCase):
+    """Schools publish a dark-background mark; it must actually reach the page."""
+
+    def test_the_pair_helper_separates_the_two_variants(self):
+        from sports_aggregator.cfb.repository import _logo_pair
+        logos = ["https://cdn.test/logos/500/2.png",
+                 "https://cdn.test/logos-dark/500/2.png",
+                 "https://cdn.test/logos/256/2.png",
+                 "https://cdn.test/logos-dark/256/2.png"]
+        light, dark = _logo_pair(logos)
+        self.assertEqual(light, "https://cdn.test/logos/500/2.png")
+        self.assertEqual(dark, "https://cdn.test/logos-dark/500/2.png")
+
+    def test_a_school_with_one_mark_uses_it_on_both_themes(self):
+        from sports_aggregator.cfb.repository import _logo_pair
+        self.assertEqual(_logo_pair(["https://cdn.test/logos/500/2.png"]),
+                         ("https://cdn.test/logos/500/2.png",
+                          "https://cdn.test/logos/500/2.png"))
+        self.assertEqual(_logo_pair([]), (None, None))
+
+    def test_a_dark_only_list_still_yields_a_light_mark(self):
+        from sports_aggregator.cfb.repository import _logo_pair
+        light, dark = _logo_pair(["https://cdn.test/logos-dark/500/2.png"])
+        self.assertEqual(light, dark)
+        self.assertTrue(light)
+
+    def test_the_mark_swaps_on_theme_rather_than_only_on_the_media_query(self):
+        """A <picture> element cannot see the manual toggle; CSS can."""
+        css = _read_css()
+        self.assertIn(':root[data-theme="dark"] .team-mark', css)
+        self.assertIn("--mark-dark", css)
