@@ -29,6 +29,34 @@ full structured-data refresh, run:
 python -m sports_aggregator.bootstrap refresh --season 2026 --only articles retag cluster score
 ```
 
+## Lock reclamation
+
+The refresh takes a lock in `instance/` and releases it in a `finally`. A
+platform kill — which is what an out-of-memory restart is — skips that, so the
+lock outlives the process that took it.
+
+The lock records its owner's pid and is checked for liveness before the age
+fallback, so a dead holder's lock is reclaimed on the next attempt rather than
+blocking every run for the stale window. A running refresh touches the lock
+between steps, so the age reflects last progress rather than start time, and
+`--stale-lock-hours` defaults to 1 rather than 6.
+
+`GET /internal/cfb-refresh-status` reports `running`, the lock's contents, and
+the tail of the newest log. A lock present with no live pid means the previous
+run was killed; the next scheduled attempt will take it over.
+
+## Memory
+
+The refresh runs as a subprocess of the web service, so both share the
+instance's memory. Each step subprocess is given an address-space ceiling
+(`CFB_REFRESH_CHILD_MB`, default 320 MB) so a single step that allocates too
+much raises `MemoryError` and is recorded as a failed step, instead of the
+platform killing the whole container — which takes the web worker down with it
+and strands the lock.
+
+The first line of every refresh log is `fsync`ed before any work begins, so a
+run that is killed still leaves a record naming itself.
+
 Useful operations:
 
 ```powershell

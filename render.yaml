@@ -4,7 +4,11 @@ services:
     runtime: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 --max-requests 500 --max-requests-jitter 50 run:app
+    # Two threads, not four. Pages here are large -- a team page renders over
+    # 500 KB and holds the packets behind it while it does -- so peak memory
+    # scales with concurrent renders, and the refresh subprocess has to fit
+    # alongside them in the same 512 MB.
+    startCommand: gunicorn --workers 1 --threads 2 --timeout 120 --max-requests 500 --max-requests-jitter 50 run:app
     healthCheckPath: /api/v1/cfb/status
     envVars:
       - key: REGISTER_LEGACY_DASHBOARDS
@@ -13,6 +17,10 @@ services:
         value: "1"
       - key: MALLOC_ARENA_MAX
         value: "2"
+      # Address-space ceiling for each refresh subprocess. A step that exceeds
+      # it fails on its own instead of taking the instance down.
+      - key: CFB_REFRESH_CHILD_MB
+        value: "320"
       - key: CFB_DATABASE_PATH
         value: /var/data/cfb.sqlite3
       - key: CFBD_RAW_CACHE_PATH

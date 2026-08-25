@@ -1,31 +1,43 @@
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 
-from sports_aggregator.scheduled_refresh import run_scheduled_refresh
+import pytest
+
+from sports_aggregator import scheduled_refresh
+from sports_aggregator.scheduled_refresh import (
+    _acquire_lock, _process_alive, _touch_lock, run_scheduled_refresh)
 
 
-def _runner_with_log(lines: list[str], returncode: int = 0):
-    def runner(command, *, cwd, stdout, stderr, text):
-        for line in lines:
-            stdout.write(line + "\n")
-        stdout.flush()
-        return SimpleNamespace(returncode=returncode)
-    return runner
+def _phase_runner(results: list[dict]):
+    """Stand in for the step loop, returning the results it would produce.
+
+    `ae2a4fd` replaced the old `runner` hook, which returned log text to be
+    parsed, with `phase_runner`, which returns step results directly. These
+    tests were not moved across; the module could not be imported on Windows,
+    so the breakage stayed invisible.
+    """
+    def run(phase, season, *, only=None):
+        return results
+    return run
 
 
 def test_optional_step_failure_marks_refresh_degraded(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("CFB_REFRESH_STATE_PATH", str(tmp_path / "instance"))
-    runner = _runner_with_log([
-        "[ ] cfbd-lines: Fast market-only betting-line refresh",
-        "[ok] success (0.5s) lines=42",
-        "[ ] bluesky: Curated Bluesky author feeds",
-        "[!!] failed (1.2s) endpoints=18 succeeded=17 seen=250 stored=200 errors=1",
-        "refresh: 22 steps, 0 failed",
+    runner = _phase_runner([
+        {"step": "cfbd-lines", "status": "success", "message": "lines=42",
+         "seconds": 0.5, "optional": True},
+        {"step": "bluesky", "status": "failed",
+         "message": "endpoints=18 succeeded=17 errors=1",
+         "seconds": 1.2, "optional": True},
     ])
 
-    report = run_scheduled_refresh(2026, repo_root=tmp_path, runner=runner)
+    report = run_scheduled_refresh(2026, repo_root=tmp_path, phase_runner=runner)
 
     assert report["status"] == "degraded"
     assert report["exit_code"] == 0
@@ -36,14 +48,86 @@ def test_optional_step_failure_marks_refresh_degraded(tmp_path: Path, monkeypatc
 
 def test_clean_optional_steps_keep_refresh_successful(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("CFB_REFRESH_STATE_PATH", str(tmp_path / "instance"))
-    runner = _runner_with_log([
-        "[ ] bluesky: Curated Bluesky author feeds",
-        "[ok] success (1.0s) endpoints=18 succeeded=18 seen=250 stored=200 errors=0",
-        "refresh: 22 steps, 0 failed",
+    runner = _phase_runner([
+        {"step": "bluesky", "status": "success",
+         "message": "endpoints=18 succeeded=18 errors=0",
+         "seconds": 1.0, "optional": True},
     ])
 
-    report = run_scheduled_refresh(2026, repo_root=tmp_path, runner=runner)
+    report = run_scheduled_refresh(2026, repo_root=tmp_path, phase_runner=runner)
 
     assert report["status"] == "success"
     assert report["degraded_count"] == 0
     assert report["degraded_steps"] == []
+
+
+# ---------------------------------------------------------------------------
+# Lock reclamation
+#
+# A refresh killed by the platform never reaches its `finally`, so the lock
+# survives it. Nothing read the recorded pid back, and the only other release
+# path was a six-hour age check, so one out-of-memory kill disabled refreshes
+# for the rest of the morning — silently, as "refresh_already_running".
+# ---------------------------------------------------------------------------
+
+def _write_lock(path: Path, pid: int, started: str = "2026-08-25T10:00:37+00:00") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"pid": pid, "started_at": started}), encoding="utf-8")
+
+
+def test_a_lock_whose_owner_is_gone_is_reclaimed_immediately(tmp_path, monkeypatch):
+    """The reclaim decision, independent of how liveness is detected.
+
+    The mtime is fresh, so the age fallback would refuse this lock; only the
+    liveness check can take it.
+    """
+    monkeypatch.setattr(scheduled_refresh, "_process_alive", lambda pid: False)
+    lock = tmp_path / "scheduled_refresh.lock"
+    _write_lock(lock, 4242)
+    assert _acquire_lock(lock, datetime.now(timezone.utc), stale_hours=6) is True
+    assert json.loads(lock.read_text(encoding="utf-8"))["pid"] == os.getpid()
+
+
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="Windows raises a bare OSError for an absent pid, so "
+                           "liveness cannot be probed; Render is Linux")
+def test_a_departed_process_is_actually_detected_as_gone():
+    """The probe itself, on the platform this runs on in production."""
+    process = subprocess.Popen([sys.executable, "-c", "pass"])
+    process.wait()
+    assert _process_alive(process.pid) is False
+
+
+def test_a_lock_held_by_a_live_process_is_respected(tmp_path: Path):
+    lock = tmp_path / "scheduled_refresh.lock"
+    _write_lock(lock, os.getpid())
+    assert _acquire_lock(lock, datetime.now(timezone.utc), stale_hours=6) is False
+
+
+def test_an_unreadable_lock_still_ages_out(tmp_path: Path):
+    """A truncated lock must not become permanent."""
+    lock = tmp_path / "scheduled_refresh.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("{not json", encoding="utf-8")
+    assert _acquire_lock(lock, datetime.now(timezone.utc), stale_hours=6) is False
+    old = datetime.now(timezone.utc).timestamp() - 7 * 3600
+    os.utime(lock, (old, old))
+    assert _acquire_lock(lock, datetime.now(timezone.utc), stale_hours=6) is True
+
+
+def test_progress_keeps_a_working_refresh_from_ageing_out(tmp_path: Path):
+    lock = tmp_path / "scheduled_refresh.lock"
+    _write_lock(lock, os.getpid())
+    stale = datetime.now(timezone.utc).timestamp() - 2 * 3600
+    os.utime(lock, (stale, stale))
+    _touch_lock(lock)
+    assert _acquire_lock(lock, datetime.now(timezone.utc), stale_hours=1) is False
+
+
+def test_an_uncertain_pid_is_never_assumed_dead(tmp_path: Path):
+    """A false 'alive' costs a wait; a false 'dead' runs two refreshes at once."""
+    assert _process_alive(0) is True
+    assert _process_alive(-1) is True
+    assert _process_alive(os.getpid()) is True
+
+

@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-import resource
 import sqlite3
 import subprocess
 import sys
@@ -16,6 +15,12 @@ from typing import Any, Callable
 from dotenv import load_dotenv
 
 from sports_aggregator.bootstrap import _env_satisfied, steps
+
+try:  # POSIX only. Absent on Windows, where the memory reporting below is a
+    # no-op rather than an import error that takes the whole module with it.
+    import resource
+except ImportError:  # pragma: no cover - platform dependent
+    resource = None  # type: ignore[assignment]
 
 
 LIGHT_REFRESH_STEPS = [
@@ -28,6 +33,50 @@ LIGHT_REFRESH_STEPS = [
     "podcasts",
     "local-articles",
 ]
+
+#: Address-space ceiling for each refresh subprocess, in MB.
+#:
+#: The refresh runs as a child of the web service, so both share the
+#: instance's memory. Without a ceiling a single step that allocates too much
+#: takes the whole container down with it: the web worker dies, the lock is
+#: never released, and the platform restarts the instance. With one, the step
+#: raises MemoryError, is recorded as a failed step, and every other step still
+#: runs. Set CFB_REFRESH_CHILD_MB to 0 to disable.
+DEFAULT_CHILD_MEMORY_MB = 320
+
+
+def _child_memory_mb() -> int:
+    raw = (os.getenv("CFB_REFRESH_CHILD_MB") or "").strip()
+    if not raw:
+        return DEFAULT_CHILD_MEMORY_MB
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_CHILD_MEMORY_MB
+
+
+def _memory_limiter():
+    """A preexec hook capping the child's address space, or None.
+
+    POSIX only, and applied in the child between fork and exec so the parent's
+    own limits are untouched.
+    """
+    megabytes = _child_memory_mb()
+    if resource is None or not megabytes or sys.platform == "win32":
+        return None
+
+    def apply() -> None:  # pragma: no cover - runs only in the forked child
+        limit = megabytes * 1024 * 1024
+        try:
+            soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+            ceiling = limit if hard in (resource.RLIM_INFINITY, -1) else min(limit, hard)
+            resource.setrlimit(resource.RLIMIT_AS, (ceiling, hard))
+        except (ValueError, OSError):
+            # A platform that refuses the limit still runs the step.
+            pass
+
+    return apply
+
 
 CFBD_DATASET_STEPS = [
     "teams",
@@ -44,13 +93,59 @@ CFBD_DATASET_STEPS = [
 ]
 
 
+def _process_alive(pid: int) -> bool:
+    """Whether the process holding a lock still exists.
+
+    A false "alive" only costs a wait; a false "dead" would let two refreshes
+    run at once, so every uncertain case answers True.
+    """
+    if pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OSError):
+        # The process exists but belongs to someone else, or the platform
+        # cannot answer -- Windows raises a bare OSError for an absent pid
+        # rather than ProcessLookupError, so there the age check below is what
+        # reclaims a lock. Render is Linux, where the signal probe is exact.
+        return True
+    return True
+
+
+def _lock_holder(path: Path) -> dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8")) or {}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
 def _acquire_lock(path: Path, started: datetime, stale_hours: float) -> bool:
+    """Take the refresh lock, reclaiming one whose owner is gone.
+
+    The lock records a pid but nothing ever read it back, and release happens
+    only on the success path. A refresh killed by the platform -- which is what
+    an out-of-memory restart does -- therefore left a lock that blocked every
+    subsequent run for the full stale window, silently, as
+    ``refresh_already_running``. One kill disabled refreshes for hours.
+
+    So the holder is checked for liveness first and the age check is only the
+    fallback for a pid that cannot be resolved. The running refresh also
+    touches this file between steps, so the age reflects last progress rather
+    than start time.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
+        holder = _lock_holder(path)
+        pid = int(holder.get("pid") or 0)
         age = datetime.now(timezone.utc).timestamp() - path.stat().st_mtime
-        if age < stale_hours * 3600:
+        if pid and not _process_alive(pid):
+            path.unlink(missing_ok=True)
+        elif age < stale_hours * 3600:
             return False
-        path.unlink(missing_ok=True)
+        else:
+            path.unlink(missing_ok=True)
     try:
         descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
@@ -60,16 +155,28 @@ def _acquire_lock(path: Path, started: datetime, stale_hours: float) -> bool:
     return True
 
 
-def _rss_mb() -> float:
-    raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+def _touch_lock(path: Path) -> None:
+    """Mark progress, so a stalled refresh ages out but a working one does not."""
+    try:
+        os.utime(path, None)
+    except OSError:
+        pass
+
+
+def _rusage_mb(who: int) -> float | None:
+    if resource is None:
+        return None
+    raw = resource.getrusage(who).ru_maxrss
     divisor = 1024.0 if sys.platform != "darwin" else 1024.0 * 1024.0
     return round(raw / divisor, 1)
 
 
-def _children_rss_mb() -> float:
-    raw = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
-    divisor = 1024.0 if sys.platform != "darwin" else 1024.0 * 1024.0
-    return round(raw / divisor, 1)
+def _rss_mb() -> float | None:
+    return _rusage_mb(resource.RUSAGE_SELF) if resource is not None else None
+
+
+def _children_rss_mb() -> float | None:
+    return _rusage_mb(resource.RUSAGE_CHILDREN) if resource is not None else None
 
 
 def _database_path(root: Path) -> Path:
@@ -111,6 +218,7 @@ def _run_command(command: list[str], *, timeout: int, log) -> tuple[str, str, fl
             stderr=subprocess.STDOUT,
             text=True,
             timeout=timeout,
+            preexec_fn=_memory_limiter(),
         )
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
         return (
@@ -288,6 +396,7 @@ def _run_low_memory_phase(
     only: list[str] | None = None,
     timeout: int = 1800,
     log,
+    heartbeat: Callable[[], None] | None = None,
 ) -> list[dict[str, Any]]:
     plan = [step for step in steps(season) if phase in step.phases]
     if only:
@@ -296,6 +405,10 @@ def _run_low_memory_phase(
 
     results: list[dict[str, Any]] = []
     for step in plan:
+        # Progress, so a refresh that is working keeps its lock and one that
+        # has stalled or been killed ages out quickly.
+        if heartbeat is not None:
+            heartbeat()
         before_rss = _rss_mb()
         print(
             f"[ ] {step.name}: {step.description} parent_rss_mb={before_rss}",
@@ -351,7 +464,7 @@ def run_scheduled_refresh(
     *,
     profile: str = "heavy",
     repo_root: str | Path | None = None,
-    stale_lock_hours: float = 6,
+    stale_lock_hours: float = 1,
     phase_runner: Callable[..., list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     normalized_profile = profile.strip().casefold()
@@ -392,9 +505,16 @@ def run_scheduled_refresh(
                 file=log,
                 flush=True,
             )
+            # flush() only reaches the operating system. When the platform kills
+            # the container for memory, anything still in the page cache is lost
+            # with it -- which is why the run that took down the instance left a
+            # log file containing nothing at all. Forcing this first line to
+            # disk guarantees a breadcrumb naming the run that died.
+            os.fsync(log.fileno())
             if phase_runner is None:
                 results = _run_low_memory_phase(
-                    "refresh", season, root=root, only=only, log=log
+                    "refresh", season, root=root, only=only, log=log,
+                    heartbeat=lambda: _touch_lock(lock),
                 )
             else:
                 results = phase_runner("refresh", season, only=only)
