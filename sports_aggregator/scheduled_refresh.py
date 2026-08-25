@@ -426,7 +426,7 @@ def run_scheduled_refresh(
             "finished_at": finished.isoformat(),
             "seconds": round((finished - started).total_seconds(), 1),
             "exit_code": exit_code,
-            "log": str(log_path.relative_to(root)),
+            "log": str(log_path),
             "step_count": len(results),
             "degraded_steps": degraded_steps,
             "degraded_count": len(degraded_steps),
