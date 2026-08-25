@@ -1,18 +1,20 @@
-"""Lock-safe entry point for unattended CFB refreshes."""
+"""Lock-safe, low-memory entry point for unattended CFB refreshes."""
 
 from __future__ import annotations
 
 import argparse
-from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import resource
+import subprocess
+import sys
 from typing import Any, Callable
 
 from dotenv import load_dotenv
 
-from sports_aggregator.bootstrap import run_phase
+from sports_aggregator.bootstrap import _env_satisfied, steps
 
 
 LIGHT_REFRESH_STEPS = [
@@ -44,20 +46,124 @@ def _acquire_lock(path: Path, started: datetime, stale_hours: float) -> bool:
     return True
 
 
+def _rss_mb() -> float:
+    """Return this process's maximum resident set size in MiB on Linux/macOS."""
+    raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # Linux reports KiB; macOS reports bytes.
+    divisor = 1024.0 if sys.platform != "darwin" else 1024.0 * 1024.0
+    return round(raw / divisor, 1)
+
+
+def _children_rss_mb() -> float:
+    raw = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+    divisor = 1024.0 if sys.platform != "darwin" else 1024.0 * 1024.0
+    return round(raw / divisor, 1)
+
+
+def _run_low_memory_phase(
+    phase: str,
+    season: int,
+    *,
+    only: list[str] | None = None,
+    timeout: int = 1800,
+    log,
+) -> list[dict[str, Any]]:
+    """Run each bootstrap step in isolation while streaming output to disk.
+
+    Unlike bootstrap.run_step(), this never uses capture_output=True, so verbose
+    API/ingestion commands cannot accumulate their entire stdout/stderr in RAM.
+    """
+    plan = [step for step in steps(season) if phase in step.phases]
+    if only:
+        wanted = set(only)
+        plan = [step for step in plan if step.name in wanted]
+
+    results: list[dict[str, Any]] = []
+    for step in plan:
+        started = datetime.now(timezone.utc)
+        before_rss = _rss_mb()
+        print(
+            f"[ ] {step.name}: {step.description} "
+            f"parent_rss_mb={before_rss}",
+            file=log,
+            flush=True,
+        )
+
+        if not _env_satisfied(step):
+            requirements = list(step.requires_all_env)
+            if step.requires_env:
+                requirements.append("one of " + ", ".join(step.requires_env))
+            result = {
+                "step": step.name,
+                "status": "skipped",
+                "message": f"needs {', '.join(requirements)}",
+                "seconds": 0.0,
+                "optional": step.optional,
+                "parent_rss_mb": before_rss,
+                "child_peak_rss_mb": _children_rss_mb(),
+            }
+        else:
+            try:
+                completed = subprocess.run(
+                    [sys.executable, "-m", *step.command],
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    timeout=timeout,
+                )
+                elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+                result = {
+                    "step": step.name,
+                    "status": "success" if completed.returncode == 0 else "failed",
+                    "message": f"exit code {completed.returncode}",
+                    "seconds": round(elapsed, 1),
+                    "optional": step.optional,
+                    "parent_rss_mb": _rss_mb(),
+                    "child_peak_rss_mb": _children_rss_mb(),
+                }
+            except subprocess.TimeoutExpired:
+                result = {
+                    "step": step.name,
+                    "status": "timeout",
+                    "message": f"exceeded {timeout}s",
+                    "seconds": float(timeout),
+                    "optional": step.optional,
+                    "parent_rss_mb": _rss_mb(),
+                    "child_peak_rss_mb": _children_rss_mb(),
+                }
+            except Exception as exc:
+                result = {
+                    "step": step.name,
+                    "status": "failed",
+                    "message": str(exc)[:240],
+                    "seconds": 0.0,
+                    "optional": step.optional,
+                    "parent_rss_mb": _rss_mb(),
+                    "child_peak_rss_mb": _children_rss_mb(),
+                }
+
+        marker = {"success": "[ok]", "skipped": "[--]"}.get(result["status"], "[!!]")
+        print(
+            f"{marker} {result['status']} ({result['seconds']}s) "
+            f"parent_rss_mb={result['parent_rss_mb']} "
+            f"child_peak_rss_mb={result['child_peak_rss_mb']} "
+            f"{result['message']}",
+            file=log,
+            flush=True,
+        )
+        results.append(result)
+    return results
+
+
 def run_scheduled_refresh(
     season: int,
     *,
     profile: str = "heavy",
     repo_root: str | Path | None = None,
     stale_lock_hours: float = 6,
-    phase_runner: Callable[..., list[dict[str, Any]]] = run_phase,
+    phase_runner: Callable[..., list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
-    """Run a scheduled refresh without spawning an intermediate Python process.
-
-    ``light`` runs the latency-sensitive live-data jobs. ``heavy`` runs the full
-    current-season refresh plan. Individual bootstrap steps still execute in
-    isolated subprocesses so their memory is released between datasets.
-    """
+    """Run a scheduled refresh with minimal concurrent Python process overhead."""
     normalized_profile = profile.strip().casefold()
     if normalized_profile not in {"light", "heavy"}:
         raise ValueError("profile must be 'light' or 'heavy'")
@@ -90,11 +196,17 @@ def run_scheduled_refresh(
 
     try:
         with log_path.open("w", encoding="utf-8") as log:
-            with redirect_stdout(log), redirect_stderr(log):
-                print(
-                    f"scheduled refresh: profile={normalized_profile} "
-                    f"season={season} pid={os.getpid()}"
+            print(
+                f"scheduled refresh: profile={normalized_profile} season={season} "
+                f"pid={os.getpid()} parent_rss_mb={_rss_mb()}",
+                file=log,
+                flush=True,
+            )
+            if phase_runner is None:
+                results = _run_low_memory_phase(
+                    "refresh", season, only=only, log=log
                 )
+            else:
                 results = phase_runner("refresh", season, only=only)
 
         finished = datetime.now(timezone.utc)
@@ -114,12 +226,7 @@ def run_scheduled_refresh(
             and row.get("optional", False)
         ]
         exit_code = 1 if required_failures else 0
-        if required_failures:
-            status = "failed"
-        elif degraded_steps:
-            status = "degraded"
-        else:
-            status = "success"
+        status = "failed" if required_failures else "degraded" if degraded_steps else "success"
 
         report = {
             "status": status,
@@ -134,6 +241,8 @@ def run_scheduled_refresh(
             "degraded_steps": degraded_steps,
             "degraded_count": len(degraded_steps),
             "required_failure_count": len(required_failures),
+            "parent_peak_rss_mb": _rss_mb(),
+            "child_peak_rss_mb": _children_rss_mb(),
         }
         history = instance / "scheduled_refresh_history.jsonl"
         with history.open("a", encoding="utf-8") as handle:
