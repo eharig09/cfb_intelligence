@@ -484,6 +484,42 @@ table.data td.advantage {
     }
     .mobile-page-tabs button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
     [data-mobile-tab-panel][hidden] { display: none !important; }
+
+    /* Matchup pages should feel like compact event cards, not a desktop report
+       stacked into one very long column. */
+    .matchup-page main > .eyebrow { text-align: center; margin-top: 2px; }
+    .matchup-page .mobile-page-tabs {
+        border-radius: 7px; margin-top: 10px;
+        box-shadow: 0 5px 14px #17130f30;
+    }
+    .matchup-page [data-mobile-tab-panel]:not([hidden]) {
+        background: color-mix(in srgb, var(--paper) 94%, var(--team));
+        border: 1px solid var(--line); border-top: 4px solid var(--team);
+        border-radius: 7px; padding: 12px 10px; margin-top: 12px;
+        box-shadow: 0 5px 16px #2b211512;
+        animation: mobile-panel-in .16s ease-out;
+    }
+    .matchup-page [data-mobile-tab-panel] > h2 {
+        font-size: 1.18rem; padding-bottom: 6px; margin-bottom: 7px;
+    }
+    .matchup-page .section-note { font-size: .69rem; line-height: 1.4; }
+    .matchup-page .facts {
+        grid-template-columns: repeat(3, minmax(0, 1fr)); margin-inline: 0;
+        border-radius: 5px; overflow: hidden;
+    }
+    .matchup-page .fact { padding: 7px 6px; }
+    .matchup-page .fact b { font-size: .98rem; }
+    .matchup-page .fact span { font-size: .5rem; line-height: 1.25; }
+    .matchup-page .situation-card { padding: 10px 11px; border-left-width: 3px; }
+    .matchup-page .situation-card p { line-height: 1.4; }
+}
+
+@keyframes mobile-panel-in {
+    from { opacity: .35; transform: translateY(3px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .matchup-page [data-mobile-tab-panel] { animation: none !important; }
 }
 
 @media print {

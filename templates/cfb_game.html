@@ -6,8 +6,53 @@
 {% block head %}
 <style>
     h1 b { color: var(--rust); }
-    .scoreboard { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 22px 0 6px; }
-    .scoreboard .team { background: var(--paper); border-left: 6px solid var(--team); padding: 13px 16px; }
+    .scoreboard {
+        display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+        align-items: stretch; gap: 0; margin: 18px 0 8px; position: relative;
+        border: 1px solid var(--line); background: var(--paper); overflow: hidden;
+        box-shadow: 0 8px 24px #2b21151a;
+    }
+    .scoreboard .team {
+        min-width: 0; padding: 17px 14px 15px; text-align: center;
+        border-top: 6px solid var(--team);
+        background: linear-gradient(180deg, color-mix(in srgb, var(--team) 13%, var(--paper)), var(--paper) 68%);
+    }
+    .scoreboard .label { color: var(--team); margin-bottom: 7px; }
+    .matchup-logo {
+        position: relative; display: flex; align-items: center; justify-content: center;
+        width: 78px; height: 78px; margin: 0 auto 8px; border-radius: 50%;
+        background: #fff; border: 3px solid color-mix(in srgb, var(--team) 70%, #fff);
+        box-shadow: 0 5px 13px #17130f24, 0 0 0 5px color-mix(in srgb, var(--team) 10%, transparent);
+    }
+    .matchup-logo img { width: 62px; height: 62px; object-fit: contain; }
+    .matchup-logo-fallback { color: var(--team); font: 900 1.05rem Arial, sans-serif; }
+    .matchup-rank {
+        position: absolute; top: -8px; right: -8px; display: grid; place-items: center;
+        min-width: 29px; height: 29px; padding: 0 4px; border-radius: 50%;
+        background: var(--ink); color: #fff; border: 2px solid var(--paper);
+        font-size: .67rem; font-weight: 900; font-variant-numeric: tabular-nums;
+    }
+    .scoreboard .team-name { font: 700 clamp(1rem, 2.6vw, 1.3rem)/1.08 Georgia, serif; }
+    .scoreboard .team-name a { text-decoration: none; }
+    .scoreboard .team-name a:hover { text-decoration: underline; }
+    .matchup-record { margin-top: 5px; font-size: .72rem; font-weight: 800; }
+    .matchup-rating { margin-top: 4px; color: var(--muted); font-size: .64rem; }
+    .matchup-versus {
+        position: relative; z-index: 2; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; background: var(--ink); color: #fff;
+        box-shadow: 0 0 0 1px #ffffff18;
+    }
+    .matchup-versus strong { font: 900 .78rem Arial, sans-serif; letter-spacing: .06em; }
+    .matchup-versus span { color: #d7c8b5; font-size: .52rem; margin-top: 3px; text-transform: uppercase; }
+    .matchup-event-line {
+        display: flex; justify-content: center; flex-wrap: wrap; gap: 5px 12px;
+        margin: 0 0 8px; color: var(--muted); font-size: .7rem;
+    }
+    .matchup-event-line span { display: inline-flex; align-items: center; gap: 4px; }
+    .matchup-event-line i {
+        display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+        background: var(--rust); flex: 0 0 auto;
+    }
     .split { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
     @media (min-width: 780px) { .split { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .matchup-summary { display: flex; gap: 18px; flex-wrap: wrap; margin: 0 0 13px; font-size: .8rem; color: var(--muted); }
@@ -29,12 +74,25 @@
     .content-item > a { display: block; font-size: .81rem; line-height: 1.35; font-weight: 700; text-decoration: none; }
     .content-item > a:hover { text-decoration: underline; }
     .content-meta { color: var(--muted); font-size: .66rem; margin-top: 4px; }
-    .scoreboard { grid-template-columns: minmax(0, 1fr); }
-    @media (min-width: 640px) { .scoreboard { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 559px) {
+        .matchup-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+        .scoreboard { grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); margin-top: 12px; }
+        .scoreboard .team { padding: 12px 7px 11px; border-top-width: 5px; }
+        .scoreboard .label { margin-bottom: 5px; font-size: .55rem; }
+        .matchup-logo { width: 66px; height: 66px; margin-bottom: 7px; border-width: 2px; }
+        .matchup-logo img { width: 52px; height: 52px; }
+        .matchup-rank { min-width: 25px; height: 25px; top: -7px; right: -7px; font-size: .6rem; }
+        .scoreboard .team-name { font-size: clamp(.9rem, 4.4vw, 1.08rem); }
+        .matchup-record { font-size: .66rem; }
+        .matchup-rating { font-size: .58rem; line-height: 1.3; }
+        .matchup-versus strong { font-size: .68rem; }
+        .matchup-versus span { font-size: .46rem; }
+        .matchup-event-line { font-size: .64rem; line-height: 1.3; margin-inline: 6px; }
+    }
 </style>
 {% endblock %}
 
-{% block body_attrs %} style="--team:{{ home_brand.accent }};--conference:{{ home_brand.conference_color }}"{% endblock %}
+{% block body_attrs %} class="matchup-page" style="--team:{{ home_brand.accent }};--conference:{{ home_brand.conference_color }}"{% endblock %}
 
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.today') }}">&larr; College Football Today</a>
@@ -43,16 +101,18 @@
 
 {% block content %}
 <div class="eyebrow">Week {{ game.week }} &middot; Full preview</div>
-<h1>
+<h1 class="matchup-title">
     {% if game.rankings.get(game.away_team) %}<b>#{{ game.rankings.get(game.away_team) }}</b> {% endif %}{{ game.away_team }}
     at
     {% if game.rankings.get(game.home_team) %}<b>#{{ game.rankings.get(game.home_team) }}</b> {% endif %}{{ game.home_team }}
 </h1>
-<p class="meta">
-    {{ game.start_label }} &middot; {{ game.television or 'TV TBD' }} &middot; {{ game.venue or 'Venue TBD' }}
-    {%- if game.neutral_site %} &middot; Neutral site{% endif %}
-    &middot; <a href="{{ url_for('cfb.game_box_score', game_id=game.game_id) }}">Box score</a>
-</p>
+<div class="matchup-event-line" aria-label="Kickoff information">
+    <span><i></i>{{ game.start_label }}</span>
+    <span><i></i>{{ game.television or 'TV TBD' }}</span>
+    <span><i></i>{{ game.venue or 'Venue TBD' }}</span>
+    {% if game.neutral_site %}<span><i></i>Neutral site</span>{% endif %}
+    <span><i></i><a href="{{ url_for('cfb.game_box_score', game_id=game.game_id) }}">Box score</a></span>
+</div>
 
 <div class="scoreboard">
     {% for team_name, team_id, brand in [
@@ -61,20 +121,24 @@
     {% set record = game.records.get(team_name) %}
     <section class="team" style="--team:{{ brand.accent }};--conference:{{ brand.conference_color }}">
         <div class="label">{{ 'Away' if loop.first else 'Home' }}</div>
-        <div class="team-head">
-            {% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ team_name }} logo">{% endif %}
-            <div>
-                <div class="team-name"><a href="{{ url_for('cfb.team_preview', team_id=team_id) }}">{{ team_name }} &rarr;</a></div>
-                <div class="meta">
-                    {% if brand.conference %}<span class="conference-tag">{{ brand.conference }}</span>{% endif %}
-                    {%- if record %} {{ record.wins }}&ndash;{{ record.losses }} &middot; {{ record.conference_wins }}&ndash;{{ record.conference_losses }} conf
-                    {%- else %} preseason record unavailable{% endif %}
-                    {%- if brand.elo and brand.elo.elo %} &middot; <strong>Elo {{ brand.elo.elo }}</strong>
-                    (#{{ brand.elo.elo_rank }} FBS){% endif %}
-                </div>
-            </div>
+        <div class="matchup-logo">
+            {% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ team_name }} logo">
+            {% else %}<span class="matchup-logo-fallback">{{ brand.abbreviation or team_name[:3] | upper }}</span>{% endif %}
+            {% if game.rankings.get(team_name) %}<span class="matchup-rank">#{{ game.rankings.get(team_name) }}</span>{% endif %}
+        </div>
+        <div class="team-name"><a href="{{ url_for('cfb.team_preview', team_id=team_id) }}">{{ team_name }}</a></div>
+        <div class="matchup-record">
+            {% if record %}{{ record.wins }}&ndash;{{ record.losses }}
+            <span class="meta">({{ record.conference_wins }}&ndash;{{ record.conference_losses }} conf)</span>
+            {% else %}Preseason{% endif %}
+        </div>
+        <div class="matchup-rating">
+            {% if brand.conference %}{{ brand.conference }}{% endif %}
+            {% if brand.elo and brand.elo.elo %} &middot; Elo {{ brand.elo.elo }}
+            {% if brand.elo.elo_rank %}(#{{ brand.elo.elo_rank }}){% endif %}{% endif %}
         </div>
     </section>
+    {% if loop.first %}<div class="matchup-versus" aria-hidden="true"><strong>VS</strong><span>{{ '@' if not game.neutral_site else 'neutral' }}</span></div>{% endif %}
     {% endfor %}
 </div>
 
