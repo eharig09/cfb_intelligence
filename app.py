@@ -9,7 +9,6 @@ import sys
 
 import click
 from flask import Flask, abort, jsonify, render_template, request
-from flask_caching import Cache
 from dotenv import load_dotenv
 
 from sports_aggregator.cfb.repository import CFBRepository
@@ -24,9 +23,8 @@ from sports_aggregator.cfb.repository import _logo_pair
 from sports_aggregator.cfb.views import height_label
 from sports_aggregator.social.roles import role_label
 from sports_aggregator.tables import format_value
+from sports_aggregator.page_cache import cache
 from sports_aggregator.web import league_pages
-
-cache = Cache()
 load_dotenv()
 
 

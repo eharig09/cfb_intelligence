@@ -178,6 +178,13 @@ Presentation is its own boundary rather than template logic:
   because a color legible on cream is not legible on charcoal and the
   correction runs in opposite directions. The theme resolves in an inline
   script before the stylesheet loads, so no page paints light and then snaps.
+- `sports_aggregator/page_cache.py` caches rendered pages against the database's
+  modification time, so a refresh in another process invalidates them without
+  any signalling between the two. Pages here are ~100% CPU — a matchup render
+  spends 1,312 ms of CPU against 1,368 ms of wall clock — so the GIL has no I/O
+  to overlap and threads add nothing: eight concurrent requests took 21.8
+  seconds and throughput *fell* to 0.37/s. Cached, the same page serves in
+  single-digit milliseconds and throughput scales past 200/s.
 - Story lists disclose their own provenance: how the story was grouped, who
   filed it and in what role, and whether it has moved since. Every value was
   already stored by the clustering and role pipelines.

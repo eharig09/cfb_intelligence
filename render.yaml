@@ -21,6 +21,11 @@ services:
       # it fails on its own instead of taking the instance down.
       - key: CFB_REFRESH_CHILD_MB
         value: "320"
+      # Rendered pages are cached against the database's modification time, so
+      # a refresh invalidates them without needing to signal the web worker.
+      # This is a backstop lifetime; set to 0 to disable page caching.
+      - key: CFB_PAGE_CACHE_SECONDS
+        value: "900"
       - key: CFB_DATABASE_PATH
         value: /var/data/cfb.sqlite3
       - key: CFBD_RAW_CACHE_PATH

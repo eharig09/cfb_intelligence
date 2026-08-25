@@ -25,6 +25,7 @@ from sports_aggregator.cfb.history import (
 from sports_aggregator.cfb.lines import game_lines, lines_by_game
 from sports_aggregator.cfb import meta as page_meta_for
 from sports_aggregator.cfb import syndication
+from sports_aggregator.page_cache import cached_page
 from sports_aggregator.cfb.search import search as search_entities
 from sports_aggregator.cfb.situations import game_situation
 from sports_aggregator.cfb.roster_production import projected_depth, team_production
@@ -243,6 +244,7 @@ def _nearest_week_games(games: list[dict]) -> tuple[int | None, list[dict]]:
 
 
 @cfb_pages.get("/college-football/")
+@cached_page
 def today():
     season = _current_season()
     repository = _repository()
@@ -296,6 +298,7 @@ def today():
 
 
 @cfb_pages.get("/college-football/conferences/<slug>/")
+@cached_page
 def conference_preview(slug: str):
     season = _season()
     repository = _repository()
@@ -330,6 +333,7 @@ def conference_preview(slug: str):
 
 
 @cfb_pages.get("/college-football/teams/<int:team_id>/")
+@cached_page
 def team_preview(team_id: int):
     # A team link reached from a historical game used to carry that game's
     # `season` query parameter and silently turn the whole team page into 2025.
@@ -384,6 +388,7 @@ def team_preview(team_id: int):
 
 
 @cfb_pages.get("/college-football/teams/<int:team_id>/history/")
+@cached_page
 def team_history(team_id: int):
     selected = request.args.get("year", type=int)
     packet = team_game_history(_repository(), team_id, selected)
@@ -398,6 +403,7 @@ def team_history(team_id: int):
 
 
 @cfb_pages.get("/college-football/teams/<int:team_id>/history/stats/")
+@cached_page
 def team_history_stats(team_id: int):
     packet = team_historical_stats(_repository(), team_id)
     if packet["team"] is None:
@@ -480,6 +486,7 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
 
 
 @cfb_pages.get("/college-football/players/<player_id>/")
+@cached_page
 def player_preview(player_id: str):
     season = _season(); repository = _repository()
     player = repository.get_player(player_id, season)
@@ -516,6 +523,7 @@ def player_preview(player_id: str):
 
 
 @cfb_pages.get("/college-football/games/<int:game_id>/")
+@cached_page
 def game_preview(game_id: int):
     repository = _repository()
     game = repository.get_game(game_id)
@@ -675,6 +683,7 @@ def game_preview(game_id: int):
 
 
 @cfb_pages.get("/college-football/games/<int:game_id>/box-score/")
+@cached_page
 def game_box_score(game_id: int):
     packet = _repository().game_box_score(game_id)
     if packet is None:
@@ -756,6 +765,7 @@ def game_situation_api(game_id: int):
 
 
 @cfb_pages.get("/college-football/draft/")
+@cached_page
 def draft_watch():
     season = _season()
     repository = _repository()
