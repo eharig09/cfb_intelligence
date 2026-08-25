@@ -131,8 +131,15 @@ def main(argv=None) -> int:
         print(f"feeds={len(endpoints)} succeeded={succeeded} seen={seen} stored={stored} errors={len(errors)}")
         return 0 if not errors else 1
     if args.command=="ingest-reporting":
+        started=datetime.now(timezone.utc).isoformat()
         result=build_default_service().aggregate(get_league("college-football"),force_refresh=True)
         stored=sum(repository.store_article(article,args.season) is not None for article in result.articles)
+        errors=[{"source": error.source, "error": error.message} for error in result.errors]
+        repository.record_run(
+            started,datetime.now(timezone.utc).isoformat(),len(result.league.feeds),
+            len(result.league.feeds)-len(errors),len(result.articles),stored,errors,
+            platform="rss",
+        )
         clustered=StoryRepository(repository.path).rebuild()
         print(f"articles={len(result.articles)} stored={stored} errors={len(result.errors)} stories={clustered['stories']}")
         return 0 if not result.errors else 1
@@ -154,7 +161,8 @@ def main(argv=None) -> int:
                     source_entity_key=f"local-publisher:{publisher_id}",
                     source_endpoint_key=f"rss:google-news:{publisher_id}:{team['team_id']}",
                 )))
-        errors=[]; fetched=[]
+        errors=[]; succeeded=0; combined={}; team_ids={}
+        started=datetime.now(timezone.utc).isoformat()
         def fetch_local(task):
             team,source,config=task
             return team,source,RSSNewsProvider(config).fetch()
@@ -162,23 +170,29 @@ def main(argv=None) -> int:
             futures={pool.submit(fetch_local,task):task for task in tasks}
             for future in as_completed(futures):
                 team,source,_=futures[future]
-                try: fetched.append(future.result())
-                except Exception as exc: errors.append({"team":team["team"],"domain":source["domain"],"error":str(exc)})
-        combined={}; team_ids={}
-        for team,source,articles in fetched:
-            for article in articles:
-                if not article_matches_team(
-                    f"{article.title} {article.summary}", team,
-                    publisher=article.publisher or source["name"],
-                ):
-                    continue
-                combined.setdefault(article.identity,article)
-                team_ids.setdefault(article.identity,set()).add(int(team["team_id"]))
+                try:
+                    _,_,articles=future.result(); succeeded+=1
+                    # Process each completed feed immediately instead of holding
+                    # every feed response in memory until the slowest one ends.
+                    for article in articles:
+                        if not article_matches_team(
+                            f"{article.title} {article.summary}", team,
+                            publisher=article.publisher or source["name"],
+                        ):
+                            continue
+                        combined.setdefault(article.identity,article)
+                        team_ids.setdefault(article.identity,set()).add(int(team["team_id"]))
+                except Exception as exc:
+                    errors.append({"team":team["team"],"domain":source["domain"],"error":str(exc)})
         stored=0
         for identity,article in combined.items():
             repository.store_article(replace(article,team_ids=tuple(sorted(team_ids[identity]))),args.season)
             stored+=1
-        print(f"feeds={len(tasks)} succeeded={len(fetched)} articles={len(combined)} stored={stored} errors={len(errors)}")
+        repository.record_run(
+            started,datetime.now(timezone.utc).isoformat(),len(tasks),succeeded,
+            len(combined),stored,errors,platform="rss-local",
+        )
+        print(f"feeds={len(tasks)} succeeded={succeeded} articles={len(combined)} stored={stored} errors={len(errors)}")
         return 0 if not errors else 1
     started=datetime.now(timezone.utc).isoformat(); endpoints=repository.bluesky_endpoints()
     client=BlueskyIdentityClient(); succeeded=seen=stored=0; errors=[]

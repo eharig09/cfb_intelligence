@@ -791,6 +791,7 @@ def status_api():
     payload = repository.status(_season())
     payload["cfbd_configured"] = bool(os.getenv("CFBD_API_KEY", "").strip())
     payload["stat_coverage"] = repository.stat_coverage()
+    payload["content"] = _content_repository().summary()
     return jsonify(payload)
 
 

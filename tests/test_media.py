@@ -368,6 +368,23 @@ class SourceStreamTests(unittest.TestCase):
         self.assertEqual([stream["key"] for stream in streams], keys)
         self.assertTrue(all(stream["items"] == [] for stream in streams))
 
+    def test_article_stream_exposes_latest_rss_ingestion_diagnostics(self):
+        self.repository.record_run(
+            "2026-08-24T12:00:00+00:00", "2026-08-24T12:00:02+00:00",
+            3, 2, 38, 38, [{"source": "Example", "error": "timeout"}],
+            platform="rss",
+        )
+        articles = next(stream for stream in self.repository.source_streams()
+                        if stream["key"] == "articles")
+        self.assertEqual(articles["latest_run"]["endpoints_attempted"], 3)
+        self.assertEqual(articles["latest_run"]["endpoints_succeeded"], 2)
+        self.assertEqual(articles["latest_run"]["error_count"], 1)
+        summary = self.repository.summary()
+        rss = next(run for run in summary["latest_ingestion_runs"]
+                   if run["platform"] == "rss")
+        self.assertEqual(rss["items_seen"], 38)
+        self.assertEqual(rss["error_count"], 1)
+
     def test_a_stored_video_appears_in_the_video_stream(self):
         endpoint = {"endpoint_id": None, "source_entity_id": None, "platform_id": "UC1",
                     "name": "Split Zone Duo", "classes": set()}

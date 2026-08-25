@@ -232,12 +232,16 @@ routine `bootstrap refresh` calls only update moving datasets. The CFB Render se
 uses one threaded Gunicorn worker and leaves the memory-heavy legacy dashboards off,
 which preserves headroom for an in-service refresh subprocess.
 
-`initial` builds canonical teams/games/current rosters first, then current and
-prior-season games, coaches and production, models, roster lifecycle, PFF, transfer identity
-links, draft data, weather, source registries, ingestion, retagging, clustering,
-and relevance scores. `refresh` updates every moving current-season source in the
-same dependency order. National RSS is followed by verified team-scoped local RSS,
-then retagging, clustering, and scoring. Week 0 is retained as a real scheduled week. Optional
+`initial` builds canonical teams first, prepares the source registry, and ingests
+national RSS before the more memory-intensive model and media work. It then adds
+current and prior-season games, coaches and production, models, roster lifecycle,
+PFF, transfer identity links, draft data, weather, social/media ingestion,
+team-scoped local RSS, retagging, clustering, and relevance scores. `refresh`
+similarly prioritizes national RSS immediately after the canonical CFBD sync so a
+later degraded optional step cannot leave the Articles stream empty. Local RSS
+responses are processed as each feed completes instead of being accumulated in
+memory. RSS commands record attempted/succeeded endpoints, item counts, and errors;
+these diagnostics appear in `bootstrap status` and `/api/v1/cfb/status`. Week 0 is retained as a real scheduled week. Optional
 sources are visibly skipped when their credentials are unavailable; Reddit
 requires both its client ID and client secret.
 

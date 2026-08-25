@@ -224,7 +224,16 @@ document.querySelectorAll('.tabset').forEach(function (tabset) {
             </div>
         </article>
         {%- else %}
-        <div class="empty">Nothing ingested in this window.</div>
+        <div class="empty">
+            {%- if stream.latest_run and stream.latest_run.error_count %}
+            Latest refresh reached {{ stream.latest_run.endpoints_succeeded }} of
+            {{ stream.latest_run.endpoints_attempted }} sources; see the status API for errors.
+            {%- elif stream.latest_run %}
+            Latest refresh completed, but nothing eligible was published in this window.
+            {%- else %}
+            No completed {{ stream.label | lower }} refresh has been recorded yet.
+            {%- endif %}
+        </div>
         {%- endfor %}
     </section>
     {%- endfor %}

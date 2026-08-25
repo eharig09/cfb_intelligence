@@ -1426,10 +1426,22 @@ class ContentRepository:
         with closing(self._connect()) as connection:
             sport_counts = dict(connection.execute(
                 "SELECT decision,COUNT(*) FROM content_sport_decisions GROUP BY decision"))
+            platform_counts = dict(connection.execute(
+                "SELECT platform,COUNT(*) FROM content_items GROUP BY platform"))
+            latest_runs = [dict(row) for row in connection.execute(
+                """SELECT r.* FROM content_ingestion_runs r
+                   JOIN (SELECT platform,MAX(run_id) run_id FROM content_ingestion_runs
+                         GROUP BY platform) latest USING(run_id)
+                   ORDER BY r.platform""")]
+            for run in latest_runs:
+                run["errors"] = json.loads(run.pop("errors_json") or "[]")
+                run["error_count"] = len(run["errors"])
             return {
                 "total": connection.execute("SELECT COUNT(*) FROM content_items").fetchone()[0],
                 "platforms": connection.execute(
                     "SELECT COUNT(DISTINCT platform) FROM content_items").fetchone()[0],
+                "platform_counts": platform_counts,
+                "latest_ingestion_runs": latest_runs,
                 "team_links": connection.execute(
                     "SELECT COUNT(*) FROM content_teams").fetchone()[0],
                 "player_links": connection.execute(
@@ -1487,8 +1499,15 @@ class ContentRepository:
                          JOIN content_sport_decisions sd USING(content_id)
                          WHERE sd.eligible=1 AND c.platform IN ({placeholders})""",
                     platforms).fetchone()[0]
+                latest_run = connection.execute(
+                    """SELECT * FROM content_ingestion_runs WHERE platform=?
+                       ORDER BY run_id DESC LIMIT 1""", (platforms[0],)).fetchone()
+                run = dict(latest_run) if latest_run else None
+                if run:
+                    run["errors"] = json.loads(run.pop("errors_json") or "[]")
+                    run["error_count"] = len(run["errors"])
                 streams.append({"key": key, "label": label, "description": description,
-                                "total": total, "items": items})
+                                "total": total, "items": items, "latest_run": run})
         return streams
 
     def top_developments(self, limit: int = 20, *, min_score: float = 0.0,

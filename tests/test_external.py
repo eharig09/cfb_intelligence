@@ -423,6 +423,12 @@ class BootstrapTests(unittest.TestCase):
         self.assertLess(order.index("bluesky"), order.index("cluster"))
         self.assertLess(order.index("cluster"), order.index("score"))
 
+    def test_national_articles_are_prioritized_before_heavy_refresh_steps(self):
+        order = [step.name for step in steps(2026) if "refresh" in step.phases]
+        self.assertLess(order.index("articles"), order.index("cfbd-current-player-stats"))
+        self.assertLess(order.index("articles"), order.index("media-validate"))
+        self.assertLess(order.index("articles"), order.index("podcasts"))
+
     def test_media_catalog_is_ready_before_validation_and_ingestion(self):
         for phase in ("initial", "refresh"):
             order = [step.name for step in steps(2026) if phase in step.phases]

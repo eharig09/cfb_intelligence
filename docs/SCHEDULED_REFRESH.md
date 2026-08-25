@@ -18,6 +18,17 @@ refresh from starting, while locks older than six hours are treated as stale.
 Output is written to `instance/refresh_logs/`; compact results are appended to
 `instance/scheduled_refresh_history.jsonl`.
 
+National RSS runs early in the refresh, immediately after the canonical CFBD
+sync, so it completes before the heavier model and media jobs. Article and local
+RSS ingestion also write endpoint, item, and error diagnostics to
+`content_ingestion_runs`; the latest results are exposed under `content` at
+`/api/v1/cfb/status`. To repair only an empty article stream without running the
+full structured-data refresh, run:
+
+```powershell
+python -m sports_aggregator.bootstrap refresh --season 2026 --only articles retag cluster score
+```
+
 Useful operations:
 
 ```powershell
