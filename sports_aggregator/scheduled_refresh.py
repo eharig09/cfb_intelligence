@@ -20,13 +20,26 @@ from sports_aggregator.bootstrap import _env_satisfied, steps
 LIGHT_REFRESH_STEPS = [
     "cfbd-sync",
     "articles",
-    "cfbd-lines",
     "weather",
     "bluesky",
     "reddit",
     "youtube",
     "podcasts",
     "local-articles",
+]
+
+CFBD_DATASET_STEPS = [
+    "teams",
+    "players",
+    "games",
+    "betting_lines",
+    "media",
+    "records",
+    "coaches",
+    "rankings",
+    "team_stats",
+    "advanced_stats",
+    "core_ratings",
 ]
 
 
@@ -47,9 +60,7 @@ def _acquire_lock(path: Path, started: datetime, stale_hours: float) -> bool:
 
 
 def _rss_mb() -> float:
-    """Return this process's maximum resident set size in MiB on Linux/macOS."""
     raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    # Linux reports KiB; macOS reports bytes.
     divisor = 1024.0 if sys.platform != "darwin" else 1024.0 * 1024.0
     return round(raw / divisor, 1)
 
@@ -60,6 +71,68 @@ def _children_rss_mb() -> float:
     return round(raw / divisor, 1)
 
 
+def _run_command(command: list[str], *, timeout: int, log) -> tuple[str, str, float]:
+    started = datetime.now(timezone.utc)
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-m", *command],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=timeout,
+        )
+        elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+        return (
+            "success" if completed.returncode == 0 else "failed",
+            f"exit code {completed.returncode}",
+            round(elapsed, 1),
+        )
+    except subprocess.TimeoutExpired:
+        return "timeout", f"exceeded {timeout}s", float(timeout)
+    except Exception as exc:
+        return "failed", str(exc)[:240], 0.0
+
+
+def _run_cfbd_split(season: int, *, timeout: int, log) -> dict[str, Any]:
+    """Run each CFBD dataset in its own interpreter so memory is fully released."""
+    started = datetime.now(timezone.utc)
+    failures: list[str] = []
+    for dataset in CFBD_DATASET_STEPS:
+        print(
+            f"    [cfbd] {dataset} start parent_rss_mb={_rss_mb()} "
+            f"child_peak_rss_mb={_children_rss_mb()}",
+            file=log,
+            flush=True,
+        )
+        status, message, seconds = _run_command(
+            ["sports_aggregator.cfb.dataset_cli", dataset, "--year", str(season)],
+            timeout=timeout,
+            log=log,
+        )
+        print(
+            f"    [cfbd] {dataset} {status} ({seconds}s) "
+            f"parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()} {message}",
+            file=log,
+            flush=True,
+        )
+        if status != "success":
+            failures.append(dataset)
+
+    elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+    return {
+        "step": "cfbd-sync",
+        "status": "failed" if failures else "success",
+        "message": (
+            f"failed datasets: {', '.join(failures)}" if failures
+            else f"{len(CFBD_DATASET_STEPS)} isolated datasets complete"
+        ),
+        "seconds": round(elapsed, 1),
+        "optional": False,
+        "parent_rss_mb": _rss_mb(),
+        "child_peak_rss_mb": _children_rss_mb(),
+    }
+
+
 def _run_low_memory_phase(
     phase: str,
     season: int,
@@ -68,11 +141,6 @@ def _run_low_memory_phase(
     timeout: int = 1800,
     log,
 ) -> list[dict[str, Any]]:
-    """Run each bootstrap step in isolation while streaming output to disk.
-
-    Unlike bootstrap.run_step(), this never uses capture_output=True, so verbose
-    API/ingestion commands cannot accumulate their entire stdout/stderr in RAM.
-    """
     plan = [step for step in steps(season) if phase in step.phases]
     if only:
         wanted = set(only)
@@ -80,11 +148,9 @@ def _run_low_memory_phase(
 
     results: list[dict[str, Any]] = []
     for step in plan:
-        started = datetime.now(timezone.utc)
         before_rss = _rss_mb()
         print(
-            f"[ ] {step.name}: {step.description} "
-            f"parent_rss_mb={before_rss}",
+            f"[ ] {step.name}: {step.description} parent_rss_mb={before_rss}",
             file=log,
             flush=True,
         )
@@ -102,52 +168,25 @@ def _run_low_memory_phase(
                 "parent_rss_mb": before_rss,
                 "child_peak_rss_mb": _children_rss_mb(),
             }
+        elif step.name == "cfbd-sync":
+            result = _run_cfbd_split(season, timeout=timeout, log=log)
         else:
-            try:
-                completed = subprocess.run(
-                    [sys.executable, "-m", *step.command],
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    timeout=timeout,
-                )
-                elapsed = (datetime.now(timezone.utc) - started).total_seconds()
-                result = {
-                    "step": step.name,
-                    "status": "success" if completed.returncode == 0 else "failed",
-                    "message": f"exit code {completed.returncode}",
-                    "seconds": round(elapsed, 1),
-                    "optional": step.optional,
-                    "parent_rss_mb": _rss_mb(),
-                    "child_peak_rss_mb": _children_rss_mb(),
-                }
-            except subprocess.TimeoutExpired:
-                result = {
-                    "step": step.name,
-                    "status": "timeout",
-                    "message": f"exceeded {timeout}s",
-                    "seconds": float(timeout),
-                    "optional": step.optional,
-                    "parent_rss_mb": _rss_mb(),
-                    "child_peak_rss_mb": _children_rss_mb(),
-                }
-            except Exception as exc:
-                result = {
-                    "step": step.name,
-                    "status": "failed",
-                    "message": str(exc)[:240],
-                    "seconds": 0.0,
-                    "optional": step.optional,
-                    "parent_rss_mb": _rss_mb(),
-                    "child_peak_rss_mb": _children_rss_mb(),
-                }
+            status, message, seconds = _run_command(step.command, timeout=timeout, log=log)
+            result = {
+                "step": step.name,
+                "status": status,
+                "message": message,
+                "seconds": seconds,
+                "optional": step.optional,
+                "parent_rss_mb": _rss_mb(),
+                "child_peak_rss_mb": _children_rss_mb(),
+            }
 
         marker = {"success": "[ok]", "skipped": "[--]"}.get(result["status"], "[!!]")
         print(
             f"{marker} {result['status']} ({result['seconds']}s) "
             f"parent_rss_mb={result['parent_rss_mb']} "
-            f"child_peak_rss_mb={result['child_peak_rss_mb']} "
-            f"{result['message']}",
+            f"child_peak_rss_mb={result['child_peak_rss_mb']} {result['message']}",
             file=log,
             flush=True,
         )
@@ -163,7 +202,6 @@ def run_scheduled_refresh(
     stale_lock_hours: float = 6,
     phase_runner: Callable[..., list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
-    """Run a scheduled refresh with minimal concurrent Python process overhead."""
     normalized_profile = profile.strip().casefold()
     if normalized_profile not in {"light", "heavy"}:
         raise ValueError("profile must be 'light' or 'heavy'")
@@ -203,9 +241,7 @@ def run_scheduled_refresh(
                 flush=True,
             )
             if phase_runner is None:
-                results = _run_low_memory_phase(
-                    "refresh", season, only=only, log=log
-                )
+                results = _run_low_memory_phase("refresh", season, only=only, log=log)
             else:
                 results = phase_runner("refresh", season, only=only)
 
