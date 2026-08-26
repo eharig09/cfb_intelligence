@@ -34,6 +34,13 @@
     .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 12px; background: var(--surface-strong); color: var(--on-strong); }
     .panel-head strong { font: 800 1.02rem var(--display-font); }
     .panel-head span { color: var(--on-strong-muted); font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; }
+    .panel-head .panel-more {
+        flex: 0 0 auto; color: var(--on-strong); font-size: .64rem; font-weight: 800;
+        text-transform: uppercase; letter-spacing: .08em; white-space: nowrap;
+        text-decoration: none; border-bottom: 1px solid var(--on-strong-muted);
+    }
+    .panel-head .panel-more:hover { border-bottom-color: var(--on-strong); }
+    .panel-head .panel-more:focus-visible { outline: 2px solid var(--on-strong); outline-offset: 3px; }
     .panel-body { overflow-y: auto; max-height: 31rem; }
     /* Spanning the full width, the draft panel has room to show more before
        scrolling; capping it at the column height wasted the width it gained. */
@@ -318,7 +325,13 @@
 
 
     <section class="panel">
-        <div class="panel-head"><strong>2027 Draft Watch</strong><span>vs drafted profiles</span></div>
+        {#- The panel shows as many rows as it can display and says how many
+            there are; this is the way to the rest of them. It used to render
+            the whole hundred-player board into a scroll region, which was 89 KB
+            to show twelve, but cutting that left no route to the other 88. -#}
+        <div class="panel-head"><strong>2027 Draft Watch</strong>
+            <a class="panel-more" href="{{ url_for('cfb.draft_watch', season=season) }}"
+               >Full board &rarr;</a></div>
         <div class="panel-body">{{ data_table(draft_table) }}</div>
     </section>
 </div>

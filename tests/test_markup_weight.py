@@ -176,6 +176,19 @@ class PanelSizingTests(unittest.TestCase):
         self.assertEqual(len(table.rows), 1)
         self.assertIsNone(table.note)
 
+    def test_the_panel_offers_a_way_to_the_rows_it_is_not_showing(self):
+        """Capping the panel is only honest if the rest stays reachable.
+
+        The cap replaced a scroll region that held all hundred rows, and with
+        no link the other eighty-eight were not reachable by clicking at all.
+        """
+        template = os.path.join(os.path.dirname(TABLE_MACROS), "cfb_today.html")
+        with open(template, encoding="utf-8") as handle:
+            markup = handle.read()
+        panel = markup[markup.index("2027 Draft Watch"):]
+        panel = panel[:panel.index("</div>", panel.index("panel-body"))]
+        self.assertIn("cfb.draft_watch", panel)
+
     def test_narrow_tables_are_marked_to_fit_their_container(self):
         """Tables that overflow by a little should not force a scrollbar."""
         from sports_aggregator.cfb.views import draft_panel_table
