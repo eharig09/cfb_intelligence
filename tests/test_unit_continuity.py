@@ -14,8 +14,8 @@ import tempfile
 import unittest
 
 from sports_aggregator.cfb.models import Player, Team
-from sports_aggregator.cfb.repository import (
-    CFBRepository, _interleave_arrivals)
+from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb.views import arrivals_of_kind
 from sports_aggregator.cfb.recruiting import (
     evidence_basis, evidence_score, rating_strength,
 )
@@ -372,64 +372,46 @@ class ProductionEvidenceTests(unittest.TestCase):
 
 
 class ArrivalOrderingTests(unittest.TestCase):
-    """Portal additions and signees interleave rather than one burying the other.
+    """Portal additions and signees are split, and each ranked by rating.
 
-    No single scale produces a mix here, because the two groups do not overlap
-    on one. Ranking by rating put every signee first: an elite high-school
-    rating beats the high-school rating a portal entrant still carries. Ranking
-    by blended evidence put every transfer first: one who played scores above
-    0.85 while the best recruit in the country reaches 0.54, having no college
-    season to show. Both are defensible; both hide a group entirely.
+    The two ratings are the same CFBD recruiting composite on the same scale —
+    4-star transfers run 0.90-0.97 against 0.89-0.98 for 4-star signees, and
+    3-stars are 0.80-0.89 in both — so they compare directly and a merged list
+    is correctly ordered. It is still the wrong presentation: a strong signing
+    class fills the table and the portal disappears, which is true and unhelpful.
+    Splitting keeps the honest ordering and shows both.
     """
 
-    def setUp(self):
-        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
-        os.close(handle)
-        self.repository = CFBRepository(self.path)
-        self.repository.initialize()
-
-    def tearDown(self):
-        if os.path.exists(self.path):
-            os.unlink(self.path)
-
     @staticmethod
-    def _arrival(name, kind, evidence):
-        return {"name": name, "movement_type": kind, "arrival_evidence": evidence}
+    def _rows():
+        return [
+            {"name": "Five Star", "movement_type": "SIGNEE", "rating": 0.99},
+            {"name": "Good Transfer", "movement_type": "TRANSFER_IN", "rating": 0.94},
+            {"name": "Four Star", "movement_type": "SIGNEE", "rating": 0.93},
+            {"name": "Depth Transfer", "movement_type": "TRANSFER_IN", "rating": 0.85},
+            {"name": "Walk On", "movement_type": "NEWCOMER", "rating": None},
+        ]
 
-    def _order(self, rows):
-        return [row["name"] for row in _interleave_arrivals(rows)]
+    def test_the_portal_view_excludes_signees(self):
+        names = [row["name"] for row in
+                 arrivals_of_kind(self._rows(), ("TRANSFER_IN", "NEWCOMER"))]
+        self.assertEqual(names, ["Good Transfer", "Depth Transfer", "Walk On"])
 
-    def test_the_best_of_each_kind_leads(self):
-        rows = [self._arrival("Transfer A", "TRANSFER_IN", 0.99),
-                self._arrival("Transfer B", "TRANSFER_IN", 0.97),
-                self._arrival("Signee A", "SIGNEE", 0.54),
-                self._arrival("Signee B", "SIGNEE", 0.48)]
-        self.assertEqual(self._order(rows),
-                         ["Transfer A", "Signee A", "Transfer B", "Signee B"])
+    def test_the_signing_view_excludes_transfers(self):
+        names = [row["name"] for row in arrivals_of_kind(self._rows(), ("SIGNEE",))]
+        self.assertEqual(names, ["Five Star", "Four Star"])
 
-    def test_neither_group_can_bury_the_other(self):
-        """Twenty transfers must not push every signee off the table."""
-        rows = ([self._arrival(f"Transfer {i}", "TRANSFER_IN", 0.9 - i / 100)
-                 for i in range(20)]
-                + [self._arrival("Top Signee", "SIGNEE", 0.54)])
-        self.assertEqual(self._order(rows)[1], "Top Signee")
+    def test_splitting_preserves_the_incoming_order(self):
+        """Each side keeps the rating order the repository already applied."""
+        rows = self._rows()
+        portal = arrivals_of_kind(rows, ("TRANSFER_IN",))
+        self.assertEqual([row["rating"] for row in portal], [0.94, 0.85])
 
-    def test_a_group_running_out_does_not_stop_the_rest(self):
-        rows = [self._arrival("Transfer A", "TRANSFER_IN", 0.9),
-                self._arrival("Transfer B", "TRANSFER_IN", 0.8),
-                self._arrival("Signee A", "SIGNEE", 0.5)]
-        self.assertEqual(self._order(rows), ["Transfer A", "Signee A", "Transfer B"])
+    def test_an_unknown_kind_is_simply_absent_rather_than_raising(self):
+        self.assertEqual(arrivals_of_kind(self._rows(), ("DRAFTED",)), [])
 
-    def test_other_movement_kinds_follow_rather_than_disappear(self):
-        rows = [self._arrival("Transfer A", "TRANSFER_IN", 0.9),
-                self._arrival("Signee A", "SIGNEE", 0.5),
-                self._arrival("Walk On", "NEWCOMER", 0.7)]
-        order = self._order(rows)
-        self.assertEqual(order[:2], ["Transfer A", "Signee A"])
-        self.assertIn("Walk On", order)
-
-    def test_every_arrival_survives_the_interleave(self):
-        rows = ([self._arrival(f"T{i}", "TRANSFER_IN", 0.9) for i in range(5)]
-                + [self._arrival(f"S{i}", "SIGNEE", 0.5) for i in range(7)]
-                + [self._arrival("Other", "NEWCOMER", 0.4)])
-        self.assertEqual(len(self._order(rows)), len(rows))
+    def test_no_arrival_is_lost_across_the_two_views(self):
+        rows = self._rows()
+        both = (arrivals_of_kind(rows, ("TRANSFER_IN", "NEWCOMER"))
+                + arrivals_of_kind(rows, ("SIGNEE",)))
+        self.assertEqual(len(both), len(rows))

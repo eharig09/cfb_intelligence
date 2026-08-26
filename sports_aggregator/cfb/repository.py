@@ -467,25 +467,6 @@ def forget_initialized_schemas() -> None:
     _INITIALIZED_SCHEMAS.clear()
 
 
-def _interleave_arrivals(arrivals: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Alternate between portal additions and signees, best of each first."""
-    def ranked(kind: str) -> list[dict[str, Any]]:
-        return sorted((row for row in arrivals if row["movement_type"] == kind),
-                      key=lambda row: (-row["arrival_evidence"], row["name"]))
-
-    transfers, signees = ranked("TRANSFER_IN"), ranked("SIGNEE")
-    others = sorted((row for row in arrivals
-                     if row["movement_type"] not in {"TRANSFER_IN", "SIGNEE"}),
-                    key=lambda row: (-row["arrival_evidence"], row["name"]))
-    merged: list[dict[str, Any]] = []
-    for index in range(max(len(transfers), len(signees))):
-        if index < len(transfers):
-            merged.append(transfers[index])
-        if index < len(signees):
-            merged.append(signees[index])
-    return merged + others
-
-
 class CFBRepository:
     def __init__(self, database_path: str | Path) -> None:
         self._brands: dict[int, dict[str, Any]] | None = None
@@ -1845,25 +1826,27 @@ class CFBRepository:
                 "draft_pick": drafted["overall_pick"] if drafted else None,
                 "interest_score": interest.get(name), "evidence": evidence,
             })
-        # Ordering all arrivals on one scale cannot produce a mix, because the
-        # two groups do not overlap on any scale that is honest. Rating alone
-        # put every signee first: an elite high-school rating beats the
-        # high-school rating a portal entrant is still carrying. Blended
-        # evidence put every transfer first: a transfer who played scores above
-        # 0.85 while the best recruit in the country reaches 0.54, since he has
-        # no college season to show. Both orderings are defensible and both
-        # hide one group completely.
+        # Rating, and rating alone. Both numbers are the same CFBD recruiting
+        # composite on the same scale -- 4-star transfers run 0.90-0.97 against
+        # 0.89-0.98 for 4-star signees, 3-stars are 0.80-0.89 in both -- so they
+        # compare directly and movement type only breaks a tie.
         #
-        # So they are ranked within their own kind and then interleaved. A
-        # reader sees the best of each, the Type column says which is which,
-        # and neither list buries the other. Whichever group runs out first,
-        # the remainder simply continues.
+        # An earlier version ranked these on the depth board's blended evidence
+        # instead, on the theory that a transfer's rating was stale and needed
+        # college production to correct it. The distributions say otherwise, and
+        # the blend simply buried every signee: any transfer who played scores
+        # above 0.85 while the best recruit in the country reaches 0.54. When a
+        # team's signees outrank its portal additions here, that is a fact about
+        # the team, and the page splits the two so both are visible anyway.
         for row in arrivals:
             row["arrival_evidence"] = evidence_score(
                 pff_interest=row.get("pff_interest"),
                 recruit_rating=row.get("rating"),
                 production=row.get("production_strength"))
-        arrivals = _interleave_arrivals(arrivals)
+        arrivals.sort(key=lambda row: (
+            -(row["rating"] or 0),
+            {"TRANSFER_IN": 0, "SIGNEE": 1}.get(row["movement_type"], 2),
+            row["name"]))
         departures.sort(key=lambda row: (
             {"DRAFTED": 0, "TRANSFER_OUT": 1, "ELIGIBILITY_DEPARTURE": 2}.get(row["movement_type"], 3),
             -(row["interest_score"] or 0), row["name"],

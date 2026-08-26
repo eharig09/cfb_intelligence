@@ -1887,6 +1887,18 @@ def production_groups(production, season):
     return groups
 
 
+def arrivals_of_kind(arrivals, kinds):
+    """Arrivals of one movement kind, order preserved.
+
+    The two groups get their own tables rather than one merged list. Ranked
+    together on rating — which is the same composite for both — a strong signing
+    class fills the whole table and the portal disappears, or the reverse. Both
+    orderings are truthful and both hide half the news, so the page shows both.
+    """
+    wanted = set(kinds)
+    return [row for row in arrivals if row.get("movement_type") in wanted]
+
+
 def arrivals_table(arrivals, season, *, caption="Key arrivals"):
     """Key arrivals: transfers with production, signees with a rating.
 
@@ -1922,7 +1934,7 @@ def arrivals_table(arrivals, season, *, caption="Key arrivals"):
         ],
         rows=rows,
         caption=caption,
-        note="best of the portal and the signing class, alternating",
+        note="by recruiting composite",
         empty="No arrivals identified for this season.",
         dense=True,
     )

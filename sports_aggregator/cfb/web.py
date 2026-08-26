@@ -455,6 +455,12 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
             movements["departures"][:20], season, arrivals=False
         ),
         "quality_table": views.quality_cards_table(packet["quality"]),
+        "portal_arrivals_table": views.arrivals_table(
+            views.arrivals_of_kind(movements["arrivals"], ("TRANSFER_IN", "NEWCOMER"))[:10],
+            season, caption="From the portal"),
+        "signee_arrivals_table": views.arrivals_table(
+            views.arrivals_of_kind(movements["arrivals"], ("SIGNEE",))[:10],
+            season, caption="From the signing class"),
         "signing_class_table": views.signing_class_table(
             signing_class(_repository(), packet["team"]["team_id"], season)),
         "team_stats_table": views.team_summary_table(selected_metrics, stats_year, stats_mode),
@@ -609,11 +615,25 @@ def game_preview(game_id: int):
         # Every arrival ranked together, not portal additions alone: a team's
         # best signee belongs beside the transfers he is competing with.
         away_arrivals_table=views.arrivals_table(
-            repository.roster_movements(game["away_team_id"], season)["arrivals"][:8],
-            season, caption=f"{game['away_team']} arrived"),
+            views.arrivals_of_kind(
+                repository.roster_movements(game["away_team_id"], season)["arrivals"],
+                ("TRANSFER_IN", "NEWCOMER"))[:5],
+            season, caption=f"{game['away_team']} portal"),
+        away_signees_table=views.arrivals_table(
+            views.arrivals_of_kind(
+                repository.roster_movements(game["away_team_id"], season)["arrivals"],
+                ("SIGNEE",))[:5],
+            season, caption=f"{game['away_team']} signees"),
         home_arrivals_table=views.arrivals_table(
-            repository.roster_movements(game["home_team_id"], season)["arrivals"][:8],
-            season, caption=f"{game['home_team']} arrived"),
+            views.arrivals_of_kind(
+                repository.roster_movements(game["home_team_id"], season)["arrivals"],
+                ("TRANSFER_IN", "NEWCOMER"))[:5],
+            season, caption=f"{game['home_team']} portal"),
+        home_signees_table=views.arrivals_table(
+            views.arrivals_of_kind(
+                repository.roster_movements(game["home_team_id"], season)["arrivals"],
+                ("SIGNEE",))[:5],
+            season, caption=f"{game['home_team']} signees"),
         away_portal_in_table=views.transfer_impact_table(
             rank_transfers(repository, season=season, team_id=game["away_team_id"],
                            direction="in", limit=12), season,

@@ -138,13 +138,16 @@
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Key arrivals</h2>
             <div class="section-note">
-                Transfers and signees joining for {{ season }}, alternating so neither
-                group buries the other. They cannot be ranked on one scale honestly: a
-                transfer who played has a college season on record and a signee has only
-                a rating, so each is ranked within its own kind. The Type column says
-                which is which.
+                Transfers and signees joining for {{ season }}, each ranked by recruiting
+                composite. Both numbers are the same CFBD rating on the same scale, so a
+                team whose signees outrank its portal additions is telling you something
+                real — but a single list lets one group fill the table, so they are shown
+                side by side.
             </div>
-            {{ data_table(arrivals_key_table) }}
+            <div class="split">
+                <div>{{ data_table(portal_arrivals_table) }}</div>
+                <div>{{ data_table(signee_arrivals_table) }}</div>
+            </div>
         </section>
 
         <section class="section" data-mobile-tab-panel="roster">
