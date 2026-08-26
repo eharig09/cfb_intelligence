@@ -1,14 +1,16 @@
-"""The dark theme, and the contrast guarantees that make it usable.
+"""The dark page, and the contrast guarantees that make it usable.
 
-The light page was the only page for a long time, so a great deal of the
-stylesheet assumed it. These tests hold the two invariants that assumption left
-behind: every color is a token that can follow the theme, and every team accent
-is legible against whichever background it will actually be painted on.
+There was a light theme once, kept alongside this one and not kept up, and
+these tests now hold it shut: nothing in the stylesheet, the layout, or the
+script may reintroduce a second palette or a control for choosing one. What
+survives from that period is the invariant it taught: every color is a token,
+and every team accent is contrast-checked against the ground it is painted on.
 """
 
 from __future__ import annotations
 
 import glob
+import json
 import os
 import re
 import tempfile
@@ -96,37 +98,28 @@ class TokenDisciplineTests(unittest.TestCase):
                                          " (use --surface-strong for chrome)")
         self.assertEqual(leaks, [])
 
-    def test_both_dark_entry_points_declare_the_same_tokens(self):
-        """The media query and the attribute must not drift apart.
+    def test_the_palette_has_exactly_one_entry_point(self):
+        """Two entry points is what let the light half rot unseen.
 
-        One serves a reader who never touched the control and the other a reader
-        who did. A token added to one and not the other is invisible until
-        somebody happens to arrive by the other route.
+        A second palette behind a media query or an attribute is only ever
+        looked at by whoever arrives through that door, so it drifts from the
+        one everybody else sees. There is one :root now and nothing else.
         """
-        by_media = _blocks(self.css, ':root:not([data-theme="light"])')
-        by_attribute = _blocks(self.css, ':root[data-theme="dark"]')
-        self.assertTrue(by_media and by_attribute)
-        media_tokens = _declarations(by_media[0])
-        attribute_tokens = _declarations(by_attribute[0])
-        self.assertEqual(media_tokens, attribute_tokens)
-        self.assertGreater(len(media_tokens), 30, "dark palette looks incomplete")
+        without_comments = re.sub(r"/\*.*?\*/", "", self.css, flags=re.S)
+        self.assertNotIn("prefers-color-scheme", without_comments)
+        self.assertNotIn("data-theme", without_comments)
+        tokens = _declarations(_blocks(self.css, ":root")[0])
+        self.assertGreater(len(tokens), 40, "the palette looks incomplete")
 
-    def test_every_light_token_has_a_dark_counterpart(self):
-        light = _declarations(_blocks(self.css, ":root")[0])
-        dark = _declarations(_blocks(self.css, ':root[data-theme="dark"]')[0])
-        # Fonts, spacing, and the identity pairs themselves do not change with
-        # the theme; every color token must.
-        theme_independent = {
-            "--display-font", "--body-font", "--shell", "--gap", "--pad",
-            "--team-light", "--team-dark", "--conference-light", "--conference-dark",
-            "--team-fill", "--team-on-fill", "--rust", "--color-scheme",
-            # School marks are drawn for white grounds, so the disc behind one
-            # stays white on both themes. Constant by intent, not by omission.
-            "--logo-ground",
-        }
-        missing = sorted(name for name in light
-                         if name not in theme_independent and name not in dark)
-        self.assertEqual(missing, [], "tokens with no dark value would stay light")
+    def test_the_page_is_dark_at_the_root(self):
+        """The tokens themselves, not a rule layered over lighter ones."""
+        tokens = _declarations(_blocks(self.css, ":root")[0])
+        page, text = I._channels(tokens["--cream"]), I._channels(tokens["--ink"])
+        self.assertLess(I._relative_luminance(page), 0.05,
+                        "the page background should be dark")
+        self.assertGreater(I._relative_luminance(text), 0.5,
+                           "body text should be light on it")
+        self.assertGreater(I.contrast_ratio(text, page), 7.0)
 
     def test_the_stylesheet_holds_no_control_characters(self):
         """A mangled CSS escape writes a raw control byte and fails silently.
@@ -139,13 +132,22 @@ class TokenDisciplineTests(unittest.TestCase):
                         if ord(char) < 32 and ord(char) not in allowed})
         self.assertEqual(found, [])
 
-    def test_both_themes_declare_a_color_scheme(self):
-        self.assertIn("color-scheme: light", self.css)
+    def test_the_page_declares_a_dark_color_scheme(self):
+        """Form controls and scrollbars are drawn by the browser, not by us."""
         self.assertIn("color-scheme: dark", self.css)
+        self.assertNotIn("color-scheme: light", self.css)
 
-    def test_an_explicit_light_choice_survives_a_dark_system(self):
-        """Without the :not() guard the media query would beat the toggle."""
-        self.assertIn(':root:not([data-theme="light"])', self.css)
+    def test_nothing_anywhere_can_select_a_light_theme(self):
+        """Stylesheet, script and layout together, since one is enough."""
+        root = os.path.dirname(os.path.dirname(STYLESHEET))
+        for name in ("static/cfb.css", "static/cfb_tables.js",
+                     "templates/_layout.html"):
+            with open(os.path.join(root, name), encoding="utf-8") as handle:
+                text = handle.read()
+            with self.subTest(file=name):
+                for trace in ("cfb-theme", "data-theme-toggle", "theme-toggle",
+                              "prefers-color-scheme"):
+                    self.assertNotIn(trace, text)
 
 
 class ContrastTests(unittest.TestCase):
@@ -265,31 +267,40 @@ class ServedThemeTests(unittest.TestCase):
     def tearDown(self):
         os.unlink(self.path)
 
-    def test_the_theme_resolves_before_the_stylesheet_loads(self):
-        """Resolving later paints light and then snaps to dark."""
-        body = self.client.get("/college-football/teams/68/").get_data(as_text=True)
-        head = body.split("</head>", 1)[0]
-        bootstrap = head.index("cfb-theme")
-        stylesheet = head.index("cfb.css")
-        self.assertLess(bootstrap, stylesheet,
-                        "theme bootstrap must precede the stylesheet")
+    def test_no_script_runs_before_the_stylesheet(self):
+        """One theme means no first paint to correct, so nothing blocks.
 
-    def test_pages_declare_a_theme_color_for_each_scheme(self):
+        The bootstrap that used to sit here read a stored choice before the
+        stylesheet loaded, because resolving later painted light and snapped.
+        With one palette that whole trade disappears.
+        """
+        head = self.client.get(
+            "/college-football/teams/68/").get_data(as_text=True).split("</head>", 1)[0]
+        # The schema.org block is data, not code; nothing here executes.
+        self.assertNotIn("localStorage", head)
+        self.assertEqual(
+            [tag for tag in re.findall(r"<script[^>]*>", head)
+             if "application/ld+json" not in tag], [])
+
+    def test_pages_declare_the_one_theme_color(self):
         head = self.client.get("/college-football/").get_data(as_text=True)
-        self.assertIn('name="theme-color" content="#f2f5f9"', head)
         self.assertIn('name="theme-color" content="#10151c"', head)
+        self.assertNotIn("#f2f5f9", head, "that is the old light page background")
+        self.assertNotIn("prefers-color-scheme", head)
 
-    def test_the_toggle_is_present_and_labelled(self):
+    def test_the_installed_app_opens_dark_too(self):
+        """A pale manifest flashes white before the first paint."""
+        root = os.path.dirname(os.path.dirname(STYLESHEET))
+        with open(os.path.join(root, "static", "manifest.webmanifest"),
+                  encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        self.assertEqual(manifest["background_color"], "#10151c")
+        self.assertEqual(manifest["theme_color"], "#10151c")
+
+    def test_no_theme_control_is_offered(self):
         body = self.client.get("/college-football/").get_data(as_text=True)
-        self.assertIn("data-theme-toggle", body)
-        self.assertIn('aria-label="Switch to dark theme"', body)
-        self.assertIn('aria-pressed="false"', body)
-
-    def test_the_toggle_is_hidden_without_scripting(self):
-        """A control that cannot persist a choice should not be offered."""
-        css = _read_css()
-        self.assertIn(".theme-toggle { display: none; }", css)
-        self.assertIn(":root.js .theme-toggle { display: inline-flex; }", css)
+        self.assertNotIn("theme-toggle", body)
+        self.assertNotIn("Switch to", body)
 
     def test_identity_is_emitted_as_a_pair_on_every_themed_page(self):
         for path in ("/college-football/teams/68/",
@@ -314,6 +325,52 @@ class ServedThemeTests(unittest.TestCase):
                 body = self.client.get(path).get_data(as_text=True)
                 self.assertNotRegex(body, r"style=\"[^\"]*--team:")
                 self.assertNotRegex(body, r"style=\"[^\"]*--conference:")
+
+
+class StandalonePageTests(unittest.TestCase):
+    """The pages that do not extend the shell still have to match it.
+
+    Three templates carry their own palette because they sit outside
+    _layout.html: the landing page and the two source-registry views. Nothing
+    about the shared stylesheet reaches them, so they were the last light pages
+    on the site and would have stayed light silently.
+    """
+
+    ROOT = os.path.dirname(os.path.dirname(STYLESHEET))
+    STANDALONE = ("templates/index.html",
+                  "templates/cfb_sources.html",
+                  "templates/cfb_source_graph.html")
+
+    def _source(self, name):
+        with open(os.path.join(self.ROOT, name), encoding="utf-8") as handle:
+            return handle.read()
+
+    def test_each_declares_a_dark_color_scheme(self):
+        for name in self.STANDALONE:
+            with self.subTest(page=name):
+                source = self._source(name)
+                self.assertIn("color-scheme:dark", source.replace(": ", ":"))
+                self.assertNotIn("color-scheme:light", source.replace(": ", ":"))
+
+    def test_none_of_the_old_light_surfaces_survive(self):
+        """The exact values that used to paint these pages."""
+        for name in self.STANDALONE:
+            with self.subTest(page=name):
+                source = self._source(name)
+                for literal in ("#f2f5f9", "#e7edf4", "#edf1f6", "#d5dde7"):
+                    self.assertNotIn(literal, source)
+
+    def test_their_text_clears_contrast_on_their_own_background(self):
+        for name, ink, ground in (
+                ("templates/index.html", "#e6ecf3", "#10151c"),
+                ("templates/cfb_sources.html", "#e6ecf3", "#10151c"),
+                ("templates/cfb_source_graph.html", "#e6ecf3", "#10151c")):
+            with self.subTest(page=name):
+                source = self._source(name)
+                self.assertIn(ink, source)
+                self.assertIn(ground, source)
+                self.assertGreater(
+                    I.contrast_ratio(I._channels(ink), I._channels(ground)), 7.0)
 
 
 if __name__ == "__main__":
@@ -346,11 +403,10 @@ class TeamMarkTests(unittest.TestCase):
         self.assertEqual(light, dark)
         self.assertTrue(light)
 
-    def test_the_mark_swaps_on_theme_rather_than_only_on_the_media_query(self):
-        """A <picture> element cannot see the manual toggle; CSS can."""
+    def test_the_mark_prefers_the_dark_variant_and_falls_back_to_the_light(self):
+        """Every school publishes both; only the ones that do not need it."""
         css = _read_css()
-        self.assertIn(':root[data-theme="dark"] .team-mark', css)
-        self.assertIn("--mark-dark", css)
+        self.assertIn("background-image: var(--mark-dark, var(--mark));", css)
 
 
 class ConferenceMarkTests(unittest.TestCase):

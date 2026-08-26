@@ -213,9 +213,10 @@ class ResponsiveTests(unittest.TestCase):
         self.assertIn(".col-key-edge", self.css)
 
     def test_national_theme_uses_cool_broadcast_surfaces(self):
-        self.assertIn("--ink: #07182c", self.css)
-        self.assertIn("--cream: #f2f5f9", self.css)
-        self.assertIn("--accent: #1473e6", self.css)
+        """Charcoal and blue, not sepia. The values moved dark; the hue did not."""
+        self.assertIn("--ink: #e6ecf3", self.css)
+        self.assertIn("--cream: #10151c", self.css)
+        self.assertIn("--accent: #6ea8f0", self.css)
         self.assertIn("--display-font:", self.css)
 
     def test_comparison_edges_avoid_cell_fills_and_use_a_centered_scale(self):

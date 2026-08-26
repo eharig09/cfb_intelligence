@@ -39,28 +39,13 @@
           href="{{ url_for('cfb.national_feed') }}">
     {%- block feeds %}{% endblock %}
 
-    {#- Resolve the theme before the stylesheet loads. Anything later -- a
-        deferred script, DOMContentLoaded -- paints light first and then snaps,
-        which is worse than not offering the choice. The `js` class also
-        reveals the toggle, so a scriptless reader never sees a dead control. -#}
-    <script>
-    (function () {
-        var root = document.documentElement;
-        root.classList.add('js');
-        try {
-            var saved = localStorage.getItem('cfb-theme');
-            if (saved === 'dark' || saved === 'light') { root.dataset.theme = saved; }
-        } catch (error) {
-            /* Private modes and blocked storage: fall through to the system
-               preference, which the stylesheet already honours. */
-        }
-    })();
-    </script>
-    <meta name="theme-color" content="#f2f5f9" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#10151c" media="(prefers-color-scheme: dark)">
+
+    {# One theme, so nothing has to be resolved before the stylesheet loads
+       and there is no first paint to correct. #}
+    <meta name="theme-color" content="#10151c">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icon.svg') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='cfb.css', v='20260825-theme') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='cfb.css', v='20260825-dark') }}">
     {% block head %}{% endblock %}
 </head>
 <body{% block body_attrs %}{% endblock %}>
@@ -73,19 +58,12 @@
         <form class="header-search" action="/college-football/search/" method="get" role="search">
             <input type="search" name="q" placeholder="Search" aria-label="Search teams, players, games">
         </form>
-        <button type="button" class="theme-toggle" data-theme-toggle
-                aria-pressed="false" aria-label="Switch to dark theme">
-            <span class="theme-toggle-icon" aria-hidden="true">
-                <span data-theme-when="light">&#9789;</span><span data-theme-when="dark">&#9788;</span>
-            </span>
-            <span data-theme-when="light">Dark</span><span data-theme-when="dark">Light</span>
-        </button>
     </div>
 </header>
 <main>
 {% block content %}{% endblock %}
 </main>
 {% block scripts %}{% endblock %}
-<script src="{{ url_for('static', filename='cfb_tables.js', v='20260825-a11y') }}" defer></script>
+<script src="{{ url_for('static', filename='cfb_tables.js', v='20260825-dark') }}" defer></script>
 </body>
 </html>

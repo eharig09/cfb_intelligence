@@ -5,18 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CFB Source Registry</title>
     <style>
-        :root { --ink:#07182c; --muted:#5f6b7a; --cream:#f2f5f9; --paper:#fff; --rust:#1473e6; --line:#d5dde7; --green:#166534; }
+        :root { color-scheme:dark;--surface-strong:#1e2733;--on-strong:#f2f6fa;--head-bg:#1f2936;--tint:#1e2732;--ink:#e6ecf3; --muted:#93a1b3; --cream:#10151c; --paper:#171e27; --rust:#6ea8f0; --line:#2a3542; --green:#55c07d; }
         * { box-sizing:border-box; } body { margin:0; color:var(--ink); background:var(--cream); font-family:"Segoe UI",Arial,sans-serif; }
-        header { background:var(--ink); border-bottom:4px solid var(--rust); padding:15px 22px; } header a { color:white; text-decoration:none; font-weight:800; }
+        header { background:var(--surface-strong); border-bottom:4px solid var(--rust); padding:15px 22px; } header a { color:var(--on-strong); text-decoration:none; font-weight:800; }
         main { max-width:1180px; margin:auto; padding:38px 20px 70px; }
         h1 { font:800 clamp(2.5rem,7vw,5.4rem)/.95 "Arial Narrow","Segoe UI",Arial,sans-serif; letter-spacing:-.04em; margin:8px 0 12px; overflow-wrap:anywhere; }
         .eyebrow { color:var(--rust); font-weight:900; text-transform:uppercase; letter-spacing:.15em; font-size:.74rem; }
-        .summary { display:flex; gap:10px; margin:24px 0; flex-wrap:wrap; } .pill { background:var(--ink); color:white; padding:10px 14px; }
-        .pill strong { font:800 1.35rem "Arial Narrow","Segoe UI",Arial,sans-serif; margin-right:5px; } .verified { color:#bbf7d0; }
+        .summary { display:flex; gap:10px; margin:24px 0; flex-wrap:wrap; } .pill { background:var(--surface-strong); color:var(--on-strong); padding:10px 14px; }
+        .pill strong { font:800 1.35rem "Arial Narrow","Segoe UI",Arial,sans-serif; margin-right:5px; } .verified { color:var(--green); }
         table { width:100%; border-collapse:collapse; background:var(--paper); font-size:.83rem; }
-        th { text-align:left; background:#e7edf4; text-transform:uppercase; letter-spacing:.06em; font-size:.68rem; }
+        th { text-align:left; background:var(--head-bg); text-transform:uppercase; letter-spacing:.06em; font-size:.68rem; }
         th,td { padding:11px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
-        .handle { color:var(--muted); font-size:.74rem; margin-top:3px; } .tag { display:inline-block; background:#edf1f6; padding:3px 5px; margin:1px; }
+        .handle { color:var(--muted); font-size:.74rem; margin-top:3px; } .tag { display:inline-block; background:var(--tint); padding:3px 5px; margin:1px; }
         .ok { color:var(--green); font-weight:800; } .pending { color:var(--rust); font-weight:800; }
         @media(max-width:760px) {
             main { padding:24px 12px 50px; }
