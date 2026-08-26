@@ -1724,15 +1724,27 @@ def draft_watch_table(entries: Sequence[dict[str, Any]], season: int, *,
                  dense=dense)
 
 
-def draft_panel_table(entries: Sequence[dict[str, Any]], season: int) -> Table:
+#: Rows the dashboard draft panel shows before deferring to the full board.
+#:
+#: The panel is capped at 31rem, which holds about this many dense rows. It was
+#: rendering the entire hundred-player consensus board into that space: a
+#: scrollbar over ninety hidden rows, and 89 KB — thirty per cent of the whole
+#: dashboard — to show twelve.
+DRAFT_PANEL_ROWS = 12
+
+
+def draft_panel_table(entries: Sequence[dict[str, Any]], season: int, *,
+                      limit: int = DRAFT_PANEL_ROWS) -> Table:
     """The board in four columns, for the dashboard panel.
 
     The full table carries position, PFF grade and a verdict. In a sidebar those
     columns squeeze the player name until it wraps mid-word, so the panel keeps
-    only rank, who, where, and how the profile compares.
+    only rank, who, where, and how the profile compares — and only as many rows
+    as the panel can actually show.
     """
     rows = []
-    for entry in entries:
+    shown = list(entries)[:limit]
+    for entry in shown:
         profile = entry.get("profile_percentile")
         item = {
             "rank": entry.get("rank"),
@@ -1757,6 +1769,7 @@ def draft_panel_table(entries: Sequence[dict[str, Any]], season: int) -> Table:
         ],
         rows=rows,
         caption=None,
+        note=(f"top {len(rows)} of {len(entries)}" if len(entries) > len(rows) else None),
         empty="No consensus board has been imported.",
     )
 

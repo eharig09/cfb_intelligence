@@ -139,3 +139,50 @@ class RenderedWeightTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PanelSizingTests(unittest.TestCase):
+    """A panel should render what it can show, not what it has.
+
+    The dashboard draft panel is capped at 31rem — about twelve dense rows —
+    and was rendering the whole hundred-player consensus board into it: a
+    scrollbar over ninety hidden rows, and 89 KB of a 303 KB page to display
+    twelve of them.
+    """
+
+    def test_the_draft_panel_renders_only_what_fits(self):
+        from sports_aggregator.cfb.views import DRAFT_PANEL_ROWS, draft_panel_table
+
+        entries = [{"rank": index, "player_name": f"Player {index}",
+                    "team_school": "Team", "profile_percentile": 0.5}
+                   for index in range(100)]
+        table = draft_panel_table(entries, 2026)
+        self.assertEqual(len(table.rows), DRAFT_PANEL_ROWS)
+
+    def test_the_panel_says_it_is_showing_a_slice(self):
+        from sports_aggregator.cfb.views import draft_panel_table
+
+        entries = [{"rank": index, "player_name": f"Player {index}",
+                    "team_school": "Team", "profile_percentile": 0.5}
+                   for index in range(100)]
+        self.assertIn("of 100", draft_panel_table(entries, 2026).note or "")
+
+    def test_a_short_board_is_not_labelled_as_a_slice(self):
+        from sports_aggregator.cfb.views import draft_panel_table
+
+        entries = [{"rank": 1, "player_name": "Only One", "team_school": "Team",
+                    "profile_percentile": 0.9}]
+        table = draft_panel_table(entries, 2026)
+        self.assertEqual(len(table.rows), 1)
+        self.assertIsNone(table.note)
+
+    def test_narrow_tables_are_marked_to_fit_their_container(self):
+        """Tables that overflow by a little should not force a scrollbar."""
+        from sports_aggregator.cfb.views import draft_panel_table
+
+        with open(TABLE_MACROS, encoding="utf-8") as handle:
+            macros = handle.read()
+        self.assertIn("NARROW_COLUMN_LIMIT", macros)
+        self.assertIn("' fits' if", macros)
+        table = draft_panel_table([], 2026)
+        self.assertLessEqual(len(table.columns), 8)
