@@ -253,14 +253,17 @@ def blend_unit_grade(*, prior_grade: float | None, returning_share: float | None
 
 
 def _basis(prior_fraction: float, games: float, share: float) -> str:
-    percent = round(share * 100)
+    """Which season the number came from. Deliberately silent about the
+    returning share: it sits in its own sortable column beside this, and
+    repeating it there filled every row with a figure already on screen."""
+    del share
     if games <= 0:
-        return f"prior season; {percent}% of the graded unit returns"
+        return "prior season"
     if prior_fraction >= 0.5:
-        return (f"mostly prior season ({round(prior_fraction * 100)}%) after "
-                f"{games:g} games; {percent}% returns")
-    return (f"mostly this season ({round((1 - prior_fraction) * 100)}%) after "
-            f"{games:g} games; {percent}% of last year's unit returns")
+        return (f"mostly prior season ({round(prior_fraction * 100)}%) "
+                f"after {games:g} games")
+    return (f"mostly this season ({round((1 - prior_fraction) * 100)}%) "
+            f"after {games:g} games")
 
 
 def units_with_continuity(repository: CFBRepository, team_id: int, *,

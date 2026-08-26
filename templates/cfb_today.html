@@ -115,7 +115,10 @@
     .dev > a:hover { text-decoration: underline; }
     .dev-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; color: var(--muted); font-size: .64rem; }
 
+    /* One row: every chip is now an abbreviation and a count, so they are
+       near enough the same width to share a line. */
     .conference-strip { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+    .conference-chip { display: inline-flex; align-items: center; gap: 6px; }
     .conference-chip { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--rust); padding: 5px 9px; font-size: .72rem; font-weight: 700; text-decoration: none; }
     .conference-chip span { color: var(--muted); font-weight: 400; }
     .reference .table-wrap { max-height: 27rem; overflow-y: auto; }
@@ -174,12 +177,13 @@
 
 <div class="conference-strip">
     {% for conference in conferences %}
-    <a class="conference-chip" href="{{ url_for('cfb.conference_preview', slug=conference.slug, season=season) }}"
+    <a class="conference-chip" title="{{ conference.conference }}"
+       href="{{ url_for('cfb.conference_preview', slug=conference.slug, season=season) }}"
        data-identity style="--conference-mark-light:{{ conference.identity.color }};--conference-mark-dark:{{ conference.identity.color_dark }}">
+        {#- Abbreviation only. Mixing short names with long ones ("ACC" beside
+            "American Athletic") made the widths ragged and wrapped the strip
+            onto a second row; the full name stays in the title. -#}
         <span class="conference-mark">{{ conference.identity.abbreviation }}</span>
-        {#- Several conferences are already known by their abbreviation, so
-            printing both reads as "ACC ACC". -#}
-        {% if conference.conference != conference.identity.abbreviation %}{{ conference.conference }} {% endif %}
         <span>{{ conference.team_count }}</span>
     </a>
     {% endfor %}

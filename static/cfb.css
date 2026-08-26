@@ -421,6 +421,25 @@ h1, h2, h3 { overflow-wrap: anywhere; }
 .table-caption strong { font: 800 .9rem var(--display-font); letter-spacing: -.01em; }
 .table-caption span { color: var(--muted); font-size: .66rem; }
 
+/* Narrow tables fill their container instead of overflowing it by a little.
+   The draft panel and the conference leader boards each sat a few pixels wide
+   and produced a scrollbar for one clipped column. Wide statistical tables
+   keep `max-content` below and scroll, which is the honest answer there. */
+/* Only where there is room. On a phone an eight-column table squeezed to the
+   viewport is unreadable, and scrolling it inside its own region — which is
+   what the rest of this stylesheet already arranges — is the better answer. */
+@media (min-width: 768px) {
+    table.data.fits {
+        width: 100%;
+        min-width: 0;
+        table-layout: auto;
+    }
+    table.data.fits td, table.data.fits th {
+        overflow: hidden; text-overflow: ellipsis;
+    }
+    table.data.fits .team-cell { max-width: 100%; }
+}
+
 table.data {
     width: max-content;
     min-width: 100%;

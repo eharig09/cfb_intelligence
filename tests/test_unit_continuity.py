@@ -193,7 +193,11 @@ class ContinuityTests(unittest.TestCase):
         # No current-season grades exist, so the adjusted figure is the prior.
         self.assertEqual(row["blended_grade"], 74.0)
         self.assertLess(row["returning_share"], 0.1)
-        self.assertIn("returns", row["blend_basis"])
+        # The basis names the season, not the share: the share has its own
+        # sortable column beside it, and repeating it filled every row with a
+        # number already on screen.
+        self.assertIn("prior season", row["blend_basis"])
+        self.assertNotIn("%", row["blend_basis"])
 
     def test_an_unknown_team_yields_nothing_rather_than_raising(self):
         self.assertEqual(

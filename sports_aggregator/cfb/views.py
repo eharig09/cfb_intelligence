@@ -1874,8 +1874,13 @@ def production_groups(production, season):
     return groups
 
 
-def arrivals_table(arrivals, season):
-    """Key arrivals: transfers with production, signees with a rating."""
+def arrivals_table(arrivals, season, *, caption="Key arrivals"):
+    """Key arrivals: transfers with production, signees with a rating.
+
+    Used by the matchup page too, which previously listed portal additions
+    alone, so a team's best signee never appeared beside the transfers he is
+    competing with.
+    """
     rows = []
     for row in arrivals:
         kind = (row.get("movement_type") or "").replace("_", " ").title()
@@ -1900,11 +1905,11 @@ def arrivals_table(arrivals, season):
             Column(key="rating", label="Rating", format="f3",
                    title="Composite rating: portal rating for transfers, "
                          "recruiting rating for signees"),
-            Column(key="evidence", label="Source", align="left"),
+
         ],
         rows=rows,
-        caption="Key arrivals",
-        note="transfers first, then the signing class",
+        caption=caption,
+        note="ranked by rating, transfers and signees together",
         empty="No arrivals identified for this season.",
         dense=True,
     )

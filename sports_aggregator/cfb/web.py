@@ -606,13 +606,13 @@ def game_preview(game_id: int):
             game_lines(repository, game_id), elo, core_by_team),
         lines=game_lines(repository, game_id),
         market_table=views.market_table(game_lines(repository, game_id), game),
-        away_arrivals_table=views.notable_arrivals_table(
-            notable_transfers(repository, season=season,
-                              team_id=game["away_team_id"], limit=6),
+        # Every arrival ranked together, not portal additions alone: a team's
+        # best signee belongs beside the transfers he is competing with.
+        away_arrivals_table=views.arrivals_table(
+            repository.roster_movements(game["away_team_id"], season)["arrivals"][:8],
             season, caption=f"{game['away_team']} arrived"),
-        home_arrivals_table=views.notable_arrivals_table(
-            notable_transfers(repository, season=season,
-                              team_id=game["home_team_id"], limit=6),
+        home_arrivals_table=views.arrivals_table(
+            repository.roster_movements(game["home_team_id"], season)["arrivals"][:8],
             season, caption=f"{game['home_team']} arrived"),
         away_portal_in_table=views.transfer_impact_table(
             rank_transfers(repository, season=season, team_id=game["away_team_id"],

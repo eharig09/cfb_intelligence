@@ -47,6 +47,9 @@
     matched nothing outside this set: 33 KB of class attributes on one team
     page. tests/test_markup_weight.py reads the selectors out of cfb.css and
     fails if this drifts from them. -#}
+{#- At or below this many columns a table is expected to fit its
+    container. Above it, horizontal scrolling is the honest answer. -#}
+{%- set NARROW_COLUMN_LIMIT = 8 %}
 {%- set STYLED_COLUMN_KEYS = ('away_offense', 'away', 'away_defense',
                               'home_offense', 'home', 'home_defense',
                               'edge', 'advantage') %}
@@ -64,7 +67,12 @@
         </div>
         {%- endif %}
         {%- if not mobile_compact %}<div class="mobile-scroll-note" aria-hidden="true">Swipe to see all columns &rarr;</div>{%- endif %}
-        <table class="data{{ ' dense' if table.dense }}{{ ' ' ~ extra_class if extra_class }}">
+        {#- A table with few columns should fit its container rather than force
+            a scrollbar for the sake of a few pixels; long cells ellipsize
+            instead. Wide tables keep `width: max-content` and scroll, because
+            squeezing twelve statistical columns helps nobody. -#}
+        <table class="data{{ ' fits' if (table.columns | length) <= NARROW_COLUMN_LIMIT }}
+            {{- ' dense' if table.dense }}{{ ' ' ~ extra_class if extra_class }}">
             <thead>
                 <tr>
                     {%- for column in table.columns %}
