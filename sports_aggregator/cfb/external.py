@@ -28,7 +28,7 @@ from typing import Any, Iterable
 
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.providers.sportsdataverse import optional_float, utc_now
-from sports_aggregator.providers.weather import weather_condition
+from sports_aggregator.providers.weather import weather_condition, weather_emoji
 
 
 EXTERNAL_SCHEMA = """
@@ -285,6 +285,47 @@ def weather_for_game(repository: CFBRepository, game_id: int) -> dict[str, Any]:
         "movement": movement,
         "first_forecast_at": first["forecast_generated_at"],
     }
+
+
+def weather_summary_by_game(repository: CFBRepository, game_ids) -> dict[int, dict]:
+    """Newest forecast per game, reduced to what a scoreboard card can show.
+
+    Distinct from `weather_flags_by_game`, which answers "is anything notable
+    about this game's weather" for a whole season. This answers "what does it
+    look like" for a named set of games, and needs the code and temperature the
+    flags summary discards.
+    """
+    wanted = [int(game_id) for game_id in game_ids if game_id]
+    if not wanted:
+        return {}
+    initialize(repository)
+    placeholders = ",".join("?" for _ in wanted)
+    with closing(repository._connect()) as connection:
+        rows = connection.execute(
+            f"""SELECT game_id, weather_code, condition, temperature, indoor,
+                       forecast_generated_at
+                FROM game_weather WHERE game_id IN ({placeholders})
+                ORDER BY game_id, forecast_generated_at DESC""", wanted).fetchall()
+    summary: dict[int, dict] = {}
+    for row in rows:
+        if row["game_id"] in summary:
+            continue
+        indoor = bool(row["indoor"])
+        code = row["weather_code"]
+        glyph = weather_emoji(code, indoor=indoor)
+        if not glyph:
+            continue
+        condition = row["condition"]
+        if not indoor and (not condition or condition == "Unknown"):
+            condition = weather_condition(code)
+        summary[row["game_id"]] = {
+            "emoji": glyph,
+            "indoor": indoor,
+            "condition": "Indoors" if indoor else condition,
+            "temperature": (None if indoor or row["temperature"] is None
+                            else round(float(row["temperature"]))),
+        }
+    return summary
 
 
 def weather_flags_by_game(repository: CFBRepository, season: int) -> dict[int, list[dict]]:

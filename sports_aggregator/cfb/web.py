@@ -16,7 +16,8 @@ from sports_aggregator.cfb.draft import position_targets, prospect_board
 from sports_aggregator.cfb.prospects import (
     board_with_profile, consensus_board, reconcile)
 from sports_aggregator.cfb.external import (
-    fpi_for_game, fpi_team_season, weather_flags_by_game, weather_for_game)
+    fpi_for_game, fpi_team_season, weather_flags_by_game,
+    weather_for_game, weather_summary_by_game)
 from sports_aggregator.cfb.identity import (
     conference_color, conference_color_dark, conference_identity, team_identity)
 from sports_aggregator.cfb.history import (
@@ -757,6 +758,7 @@ def scoreboard():
     selected_name = next((item["conference"] for item in conferences
                           if item["slug"] == selected), None)
     previews = _story_repository().game_previews([game["game_id"] for game in games])
+    forecasts = weather_summary_by_game(repository, [game["game_id"] for game in games])
     return render_template(
         "cfb_scoreboard.html",
         meta=page_meta_for.scoreboard_meta(season, day=requested, games=len(games)),
@@ -769,7 +771,9 @@ def scoreboard():
         selected=selected,
         selected_name=selected_name,
         games=views.scoreboard_games(games, previews, repository.team_brands(),
-                                     timezone_name=zone, conference=selected_name),
+                                     timezone_name=zone, conference=selected_name,
+                                     lines=lines_by_game(repository, season),
+                                     weather=forecasts),
         total_games=len(games),
     )
 

@@ -14,17 +14,22 @@ import unittest
 from contextlib import closing
 
 from app import create_app
+from sports_aggregator.cfb.external import initialize as external_initialize
+from sports_aggregator.cfb.lines import initialize as lines_initialize
 from sports_aggregator.cfb.models import Game, Team
 from sports_aggregator.cfb.repository import (
     CFBRepository, forget_initialized_schemas,
 )
+from sports_aggregator.cfb.views import _market_line
 from sports_aggregator.social.content import ContentRepository
 from sports_aggregator.social.stories import StoryRepository
 
 
 def _game(game_id, start, home_id, home, away_id, away, *, completed=False,
-          home_points=None, away_points=None, conference="Big Ten"):
+          home_points=None, away_points=None, conference="Big Ten",
+          home_elo=None, away_elo=None):
     return Game.from_cfbd({
+        "homePregameElo": home_elo, "awayPregameElo": away_elo,
         "id": game_id, "season": 2026, "week": 1, "seasonType": "regular",
         "startDate": start, "startTimeTBD": False, "completed": completed,
         "neutralSite": False, "conferenceGame": True, "venue": "Stadium",
@@ -193,6 +198,126 @@ class PreviewLinkTests(unittest.TestCase):
     def test_asking_for_nothing_returns_nothing(self):
         self.assertEqual(self.stories.game_previews([]), {})
         self.assertEqual(self.stories.game_previews([None, 0]), {})
+
+
+class MarketLineTests(unittest.TestCase):
+    """A spread is signed against the home side, so it has to be named."""
+
+    def test_a_negative_spread_favours_the_home_team(self):
+        line = _market_line({"home_team": "Georgia", "away_team": "Austin Peay"},
+                            {"spread": -47.5, "total": 55.0, "books": 3})
+        self.assertEqual(line["text"], "Georgia -47.5")
+        self.assertEqual(line["total"], "O/U 55")
+        self.assertEqual(line["title"], "Consensus of 3 books")
+
+    def test_a_positive_spread_favours_the_away_team(self):
+        line = _market_line({"home_team": "Purdue", "away_team": "Notre Dame"},
+                            {"spread": 21.0, "total": None, "books": 1})
+        self.assertEqual(line["text"], "Notre Dame -21")
+        self.assertIsNone(line["total"])
+        self.assertEqual(line["title"], "Consensus of 1 book")
+
+    def test_a_level_game_is_named_rather_than_shown_as_minus_zero(self):
+        line = _market_line({"home_team": "A", "away_team": "B"}, {"spread": 0.0})
+        self.assertEqual(line["text"], "Pick'em")
+
+    def test_no_stored_spread_is_no_line(self):
+        game = {"home_team": "A", "away_team": "B"}
+        self.assertIsNone(_market_line(game, None))
+        self.assertIsNone(_market_line(game, {"spread": None, "total": 51.0}))
+
+
+class ScoreboardExtrasTests(unittest.TestCase):
+    """Line, Elo and weather on the card, and the line yielding to the score."""
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        os.unlink(self.path)
+        forget_initialized_schemas()
+        self.repository = CFBRepository(self.path)
+        self.repository.replace_teams((
+            Team(1, "Michigan", "Wolverines", "MICH", "Big Ten", None, "fbs",
+                 "00274C", "FFCB05", (), ("Michigan",), None, None),
+            Team(2, "Ohio State", "Buckeyes", "OSU", "Big Ten", None, "fbs",
+                 "BB0000", "666666", (), ("Ohio State",), None, None),
+            Team(3, "Alabama", "Tide", "BAMA", "SEC", None, "fbs",
+                 "9E1B32", "828A8F", (), ("Alabama",), None, None),
+            Team(4, "Georgia", "Dawgs", "UGA", "SEC", None, "fbs",
+                 "BA0C2F", "000000", (), ("Georgia",), None, None),
+        ))
+        self.repository.replace_games(2026, [
+            _game(1, "2026-09-05T00:00:00.000Z", 1, "Michigan", 2, "Ohio State",
+                  home_elo=1804, away_elo=1902),
+            _game(2, "2026-09-05T16:00:00.000Z", 3, "Alabama", 4, "Georgia",
+                  conference="SEC", completed=True, home_points=31, away_points=17),
+        ])
+        lines_initialize(self.repository)
+        external_initialize(self.repository)
+        with closing(self.repository._connect()) as connection:
+            for game_id, provider, spread in ((1, "DK", -6.0), (1, "FD", -7.0),
+                                              (2, "DK", -3.5)):
+                connection.execute(
+                    """INSERT INTO game_lines(game_id,season,provider,spread,
+                       over_under,formatted_spread,fetched_at)
+                       VALUES(?,2026,?,?,48.0,'','2026-09-01')""",
+                    (game_id, provider, spread))
+            connection.execute(
+                """INSERT INTO game_weather(game_id,forecast_generated_at,
+                   kickoff_time,forecast_hour,temperature,weather_code,condition,
+                   indoor,source,imported_at)
+                   VALUES(1,'2026-09-04','2026-09-05','2026-09-05',
+                          58.4,61,'Light rain',0,'test','2026-09-04')""")
+            connection.commit()
+        ContentRepository(self.path).initialize()
+        StoryRepository(self.path).initialize()
+        self.app = create_app({
+            "TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False,
+            "CFB_REPOSITORY": self.repository, "CFB_DEFAULT_SEASON": 2026,
+            "CFB_DATABASE_PATH": self.path,
+            "CFB_DISPLAY_TIMEZONE": "America/New_York",
+        })
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        forget_initialized_schemas()
+        for path in (self.path, self.path + "-wal", self.path + "-shm"):
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def _body(self, day):
+        return self.client.get(
+            "/college-football/scoreboard/?date=" + day).get_data(as_text=True)
+
+    def test_a_scheduled_game_shows_the_consensus_line(self):
+        body = self._body("2026-09-04")
+        self.assertIn("Michigan -6.5", body)          # the average of -6 and -7
+        self.assertIn("O/U 48", body)
+        self.assertIn("Consensus of 2 books", body)
+
+    def test_a_completed_game_shows_the_score_instead_of_the_line(self):
+        """The line is a forecast; once there are points it is not the news."""
+        body = self._body("2026-09-05")
+        self.assertIn(">31<", body)
+        self.assertNotIn("Alabama -3.5", body)
+        self.assertNotIn('class="line"', body)
+
+    def test_both_pregame_elo_ratings_are_shown(self):
+        body = self._body("2026-09-04")
+        self.assertIn(">1902<", body)
+        self.assertIn(">1804<", body)
+
+    def test_a_game_missing_elo_shows_none_rather_than_one_side(self):
+        self.assertNotIn('class="elo"', self._body("2026-09-05"))
+
+    def test_the_forecast_becomes_a_glyph_and_a_temperature(self):
+        body = self._body("2026-09-04")
+        self.assertIn("🌧", body)             # light rain
+        self.assertIn("58°", body)
+        self.assertIn('title="Light rain, 58°F"', body)
+
+    def test_a_game_with_no_forecast_carries_no_weather_markup(self):
+        self.assertNotIn('class="weather"', self._body("2026-09-05"))
 
 
 if __name__ == "__main__":

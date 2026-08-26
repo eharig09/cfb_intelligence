@@ -58,6 +58,39 @@ WEATHER_CODES = {
 }
 
 
+#: A glyph per WMO code, for spaces too small for the words.
+#:
+#: Keyed by code rather than by the English label, so a rewording of
+#: WEATHER_CODES cannot silently drop an icon. A code with no entry shows no
+#: glyph at all: a wrong picture of the weather is worse than none, and the
+#: temperature beside it still carries the useful part.
+WEATHER_EMOJI = {
+    0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
+    45: "🌫️", 48: "🌫️",
+    51: "🌦️", 53: "🌦️", 55: "🌦️",
+    56: "🌧️", 57: "🌧️",
+    61: "🌧️", 63: "🌧️", 65: "🌧️",
+    66: "🧊", 67: "🧊",
+    71: "🌨️", 73: "🌨️", 75: "❄️",
+    77: "🌨️",
+    80: "🌧️", 81: "🌧️", 82: "⛈️",
+    85: "🌨️", 86: "❄️",
+    95: "⛈️", 96: "⛈️", 99: "⛈️",
+}
+
+#: Indoors the forecast is irrelevant, and saying so is more use than a sun.
+INDOOR_EMOJI = "🏟️"
+
+
+def weather_emoji(code: int | None, *, indoor: bool = False) -> str | None:
+    """One glyph for a forecast, or None when there is nothing honest to show."""
+    if indoor:
+        return INDOOR_EMOJI
+    if code is None:
+        return None
+    return WEATHER_EMOJI.get(int(code))
+
+
 def weather_condition(code: int | None) -> str:
     """Translate a WMO code without treating valid clear-sky code zero as missing."""
     if code is None:

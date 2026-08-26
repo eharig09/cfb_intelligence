@@ -63,6 +63,18 @@
         flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
         white-space: nowrap; font-weight: 700; font-size: .86rem;
     }
+    .card-meta { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+    .card-meta .weather { white-space: nowrap; text-transform: none; }
+    .card-meta .tv { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .game-side .elo {
+        font-size: .66rem; color: var(--muted); font-variant-numeric: tabular-nums;
+        flex: 0 0 auto;
+    }
+    .game-card-foot .line { font-weight: 800; color: var(--ink); }
+    .game-card-foot .venue {
+        margin-left: auto; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap; min-width: 0;
+    }
     .game-side .score {
         font: 800 1.05rem/1 var(--display-font); font-variant-numeric: tabular-nums;
         color: var(--muted);
@@ -137,7 +149,15 @@
         <div class="game-card-top">
             <span>{% if game.completed %}Final{% else %}{{ game.kickoff }}{% endif %}
                   {%- if game.week %} &middot; Wk {{ game.week }}{% endif %}</span>
-            <span>{{ game.television or '' }}</span>
+            <span class="card-meta">
+                {%- if game.weather %}
+                <span class="weather" title="{{ game.weather.condition }}{{ ', ' ~ game.weather.temperature ~ '°F' if game.weather.temperature }}">
+                    <span aria-hidden="true">{{ game.weather.emoji }}</span>
+                    {%- if game.weather.temperature %} {{ game.weather.temperature }}°{% endif %}
+                </span>
+                {%- endif %}
+                {%- if game.television %}<span class="tv">{{ game.television }}</span>{% endif %}
+            </span>
         </div>
         {% for side in (game.away, game.home) %}
         <div class="game-side{{ ' is-winner' if game.winner == side.prefix }}">
@@ -146,11 +166,20 @@
                   style="--mark:url('{{ side.logo }}');--mark-dark:url('{{ side.logo_dark }}')"></span>
             {% endif %}
             <span class="name">{{ side.team }}</span>
+            {% if game.elo %}<span class="elo"
+                 title="Pregame Elo rating">{{ game.elo[side.prefix] | round | int }}</span>{% endif %}
             {% if side.points is not none %}<span class="score">{{ side.points }}</span>{% endif %}
         </div>
         {% endfor %}
         <div class="game-card-foot">
-            <span>{{ game.venue or '' }}{% if game.neutral_site %} &middot; neutral{% endif %}</span>
+            {#- Before kickoff the market line is what there is to say; once
+                points exist the score above says it better, so only one of the
+                two ever appears. -#}
+            {% if game.line %}
+            <span class="line" title="{{ game.line.title }}">{{ game.line.text }}</span>
+            {% if game.line.total %}<span>{{ game.line.total }}</span>{% endif %}
+            {% endif %}
+            <span class="venue">{{ game.venue or '' }}{% if game.neutral_site %} &middot; neutral{% endif %}</span>
         </div>
     </a>
     {% endfor %}

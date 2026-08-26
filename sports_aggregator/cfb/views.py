@@ -2194,7 +2194,36 @@ def games_to_watch_table(games: Sequence[dict[str, Any]],
     )
 
 
-def scoreboard_games(games, previews, brands, *, timezone_name, conference=None):
+def _market_line(game, line):
+    """The market's read on a game, said the way a scoreboard says it.
+
+    A stored spread is signed against the home team — negative means the home
+    side is favoured, which holds for all 167 stored rows — so it is turned into
+    a named favourite and a number, because "-7.5" alone does not say who.
+    """
+    if not line or line.get("spread") is None:
+        return None
+    spread = float(line["spread"])
+    if abs(spread) < 0.05:
+        text = "Pick'em"
+    else:
+        favourite = game["home_team"] if spread < 0 else game["away_team"]
+        text = f"{favourite} -{abs(spread):g}"
+    total = line.get("total")
+    books = line.get("books") or 0
+    return {
+        "text": text,
+        "total": f"O/U {total:g}" if total is not None else None,
+        # Books are stored per provider and disagree; the count says how many
+        # were averaged into this, rather than implying one true number.
+        "books": books,
+        "title": (f"Consensus of {books} book{'' if books == 1 else 's'}"
+                  if books else "Market line"),
+    }
+
+
+def scoreboard_games(games, previews, brands, *, timezone_name, conference=None,
+                     lines=None, weather=None):
     """One day's games, ready to render, filtered to a conference if asked.
 
     Not a table: a scoreboard row is two teams and a result, and forcing that
@@ -2229,9 +2258,19 @@ def scoreboard_games(games, previews, brands, *, timezone_name, conference=None)
         if game.get("completed") and away["points"] is not None and home["points"] is not None:
             winner = "away" if away["points"] > home["points"] else (
                 "home" if home["points"] > away["points"] else None)
+        forecast = (weather or {}).get(game["game_id"]) or {}
         rows.append({
             "game_id": game["game_id"],
             "kickoff": local.strftime("%I:%M %p").lstrip("0"),
+            # The line is what there is to say before kickoff; once points
+            # exist the score says it better, so the card shows one or other.
+            "line": None if game.get("completed") else _market_line(
+                game, (lines or {}).get(game["game_id"])),
+            "elo": {
+                "away": game.get("away_pregame_elo"),
+                "home": game.get("home_pregame_elo"),
+            } if game.get("home_pregame_elo") and game.get("away_pregame_elo") else None,
+            "weather": forecast or None,
             "television": game.get("television"),
             "venue": game.get("venue"),
             "neutral_site": bool(game.get("neutral_site")),
