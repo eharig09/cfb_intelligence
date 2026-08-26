@@ -279,6 +279,16 @@ def main(argv=None) -> int:
         )
         print(f"feeds={len(tasks)} succeeded={succeeded} abandoned={abandoned} "
               f"articles={len(combined)} stored={stored} errors={len(errors)}")
+        # A count alone says a quarter of the feeds worked without saying why
+        # the rest did not, and the reasons are only in the database. The
+        # distinct ones are few even when the count is in the hundreds.
+        if errors:
+            tally: dict[str, int] = {}
+            for error in errors:
+                tally[str(error["error"])[:120]] = tally.get(str(error["error"])[:120], 0) + 1
+            print("error kinds:")
+            for message, count in sorted(tally.items(), key=lambda item: -item[1])[:5]:
+                print(f"  {count:>4}  {message}")
         # Feeds abandoned at the deadline are not failures to fetch; they are
         # feeds that were never reached. Judging the run on what it attempted
         # would call a healthy partial pass a failure.
