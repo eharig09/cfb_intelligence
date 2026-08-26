@@ -155,7 +155,11 @@ def ingest_weather(repository: CFBRepository, season: int, *,
     if venue_errors:
         print(f"weather venue requests: {len(venue_payloads)} succeeded, "
               f"{len(venue_errors)} failed (deduplicated across {len(games)} games)")
-    return len(failures)
+    # A daily allowance running out is a limit, not a fault. Counting it as a
+    # failure marked every refresh after the first of the day as degraded, for
+    # a condition that is expected, self-correcting, and already stated above.
+    # Anything else that went wrong still counts.
+    return len(failures) - (1 if quota_exhausted else 0)
 
 
 def main(argv=None) -> int:

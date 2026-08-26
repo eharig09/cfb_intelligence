@@ -559,7 +559,8 @@ def _run_low_memory_phase(
                 season, root=root, timeout=timeout, log=log, optional=step.optional
             )
         else:
-            status, message, seconds = _run_command(step.command, timeout=timeout, log=log)
+            status, message, seconds = _run_command(
+                step.command, timeout=int(step.timeout_seconds or timeout), log=log)
             result = {
                 "step": step.name,
                 "status": status,

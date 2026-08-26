@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed)
 import threading
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -43,6 +44,14 @@ WORKER_STACK_BYTES = 512 * 1024
 #: "degraded" stopped carrying information — three steps sat in that list every
 #: run while the refresh was working. A step now fails when it did not do its
 #: job, not when the internet was imperfect.
+#: How long ingest-local-reporting waits for its feeds before keeping what it has.
+#:
+#: Three hundred and fifty Google News feeds behind eight workers, against an
+#: aggregator that throttles. A heavy refresh spent 1800 of its 2580 seconds
+#: here and stored nothing, because the driver killed the process rather than
+#: the step deciding it had waited long enough.
+LOCAL_REPORTING_DEADLINE = 420.0
+
 MAX_TOLERATED_FAILURE_SHARE = 0.25
 
 
@@ -82,6 +91,10 @@ def main(argv=None) -> int:
                                           "retag","roles","score","status","cluster",
                                           "review-export","review-import","review-report")); parser.add_argument("--season",type=int,default=datetime.now().year)
     parser.add_argument("--limit",type=int,default=15)
+    parser.add_argument(
+        "--deadline", type=float, default=LOCAL_REPORTING_DEADLINE,
+        help="ingest-local-reporting: stop waiting for feeds after this many "
+             "seconds and keep what arrived. 0 waits indefinitely.")
     parser.add_argument("--input")
     parser.add_argument("--output",default="instance/cfb_content_review.csv")
     parser.add_argument("--reviewer",default="local")
@@ -218,29 +231,44 @@ def main(argv=None) -> int:
                     source_entity_key=f"local-publisher:{publisher_id}",
                     source_endpoint_key=f"rss:google-news:{publisher_id}:{team['team_id']}",
                 )))
-        errors=[]; succeeded=0; combined={}; team_ids={}
+        errors=[]; succeeded=0; combined={}; team_ids={}; abandoned=0
         started=datetime.now(timezone.utc).isoformat()
         def fetch_local(task):
             team,source,config=task
             return team,source,RSSNewsProvider(config).fetch()
+        # Three hundred and fifty feeds against one aggregator, which throttles.
+        # Without a deadline this ran until the refresh driver killed the whole
+        # process at thirty minutes, and everything fetched up to that point was
+        # lost with it: seventy per cent of a heavy refresh for nothing stored.
+        # It now stops waiting, keeps what arrived, and says what it gave up on.
         with ThreadPoolExecutor(max_workers=8) as pool:
             futures={pool.submit(fetch_local,task):task for task in tasks}
-            for future in as_completed(futures):
-                team,source,_=futures[future]
-                try:
-                    _,_,articles=future.result(); succeeded+=1
-                    # Process each completed feed immediately instead of holding
-                    # every feed response in memory until the slowest one ends.
-                    for article in articles:
-                        if not article_matches_team(
-                            f"{article.title} {article.summary}", team,
-                            publisher=article.publisher or source["name"],
-                        ):
-                            continue
-                        combined.setdefault(article.identity,article)
-                        team_ids.setdefault(article.identity,set()).add(int(team["team_id"]))
-                except Exception as exc:
-                    errors.append({"team":team["team"],"domain":source["domain"],"error":str(exc)})
+            pending=set(futures)
+            try:
+                for future in as_completed(futures, timeout=args.deadline or None):
+                    pending.discard(future)
+                    team,source,_=futures[future]
+                    try:
+                        _,_,articles=future.result(); succeeded+=1
+                        # Process each completed feed immediately instead of
+                        # holding every response until the slowest one ends.
+                        for article in articles:
+                            if not article_matches_team(
+                                f"{article.title} {article.summary}", team,
+                                publisher=article.publisher or source["name"],
+                            ):
+                                continue
+                            combined.setdefault(article.identity,article)
+                            team_ids.setdefault(article.identity,set()).add(int(team["team_id"]))
+                    except Exception as exc:
+                        errors.append({"team":team["team"],"domain":source["domain"],"error":str(exc)})
+            except FuturesTimeoutError:
+                abandoned=len(pending)
+                for future in pending:
+                    future.cancel()
+                errors.append({"team":"-","domain":"-",
+                               "error":f"deadline of {args.deadline:g}s reached with "
+                                       f"{abandoned} feeds outstanding"})
         stored=0
         for identity,article in combined.items():
             repository.store_article(replace(article,team_ids=tuple(sorted(team_ids[identity]))),args.season)
@@ -249,8 +277,14 @@ def main(argv=None) -> int:
             started,datetime.now(timezone.utc).isoformat(),len(tasks),succeeded,
             len(combined),stored,errors,platform="rss-local",
         )
-        print(f"feeds={len(tasks)} succeeded={succeeded} articles={len(combined)} stored={stored} errors={len(errors)}")
-        return _step_exit_code(attempted=len(tasks), errors=len(errors), stored=stored)
+        print(f"feeds={len(tasks)} succeeded={succeeded} abandoned={abandoned} "
+              f"articles={len(combined)} stored={stored} errors={len(errors)}")
+        # Feeds abandoned at the deadline are not failures to fetch; they are
+        # feeds that were never reached. Judging the run on what it attempted
+        # would call a healthy partial pass a failure.
+        return _step_exit_code(attempted=len(tasks) - abandoned,
+                               errors=len(errors) - (1 if abandoned else 0),
+                               stored=stored)
     started=datetime.now(timezone.utc).isoformat(); endpoints=repository.bluesky_endpoints()
     client=BlueskyIdentityClient(); succeeded=seen=stored=0; errors=[]
     def fetch(endpoint):

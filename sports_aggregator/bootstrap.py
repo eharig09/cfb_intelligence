@@ -36,6 +36,9 @@ class Step:
     optional: bool = False
     requires_env: tuple[str, ...] = field(default_factory=tuple)
     requires_all_env: tuple[str, ...] = field(default_factory=tuple)
+    #: Seconds this step gets before the driver kills it. None uses the
+    #: driver's own timeout, which is a backstop rather than a budget.
+    timeout_seconds: float | None = None
 
 
 def steps(season: int, *, history_from: int | None = None,
@@ -133,10 +136,13 @@ def steps(season: int, *, history_from: int | None = None,
         Step("podcasts", "Verified podcast feeds",
              ["sports_aggregator.social.content_cli", "ingest-podcasts", "--season", year],
              ("initial", "refresh"), optional=True),
+        # It stops itself at its own deadline; this is only the backstop for a
+        # step that has stopped responding altogether. Before both existed it
+        # ran to the driver's thirty minutes and stored nothing.
         Step("local-articles", "Verified team-scoped local reporting",
              ["sports_aggregator.social.content_cli", "ingest-local-reporting",
               "--season", year, "--limit", "15"],
-             ("initial", "refresh"), optional=True),
+             ("initial", "refresh"), optional=True, timeout_seconds=600),
         Step("retag", "Classify CFB eligibility, then re-resolve current entities",
              ["sports_aggregator.social.content_cli", "retag", "--season", year],
              ("initial", "refresh"), optional=True),
