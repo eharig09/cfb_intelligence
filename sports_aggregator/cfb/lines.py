@@ -1,12 +1,17 @@
-"""Betting lines as market opinion, stored per provider and never blended.
+"""Betting lines as market opinion, stored one row per provider.
 
 A line is the most liquid public forecast of a game, which makes it a useful
 check on our own models -- and a genuinely different kind of information from a
 report or a grade. It is stored the way it arrives: one row per provider, with
-opening and current numbers kept apart so line movement stays visible.
+opening and current numbers kept apart so line movement stays visible. Nothing
+is ever collapsed on the way in, so the providers can always be read back.
 
-Providers are not averaged into a "true" number. When DraftKings and Bovada
-disagree, that disagreement is the information.
+Where a view has room for one number and not five -- a scoreboard card, a slate
+table -- the providers are averaged, and the disagreement travels with the
+average rather than being dropped: `spread_range` and `total_range` say how far
+apart the books are, and the count says how many were averaged. When DraftKings
+and Bovada disagree that gap is information, and a reader who wants the books
+themselves gets them from `game_lines`.
 
 Nothing here is presented as a prediction by this application, and no betting
 advice is derived from it.
