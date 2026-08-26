@@ -111,6 +111,59 @@
     .watch-card-line { text-align: right; white-space: nowrap; }
     .watch-card-line strong { display: block; color: var(--rust); font-size: .78rem; }
 
+    /* The day's games, as a strip rather than a grid: this is the first thing
+       on the page and it must not push the rest of it below the fold. */
+    .slate { margin: 14px 0 4px; }
+    .slate-head {
+        display: flex; align-items: baseline; justify-content: space-between;
+        gap: 10px; margin-bottom: 7px;
+    }
+    .slate-head strong {
+        font: 900 .62rem/1 var(--display-font); letter-spacing: .09em;
+        text-transform: uppercase; color: var(--muted);
+    }
+    .slate-head a {
+        color: var(--rust); font-size: .62rem; font-weight: 800;
+        text-transform: uppercase; letter-spacing: .06em; text-decoration: none;
+        white-space: nowrap;
+    }
+    .slate-head a:hover { text-decoration: underline; }
+    .slate-strip {
+        display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+        overscroll-behavior-inline: contain; scrollbar-width: thin;
+    }
+    .slate-chip {
+        flex: 0 0 auto; width: 168px; min-width: 0; text-decoration: none;
+        color: var(--ink); background: var(--paper);
+        border: 1px solid var(--line); border-left: 3px solid var(--team);
+        border-radius: 6px; padding: 7px 9px 8px;
+    }
+    .slate-chip:hover { border-color: var(--team); }
+    .slate-chip:focus-visible { outline: 3px solid var(--team); outline-offset: 2px; }
+    .slate-status {
+        color: var(--muted); font-size: .58rem; font-weight: 800;
+        text-transform: uppercase; letter-spacing: .07em; margin-bottom: 5px;
+    }
+    .slate-side {
+        display: flex; align-items: center; gap: 6px; min-width: 0;
+        color: var(--muted); line-height: 1.5;
+    }
+    .slate-side.is-winner { color: var(--ink); }
+    .slate-side .team-mark { width: 17px; height: 17px; flex: 0 0 auto; }
+    .slate-name {
+        flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap; font-size: .74rem; font-weight: 800;
+    }
+    .slate-score {
+        flex: 0 0 auto; font: 800 .92rem/1 var(--display-font);
+        font-variant-numeric: tabular-nums;
+    }
+    .slate-side.is-winner .slate-score { color: var(--green); }
+    .slate-market {
+        flex: 0 0 auto; font-size: .66rem; font-weight: 700;
+        font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+
     /* Compact development entries with their provenance one click away. */
     .dev { padding: 9px 12px; border-bottom: 1px solid var(--line); border-left: 4px solid transparent; }
     .dev.has-team { border-left-color: var(--story-team); }
@@ -164,6 +217,47 @@
     </div>
     <div class="season">{{ season }}</div>
 </section>
+
+{#- The slate, above everything else. The dashboard showed no score at all
+    once games had been played: a reader arriving on a Saturday evening got
+    the preseason page. Refreshed every quarter hour while games are in
+    progress, so what is on it is what has happened. -#}
+{% if slate_strip %}
+<section class="slate" aria-label="Scores">
+    <div class="slate-head">
+        <strong>{{ slate_day }}</strong>
+        <a href="{{ url_for('cfb.scoreboard', date=slate_day) }}">Full scoreboard &rarr;</a>
+
+    </div>
+    <div class="slate-strip">
+        {% for game in slate_strip %}
+        <a class="slate-chip" data-identity
+           style="--team-light:{{ game.home.accent }};--team-dark:{{ game.home.accent_dark }}"
+           href="{{ url_for('cfb.game_preview', game_id=game.game_id) }}"
+           aria-label="{{ game.away.team }} at {{ game.home.team }}">
+            <div class="slate-status">
+                {%- if game.completed %}Final
+                {%- else %}{{ game.kickoff }}{% endif %}
+            </div>
+            {% for side in (game.away, game.home) %}
+            <div class="slate-side{{ ' is-winner' if game.winner == side.prefix }}">
+                {#- Only the dark mark: the page has one theme, and the light
+                    URL is the fallback the stylesheet never reaches here. -#}
+                <span class="team-mark" aria-hidden="true"
+                      {%- if side.logo %} style="--mark-dark:url('{{ side.logo_dark or side.logo }}')"{% endif %}></span>
+                <span class="slate-name">{{ side.abbreviation }}</span>
+                {#- A score when there is one, otherwise the number the market
+                    put on this side, which is the only thing there is to say
+                    before kickoff. -#}
+                {% if side.points is not none %}<span class="slate-score">{{ side.points }}</span>
+                {% elif side.market %}<span class="slate-market">{{ side.market }}</span>{% endif %}
+            </div>
+            {% endfor %}
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
 
 <div class="facts">
     <div class="fact"><b>{{ status.counts.teams }}</b><span>FBS teams</span></div>

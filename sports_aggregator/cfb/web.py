@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 import os
 from zoneinfo import ZoneInfo
 
@@ -258,16 +258,23 @@ def today():
     # Cards paint the team's letters in its own color, so they need the
     # contrast-checked pair rather than the raw helmet color. team_identity
     # returns a superset of the brand, so existing consumers are unaffected.
-    brands = {team_id: team_identity(brand)
-              for team_id, brand in repository.team_brands().items()}
+    raw_brands = repository.team_brands()
+    brands = {team_id: team_identity(brand) for team_id, brand in raw_brands.items()}
     slate = _with_matchup_edges(repository, _label_games(watch_games))
     weekly_slate = _label_games(games_to_watch(week_games, limit=20))
     market = lines_by_game(repository, season)
     for game in slate:
         game['market'] = market.get(game['game_id']) or {}
     national_stories = _story_repository().list_stories(limit=16)
+    slate_day, slate_games = _current_slate(repository, season)
     return render_template(
         "cfb_today.html",
+        slate_day=slate_day,
+        slate_strip=views.scoreboard_games(
+            slate_games, {}, raw_brands,
+            timezone_name=current_app.config.get(
+                "CFB_DISPLAY_TIMEZONE", "America/New_York"),
+            lines=market),
         meta=page_meta_for.today_meta(
             season, game_count=len(slate), story_count=len(national_stories)),
         season=season,
@@ -776,6 +783,59 @@ def scoreboard():
                                      weather=forecasts),
         total_games=len(games),
     )
+
+
+#: Games the dashboard strip carries before deferring to the scoreboard.
+#:
+#: A September Saturday is sixty-eight games. Every chip costs about a
+#: kilobyte, so the whole slate would be half again the weight of the page it
+#: sits on top of, to show something a reader scrolls past six at a time.
+SLATE_STRIP_GAMES = 15
+
+
+def _current_slate(repository, season: int, *,
+                   now: datetime | None = None) -> tuple[str | None, list[dict]]:
+    """The day the front page should be showing, and the games nearest to now.
+
+    Today when today has games. Otherwise yesterday, because on a Sunday
+    morning the thing a reader wants is Saturday's results and not next
+    weekend's schedule. Otherwise the next day that has any.
+
+    The strip is capped, and what it keeps are the games closest to this
+    moment rather than the first fifteen of the day: at one o'clock that is the
+    noon window, and at nine it is the night games. Taking the head of the day
+    would have shown a reader on Saturday night a screen of games that finished
+    eight hours earlier.
+    """
+    zone = current_app.config.get("CFB_DISPLAY_TIMEZONE", "America/New_York")
+    days = [entry["date"] for entry in repository.scoreboard_days(
+        season, timezone_name=zone)]
+    if not days:
+        return None, []
+    moment = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo(zone))
+    today = moment.date()
+    chosen = None
+    if today.isoformat() in days:
+        chosen = today.isoformat()
+    else:
+        yesterday = (today - timedelta(days=1)).isoformat()
+        if yesterday in days:
+            chosen = yesterday
+        else:
+            chosen = next((day for day in days if day >= today.isoformat()),
+                          days[-1])
+    games = repository.games_on_day(chosen, season, timezone_name=zone)
+    if len(games) > SLATE_STRIP_GAMES:
+        def distance(game):
+            start = str(game.get("start_date") or "").replace("Z", "+00:00")
+            try:
+                return abs((datetime.fromisoformat(start) - moment).total_seconds())
+            except ValueError:
+                return float("inf")
+
+        nearest = sorted(games, key=distance)[:SLATE_STRIP_GAMES]
+        games = sorted(nearest, key=lambda game: str(game.get("start_date") or ""))
+    return chosen, games
 
 
 def _is_date(value: str) -> bool:

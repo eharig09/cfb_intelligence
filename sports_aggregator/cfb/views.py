@@ -2317,6 +2317,10 @@ def scoreboard_games(games, previews, brands, *, timezone_name, conference=None,
             sides.append({
                 "prefix": prefix,
                 "team": game.get(f"{prefix}_team"),
+                # For surfaces too narrow for a school name; the strip on the
+                # dashboard fits four or five characters, not "Coastal Carolina".
+                "abbreviation": (brand.get("abbreviation")
+                                 or (game.get(f"{prefix}_team") or "")[:4].upper()),
                 "team_id": game.get(f"{prefix}_team_id"),
                 "points": game.get(f"{prefix}_points"),
                 "logo": brand.get("logo"),

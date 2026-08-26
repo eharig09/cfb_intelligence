@@ -13,8 +13,12 @@ import re
 import tempfile
 import unittest
 from contextlib import closing
+from datetime import datetime, timedelta, timezone
 
 from app import create_app
+from sports_aggregator.cfb.web import (
+    SLATE_STRIP_GAMES, _current_slate,
+)
 from sports_aggregator.cfb.external import initialize as external_initialize
 from sports_aggregator.cfb.lines import initialize as lines_initialize
 from sports_aggregator.cfb.models import Game, Team
@@ -428,6 +432,128 @@ class FinishedMatchupTests(unittest.TestCase):
         body = self._page(3)
         self.assertIn("Full preview", body)
         self.assertNotIn('<div class="matchup-score">', body)
+
+
+class DashboardSlateTests(unittest.TestCase):
+    """The strip on the front page, which is the site's only live surface.
+
+    The dashboard showed no score at all once games had been played: a reader
+    arriving on a Saturday evening got the preseason page. The strip is capped,
+    so which games it keeps matters as much as that it has any.
+    """
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        os.unlink(self.path)
+        forget_initialized_schemas()
+        self.repository = CFBRepository(self.path)
+        self.repository.replace_teams(tuple(
+            Team(index, "Team %d" % index, "Mascot", "T%d" % index, "Big Ten",
+                 None, "fbs", "00274C", "FFCB05", (), ("Team %d" % index,),
+                 None, None)
+            for index in range(1, 41)))
+        self.app = create_app({
+            "TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False,
+            "CFB_REPOSITORY": self.repository, "CFB_DEFAULT_SEASON": 2026,
+            "CFB_DATABASE_PATH": self.path,
+            "CFB_DISPLAY_TIMEZONE": "America/New_York",
+        })
+
+    def tearDown(self):
+        forget_initialized_schemas()
+        for path in (self.path, self.path + "-wal", self.path + "-shm"):
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def _slate(self, moment):
+        with self.app.test_request_context():
+            return _current_slate(self.repository, 2026, now=moment)
+
+    def _saturday(self, count, *, hour=16):
+        """`count` games, one every half hour from `hour` UTC."""
+        games = []
+        for index in range(count):
+            minutes = index * 30
+            start = datetime(2026, 9, 5, hour, tzinfo=timezone.utc) + timedelta(
+                minutes=minutes)
+            games.append(_game(index + 1,
+                               start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                               1 + (index * 2) % 38, "Team %d" % (1 + (index * 2) % 38),
+                               2 + (index * 2) % 38, "Team %d" % (2 + (index * 2) % 38)))
+        self.repository.replace_games(2026, games)
+
+    # -- which day ---------------------------------------------------------
+
+    def test_today_is_shown_when_today_has_games(self):
+        self._saturday(4)
+        day, games = self._slate(datetime(2026, 9, 5, 18, tzinfo=timezone.utc))
+        self.assertEqual(day, "2026-09-05")
+        self.assertEqual(len(games), 4)
+
+    def test_sunday_morning_shows_saturday_rather_than_next_weekend(self):
+        """What a reader wants then is yesterday's results."""
+        self._saturday(4)
+        day, _ = self._slate(datetime(2026, 9, 6, 13, tzinfo=timezone.utc))
+        self.assertEqual(day, "2026-09-05")
+
+    def test_midweek_looks_forward_to_the_next_slate(self):
+        self._saturday(4)
+        day, _ = self._slate(datetime(2026, 9, 2, 14, tzinfo=timezone.utc))
+        self.assertEqual(day, "2026-09-05")
+
+    def test_no_schedule_at_all_yields_no_strip(self):
+        self.assertEqual(self._slate(datetime(2026, 9, 5, 18, tzinfo=timezone.utc)),
+                         (None, []))
+
+    # -- which games -------------------------------------------------------
+
+    def test_a_full_saturday_is_capped(self):
+        self._saturday(40)
+        _, games = self._slate(datetime(2026, 9, 5, 18, tzinfo=timezone.utc))
+        self.assertEqual(len(games), SLATE_STRIP_GAMES)
+
+    def test_the_cap_keeps_the_games_nearest_to_now(self):
+        """Not the head of the day: at nine at night that is over."""
+        self._saturday(40)
+        _, evening = self._slate(datetime(2026, 9, 6, 0, tzinfo=timezone.utc))
+        starts = [str(game["start_date"]) for game in evening]
+        self.assertNotIn("2026-09-05T16:00:00.000Z", starts,
+                         "the noon window finished hours ago")
+        self.assertTrue(any(start >= "2026-09-05T23:00" for start in starts))
+
+    def test_the_games_it_keeps_are_still_in_kickoff_order(self):
+        self._saturday(40)
+        _, games = self._slate(datetime(2026, 9, 5, 20, tzinfo=timezone.utc))
+        starts = [str(game["start_date"]) for game in games]
+        self.assertEqual(starts, sorted(starts))
+
+    def test_a_short_slate_is_left_alone(self):
+        self._saturday(SLATE_STRIP_GAMES)
+        _, games = self._slate(datetime(2026, 9, 5, 18, tzinfo=timezone.utc))
+        self.assertEqual(len(games), SLATE_STRIP_GAMES)
+
+    # -- the page ----------------------------------------------------------
+
+    def test_the_dashboard_carries_the_scores(self):
+        ContentRepository(self.path).initialize()
+        StoryRepository(self.path).initialize()
+        self.repository.replace_games(2026, [
+            _game(1, "2026-09-05T16:00:00.000Z", 1, "Team 1", 2, "Team 2",
+                  completed=True, home_points=17, away_points=31)])
+        body = self.app.test_client().get(
+            "/college-football/").get_data(as_text=True)
+        self.assertIn("slate-chip", body)
+        self.assertIn(">31<", body)
+        self.assertIn("slate-side is-winner", body)
+
+    def test_the_strip_links_to_the_full_scoreboard(self):
+        ContentRepository(self.path).initialize()
+        StoryRepository(self.path).initialize()
+        self._saturday(3)
+        body = self.app.test_client().get(
+            "/college-football/").get_data(as_text=True)
+        self.assertIn("/college-football/scoreboard/?date=2026-09-05", body)
 
 
 if __name__ == "__main__":
