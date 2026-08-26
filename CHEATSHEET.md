@@ -162,10 +162,17 @@ Needs `CFB_REFRESH_TOKEN` from the Render dashboard (`cfb_intelligence` →
 Environment). Reading the files on the web-service shell needs no token and is
 usually easier.
 
-**PowerShell:**
+> **`curl` in PowerShell is not curl.** It is an alias for `Invoke-WebRequest`,
+> so `-H` binds to `-Headers`, which wants a hashtable, and you get
+> *"Cannot convert the ... value of type System.String to type
+> System.Collections.IDictionary"*. Write `curl.exe` to get the real one, or
+> use the native form below.
+
+**PowerShell.** `Read-Host` keeps the token out of your shell history: the
+command is recorded, what you type into it is not.
 
 ```powershell
-$token = "your-token"
+$token = Read-Host "Token"
 Invoke-RestMethod -Uri "https://cfb-intelligence.onrender.com/internal/cfb-refresh-status" `
   -Headers @{ Authorization = "Bearer $token" } |
   ConvertTo-Json -Depth 8 | Out-File -Encoding utf8 refresh-status.json
@@ -180,13 +187,64 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   | python3 -m json.tool | head -60
 ```
 
-Trigger a refresh remotely (returns `202 accepted` — that means *started*, not
-*finished*):
+### Triggering a refresh remotely
+
+`profile=auto` is what the cron sends: the web service reads the schedule and
+decides. Name a profile to override it.
+
+| Profile | What it runs | Measured |
+| --- | --- | --- |
+| `scores` | games dataset + betting lines | 5s |
+| `light` | 8 steps: the full CFBD sync plus the article and social wire | not yet timed |
+| `heavy` | all 22 steps, including the per-team roster crawl | 425s clean, 848s degraded |
+
+`auto` picks `scores` whenever a game has kicked off in the last six hours and
+has no result stored, which beats the clock even at a heavy hour. Otherwise it
+is the clock schedule. Outside both it answers `200 skipped` and runs nothing.
+
+```powershell
+$token = Read-Host "Token"
+try {
+    Invoke-RestMethod -Method Post `
+        -Uri "https://cfb-intelligence.onrender.com/internal/cfb-refresh?profile=auto" `
+        -Headers @{ Authorization = "Bearer $token" } | ConvertTo-Json
+} catch {
+    "HTTP " + $_.Exception.Response.StatusCode.value__
+}
+```
+
+The `try`/`catch` matters on Windows PowerShell 5.1: `Invoke-RestMethod` throws
+on any non-2xx, so without it a 401 arrives as a red exception rather than a
+status you can read. (`-SkipHttpErrorCheck` does the same job on PowerShell 7+.)
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://cfb-intelligence.onrender.com/internal/cfb-refresh?profile=light"
+  "https://cfb-intelligence.onrender.com/internal/cfb-refresh?profile=auto"
 ```
+
+Reading the answer:
+
+| Code | Means |
+| --- | --- |
+| `202` | Started. Not finished — check the status endpoint or the log. |
+| `200` `"skipped"` | This moment calls for nothing. Correct outside 6/12/18/23 Eastern with no game in play. |
+| `401` | Token mismatch, or the web service is still redeploying. |
+| `503` | `CFB_REFRESH_TOKEN` is not set on the web service. |
+
+### Rotating the token
+
+It is a plain shared secret compared with `secrets.compare_digest`; nothing is
+derived from it, so rotating it is changing the same string in two places.
+
+1. `python -c "import secrets; print(secrets.token_urlsafe(48))"`
+2. Render → **`cfb_intelligence`** (web) → Environment → `CFB_REFRESH_TOKEN` → Save.
+   This redeploys the service.
+3. Render → **`cfb-refresh-trigger`** (cron) → Environment → same value → Save.
+4. Verify with the trigger above.
+
+Do 2 and 3 back to back. Between them the cron gets a 401; since it fires every
+quarter hour, a missed one costs nothing. Update your local `.env` too if the
+old value is in it.
 
 ---
 
