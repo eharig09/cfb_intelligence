@@ -347,5 +347,88 @@ class ScoreboardExtrasTests(unittest.TestCase):
         self.assertNotIn('class="weather"', self._body("2026-09-05"))
 
 
+class FinishedMatchupTests(unittest.TestCase):
+    """A finished game is not a preview of itself.
+
+    The scoreboard sends every game to the same page, so on a Saturday evening
+    a reader clicking a game that ended two hours ago was getting kickoff
+    weather, a market line and "Full preview", with the result nowhere on it.
+    """
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        os.unlink(self.path)
+        forget_initialized_schemas()
+        self.repository = CFBRepository(self.path)
+        self.repository.replace_teams((
+            Team(1, "Michigan", "Wolverines", "MICH", "Big Ten", None, "fbs",
+                 "00274C", "FFCB05", (), ("Michigan",), None, None),
+            Team(2, "Ohio State", "Buckeyes", "OSU", "Big Ten", None, "fbs",
+                 "BB0000", "666666", (), ("Ohio State",), None, None),
+        ))
+        self.repository.replace_games(2026, [
+            _game(1, "2026-09-05T16:00:00.000Z", 1, "Michigan", 2, "Ohio State",
+                  completed=True, home_points=17, away_points=31),
+            _game(2, "2026-09-12T16:00:00.000Z", 1, "Michigan", 2, "Ohio State"),
+        ])
+        ContentRepository(self.path).initialize()
+        StoryRepository(self.path).initialize()
+        self.app = create_app({
+            "TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False,
+            "CFB_REPOSITORY": self.repository, "CFB_DEFAULT_SEASON": 2026,
+            "CFB_DATABASE_PATH": self.path,
+        })
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        forget_initialized_schemas()
+        for path in (self.path, self.path + "-wal", self.path + "-shm"):
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def _page(self, game_id):
+        return self.client.get(
+            "/college-football/games/%d/" % game_id).get_data(as_text=True)
+
+    def _scoreboard_block(self, body):
+        start = body.index('<div class="scoreboard">')
+        return body[start:body.index("<nav", start)]
+
+    def test_a_finished_game_shows_both_scores(self):
+        block = self._scoreboard_block(self._page(1))
+        self.assertEqual(
+            re.findall(r'<div class="matchup-score">(\d+)</div>', block),
+            ["31", "17"])
+
+    def test_the_page_says_final_rather_than_full_preview(self):
+        body = self._page(1)
+        self.assertIn("Final", body[:body.index("<nav")])
+        self.assertNotIn("Full preview", body)
+
+    def test_the_winner_is_marked(self):
+        """Two scores side by side should not read as equal."""
+        block = self._scoreboard_block(self._page(1))
+        sides = re.findall(r'<section class="team([^"]*)"', block)
+        self.assertEqual(len(sides), 2)
+        self.assertIn("is-winner", sides[0], "the away team won 31-17")
+        self.assertNotIn("is-winner", sides[1])
+
+    def test_an_upcoming_game_is_untouched(self):
+        body = self._page(2)
+        self.assertIn("Full preview", body)
+        self.assertNotIn('<div class="matchup-score">', body)
+        self.assertNotIn('<section class="team is-winner"', body)
+
+    def test_a_game_marked_complete_with_no_points_is_not_called_final(self):
+        """The flag arrives before the score sometimes."""
+        self.repository.replace_games(2026, [
+            _game(3, "2026-09-05T16:00:00.000Z", 1, "Michigan", 2, "Ohio State",
+                  completed=True)])
+        body = self._page(3)
+        self.assertIn("Full preview", body)
+        self.assertNotIn('<div class="matchup-score">', body)
+
+
 if __name__ == "__main__":
     unittest.main()

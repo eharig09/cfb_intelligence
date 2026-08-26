@@ -35,6 +35,18 @@
     .scoreboard .team-name { font: 800 clamp(1rem, 2.6vw, 1.3rem)/1.05 var(--display-font); }
     .scoreboard .team-name a { text-decoration: none; }
     .scoreboard .team-name a:hover { text-decoration: underline; }
+    /* The result, when there is one. Sized to be the first thing read on the
+       page, since a reader arriving from the scoreboard came for it. */
+    .matchup-score {
+        margin-top: 6px; font: 900 clamp(2.1rem, 7vw, 3.4rem)/1 var(--display-font);
+        font-variant-numeric: tabular-nums; color: var(--muted);
+    }
+    .scoreboard .team.is-winner .matchup-score { color: var(--ink); }
+    .scoreboard .team.is-winner .team-name a { color: var(--ink); }
+    /* The winner's side carries the accent it already had; the loser's is
+       drained so the two are not read as equal. */
+    .scoreboard .team:not(.is-winner):has(~ .team.is-winner),
+    .scoreboard .team.is-winner ~ .team:not(.is-winner) { opacity: .78; }
     .matchup-record { margin-top: 5px; font-size: .72rem; font-weight: 800; }
     .matchup-rating { margin-top: 4px; color: var(--muted); font-size: .64rem; }
     .matchup-versus {
@@ -101,13 +113,18 @@
 {% endblock %}
 
 {% block content %}
-<div class="eyebrow">Week {{ game.week }} &middot; Full preview</div>
+{#- A finished game is not a preview of itself. The page keeps everything it
+    had -- the history, the units, the reporting -- but says what happened
+    first, because that is what a reader arriving from the scoreboard came
+    for. -#}
+{% set final = game.completed and game.home_points is not none and game.away_points is not none %}
+<div class="eyebrow">Week {{ game.week }} &middot; {{ 'Final' if final else 'Full preview' }}</div>
 <h1 class="matchup-title">
     {% if game.rankings.get(game.away_team) %}<b>#{{ game.rankings.get(game.away_team) }}</b> {% endif %}{{ game.away_team }}
     at
     {% if game.rankings.get(game.home_team) %}<b>#{{ game.rankings.get(game.home_team) }}</b> {% endif %}{{ game.home_team }}
 </h1>
-<div class="matchup-event-line" aria-label="Kickoff information">
+<div class="matchup-event-line" aria-label="{{ 'Game information' if final else 'Kickoff information' }}">
     <span><i></i>{{ game.start_label }}</span>
     <span><i></i>{{ game.television or 'TV TBD' }}</span>
     <span><i></i>{{ game.venue or 'Venue TBD' }}</span>
@@ -120,7 +137,9 @@
         (game.away_team, game.away_team_id, away_brand),
         (game.home_team, game.home_team_id, home_brand)] %}
     {% set record = game.records.get(team_name) %}
-    <section class="team" data-identity
+    {% set points = game.away_points if loop.first else game.home_points %}
+    {% set opponent_points = game.home_points if loop.first else game.away_points %}
+    <section class="team{{ ' is-winner' if final and points > opponent_points }}" data-identity
              style="--team-light:{{ brand.accent }};--team-dark:{{ brand.accent_dark }};--conference-light:{{ brand.conference_color }};--conference-dark:{{ brand.conference_color_dark }}">
         <div class="label">{{ 'Away' if loop.first else 'Home' }}</div>
         <div class="matchup-logo">
@@ -129,6 +148,7 @@
             {% if game.rankings.get(team_name) %}<span class="matchup-rank">#{{ game.rankings.get(team_name) }}</span>{% endif %}
         </div>
         <div class="team-name"><a href="{{ url_for('cfb.team_preview', team_id=team_id) }}">{{ team_name }}</a></div>
+        {% if final %}<div class="matchup-score">{{ points }}</div>{% endif %}
         {% if brand.conference_identity %}
         <div class="matchup-conference">
             {{ conference_mark(brand.conference_identity,
@@ -147,7 +167,9 @@
             {% if brand.elo.elo_rank %}(#{{ brand.elo.elo_rank }}){% endif %}{% endif %}
         </div>
     </section>
-    {% if loop.first %}<div class="matchup-versus" aria-hidden="true"><strong>VS</strong><span>{{ '@' if not game.neutral_site else 'neutral' }}</span></div>{% endif %}
+    {% if loop.first %}<div class="matchup-versus" aria-hidden="true">
+        <strong>{{ 'FINAL' if final else 'VS' }}</strong>
+        <span>{{ '@' if not game.neutral_site else 'neutral' }}</span></div>{% endif %}
     {% endfor %}
 </div>
 
