@@ -66,15 +66,13 @@
     .card-meta { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
     .card-meta .weather { white-space: nowrap; text-transform: none; }
     .card-meta .tv { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .game-side .elo {
-        font-size: .66rem; color: var(--muted); font-variant-numeric: tabular-nums;
-        flex: 0 0 auto;
+    /* The spread sits against its own team; the total is context, so it is
+       quieter than the number it sits under. */
+    .game-side .market {
+        flex: 0 0 auto; white-space: nowrap; font-size: .7rem; font-weight: 700;
+        color: var(--muted); font-variant-numeric: tabular-nums;
     }
-    .game-card-foot .line { font-weight: 800; color: var(--ink); }
-    .game-card-foot .venue {
-        margin-left: auto; overflow: hidden; text-overflow: ellipsis;
-        white-space: nowrap; min-width: 0;
-    }
+    .game-side .market.is-spread { color: var(--ink); font-weight: 800; }
     .game-side .score {
         font: 800 1.05rem/1 var(--display-font); font-variant-numeric: tabular-nums;
         color: var(--muted);
@@ -166,20 +164,15 @@
                   style="--mark:url('{{ side.logo }}');--mark-dark:url('{{ side.logo_dark }}')"></span>
             {% endif %}
             <span class="name">{{ side.team }}</span>
-            {% if game.elo %}<span class="elo"
-                 title="Pregame Elo rating">{{ game.elo[side.prefix] | round | int }}</span>{% endif %}
+            {#- The spread rides on the favourite's own row, where it needs no
+                name to say who it belongs to, and the total takes the other. -#}
+            {% if side.market %}<span class="market{{ ' is-spread' if side.market_is_spread }}"
+                  title="{{ side.market_title }}">{{ side.market }}</span>{% endif %}
             {% if side.points is not none %}<span class="score">{{ side.points }}</span>{% endif %}
         </div>
         {% endfor %}
         <div class="game-card-foot">
-            {#- Before kickoff the market line is what there is to say; once
-                points exist the score above says it better, so only one of the
-                two ever appears. -#}
-            {% if game.line %}
-            <span class="line" title="{{ game.line.title }}">{{ game.line.text }}</span>
-            {% if game.line.total %}<span>{{ game.line.total }}</span>{% endif %}
-            {% endif %}
-            <span class="venue">{{ game.venue or '' }}{% if game.neutral_site %} &middot; neutral{% endif %}</span>
+            <span>{{ game.venue or '' }}{% if game.neutral_site %} &middot; neutral{% endif %}</span>
         </div>
     </a>
     {% endfor %}

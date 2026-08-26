@@ -2195,24 +2195,22 @@ def games_to_watch_table(games: Sequence[dict[str, Any]],
 
 
 def _market_line(game, line):
-    """The market's read on a game, said the way a scoreboard says it.
+    """The market's read on a game, split the way a scoreboard splits it.
 
     A stored spread is signed against the home team — negative means the home
-    side is favoured, which holds for all 167 stored rows — so it is turned into
-    a named favourite and a number, because "-7.5" alone does not say who.
+    side is favoured, which holds for all 167 stored rows — so it names which
+    side the number belongs to. The number then rides on that team's own row,
+    where it needs no name, and the total takes the other row.
     """
     if not line or line.get("spread") is None:
         return None
     spread = float(line["spread"])
-    if abs(spread) < 0.05:
-        text = "Pick'em"
-    else:
-        favourite = game["home_team"] if spread < 0 else game["away_team"]
-        text = f"{favourite} -{abs(spread):g}"
+    level = abs(spread) < 0.05
     total = line.get("total")
     books = line.get("books") or 0
     return {
-        "text": text,
+        "favourite": None if level else ("home" if spread < 0 else "away"),
+        "spread": "PK" if level else f"-{abs(spread):g}",
         "total": f"O/U {total:g}" if total is not None else None,
         # Books are stored per provider and disagree; the count says how many
         # were averaged into this, rather than implying one true number.
@@ -2259,17 +2257,23 @@ def scoreboard_games(games, previews, brands, *, timezone_name, conference=None,
             winner = "away" if away["points"] > home["points"] else (
                 "home" if home["points"] > away["points"] else None)
         forecast = (weather or {}).get(game["game_id"]) or {}
+        # The line is what there is to say before kickoff; once points exist
+        # the score says it better, so the numbers come off the card.
+        line = None if game.get("completed") else _market_line(
+            game, (lines or {}).get(game["game_id"]))
+        if line:
+            # A pick'em has no favourite, so the "PK" goes on the home row for
+            # want of a truer place, and the total keeps the other one.
+            favourite = line["favourite"] or "home"
+            for side in sides:
+                is_favourite = side["prefix"] == favourite
+                side["market"] = line["spread"] if is_favourite else line["total"]
+                side["market_is_spread"] = is_favourite
+                side["market_title"] = line["title"] if is_favourite else "Market total"
         rows.append({
             "game_id": game["game_id"],
             "kickoff": local.strftime("%I:%M %p").lstrip("0"),
-            # The line is what there is to say before kickoff; once points
-            # exist the score says it better, so the card shows one or other.
-            "line": None if game.get("completed") else _market_line(
-                game, (lines or {}).get(game["game_id"])),
-            "elo": {
-                "away": game.get("away_pregame_elo"),
-                "home": game.get("home_pregame_elo"),
-            } if game.get("home_pregame_elo") and game.get("away_pregame_elo") else None,
+            "line": line,
             "weather": forecast or None,
             "television": game.get("television"),
             "venue": game.get("venue"),

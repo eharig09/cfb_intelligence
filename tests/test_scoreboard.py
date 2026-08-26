@@ -9,6 +9,7 @@ the stored string would file a sixth of the schedule under the wrong day.
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import unittest
 from contextlib import closing
@@ -201,25 +202,28 @@ class PreviewLinkTests(unittest.TestCase):
 
 
 class MarketLineTests(unittest.TestCase):
-    """A spread is signed against the home side, so it has to be named."""
+    """A spread is signed against the home side, so it has to be placed."""
 
-    def test_a_negative_spread_favours_the_home_team(self):
+    def test_a_negative_spread_belongs_to_the_home_team(self):
         line = _market_line({"home_team": "Georgia", "away_team": "Austin Peay"},
                             {"spread": -47.5, "total": 55.0, "books": 3})
-        self.assertEqual(line["text"], "Georgia -47.5")
+        self.assertEqual(line["favourite"], "home")
+        self.assertEqual(line["spread"], "-47.5")
         self.assertEqual(line["total"], "O/U 55")
         self.assertEqual(line["title"], "Consensus of 3 books")
 
-    def test_a_positive_spread_favours_the_away_team(self):
+    def test_a_positive_spread_belongs_to_the_away_team(self):
         line = _market_line({"home_team": "Purdue", "away_team": "Notre Dame"},
                             {"spread": 21.0, "total": None, "books": 1})
-        self.assertEqual(line["text"], "Notre Dame -21")
+        self.assertEqual(line["favourite"], "away")
+        self.assertEqual(line["spread"], "-21")
         self.assertIsNone(line["total"])
         self.assertEqual(line["title"], "Consensus of 1 book")
 
-    def test_a_level_game_is_named_rather_than_shown_as_minus_zero(self):
+    def test_a_level_game_has_no_favourite_to_hang_the_number_on(self):
         line = _market_line({"home_team": "A", "away_team": "B"}, {"spread": 0.0})
-        self.assertEqual(line["text"], "Pick'em")
+        self.assertIsNone(line["favourite"])
+        self.assertEqual(line["spread"], "PK")
 
     def test_no_stored_spread_is_no_line(self):
         game = {"home_team": "A", "away_team": "B"}
@@ -289,26 +293,42 @@ class ScoreboardExtrasTests(unittest.TestCase):
         return self.client.get(
             "/college-football/scoreboard/?date=" + day).get_data(as_text=True)
 
-    def test_a_scheduled_game_shows_the_consensus_line(self):
-        body = self._body("2026-09-04")
-        self.assertIn("Michigan -6.5", body)          # the average of -6 and -7
-        self.assertIn("O/U 48", body)
-        self.assertIn("Consensus of 2 books", body)
+    def _sides(self, day):
+        """The two team rows of the first card, tags stripped."""
+        body = self._body(day)
+        card = body[body.index('class="game-card"'):]
+        return [" ".join(re.sub(r"<[^>]+>", " ", block).split())
+                for block in re.findall(r'<div class="game-side.*?</div>', card,
+                                        re.S)[:2]]
+
+    def test_the_spread_rides_on_the_favourite_and_the_total_on_the_other(self):
+        away, home = self._sides("2026-09-04")
+        self.assertIn("Ohio State", away)
+        self.assertIn("O/U 48", away)
+        self.assertNotIn("-6.5", away)
+        self.assertIn("Michigan", home)
+        self.assertIn("-6.5", home)          # the average of -6 and -7
+        self.assertNotIn("O/U", home)
+
+    def test_the_spread_says_which_books_agreed(self):
+        self.assertIn('title="Consensus of 2 books"', self._body("2026-09-04"))
 
     def test_a_completed_game_shows_the_score_instead_of_the_line(self):
         """The line is a forecast; once there are points it is not the news."""
         body = self._body("2026-09-05")
         self.assertIn(">31<", body)
-        self.assertNotIn("Alabama -3.5", body)
-        self.assertNotIn('class="line"', body)
+        self.assertNotIn("-3.5", body)
+        self.assertNotIn('class="market"', body)
 
-    def test_both_pregame_elo_ratings_are_shown(self):
+    def test_the_line_never_appears_in_the_card_foot(self):
+        """It belongs beside a team, not in the footnote with the venue."""
         body = self._body("2026-09-04")
-        self.assertIn(">1902<", body)
-        self.assertIn(">1804<", body)
+        foot = re.search(r'<div class="game-card-foot">(.*?)</div>', body, re.S)
+        self.assertNotIn("O/U", foot.group(1))
+        self.assertNotIn("-6.5", foot.group(1))
 
-    def test_a_game_missing_elo_shows_none_rather_than_one_side(self):
-        self.assertNotIn('class="elo"', self._body("2026-09-05"))
+    def test_elo_is_not_shown(self):
+        self.assertNotIn('class="elo"', self._body("2026-09-04"))
 
     def test_the_forecast_becomes_a_glyph_and_a_temperature(self):
         body = self._body("2026-09-04")
