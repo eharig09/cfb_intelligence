@@ -7,17 +7,56 @@ from html import unescape
 import json
 from pathlib import Path
 import re
+from threading import Lock
 from time import struct_time
 from typing import Any, Callable
 
 import feedparser
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from sports_aggregator.models import Article, FeedConfig
 from sports_aggregator.providers.base import ProviderFetchError
 
 
 _HTML_TAG = re.compile(r"<[^>]+>")
+
+#: Statuses worth trying again rather than recording as a failure.
+#:
+#: Google News answers a burst of feed requests with 503, and this ran with no
+#: retry at all: one attempt, raise_for_status, error. On the instance that was
+#: 268 of 350 feeds refused, against one on a home connection, because the
+#: aggregator throttles datacenter traffic harder. A 503 there means come back,
+#: not go away.
+RETRY_STATUSES = (429, 500, 502, 503, 504)
+
+#: Backoff between attempts. Longer than the API client's because the thing
+#: being backed off is deliberate throttling rather than a transient fault.
+RETRY_BACKOFF = 1.2
+
+_SESSION: requests.Session | None = None
+_SESSION_LOCK = Lock()
+
+
+def _retrying_session() -> requests.Session:
+    """One pooled session for every feed, so 350 requests are not 350 connections."""
+    global _SESSION
+    with _SESSION_LOCK:
+        if _SESSION is None:
+            session = requests.Session()
+            session.mount("https://", HTTPAdapter(
+                max_retries=Retry(
+                    total=3, connect=2, read=2,
+                    backoff_factor=RETRY_BACKOFF,
+                    status_forcelist=RETRY_STATUSES,
+                    allowed_methods=frozenset({"GET"}),
+                    respect_retry_after_header=True,
+                ),
+                pool_connections=8, pool_maxsize=16,
+            ))
+            _SESSION = session
+    return _SESSION
 
 
 def _field(entry: Any, name: str, default: Any = "") -> Any:
@@ -100,16 +139,18 @@ class RSSNewsProvider:
         config: FeedConfig,
         parser: Callable[[str], Any] | None = None,
         timeout_seconds: float = 12,
+        session: requests.Session | None = None,
     ) -> None:
         self.config = config
         self.name = config.name
         self._parser = parser
         self._timeout_seconds = timeout_seconds
+        self._session = session
 
     def _load_feed(self, url: str) -> Any:
         if self._parser is not None:
             return self._parser(url)
-        response = requests.get(
+        response = (self._session or _retrying_session()).get(
             url,
             headers={"User-Agent": "sports-news-aggregator/1.0"},
             timeout=self._timeout_seconds,

@@ -52,6 +52,14 @@ WORKER_STACK_BYTES = 512 * 1024
 #: the step deciding it had waited long enough.
 LOCAL_REPORTING_DEADLINE = 420.0
 
+#: Feeds fetched at once by ingest-local-reporting.
+#:
+#: Eight got 268 of 350 refused with 503 on the instance. The aggregator is
+#: throttling the burst, so the way through it is to ask for less at a time and
+#: let the retry backoff carry the rest. The deadline is what makes that safe:
+#: going slower can no longer mean running until something kills it.
+LOCAL_REPORTING_WORKERS = 4
+
 MAX_TOLERATED_FAILURE_SHARE = 0.25
 
 
@@ -91,6 +99,10 @@ def main(argv=None) -> int:
                                           "retag","roles","score","status","cluster",
                                           "review-export","review-import","review-report")); parser.add_argument("--season",type=int,default=datetime.now().year)
     parser.add_argument("--limit",type=int,default=15)
+    parser.add_argument(
+        "--workers", type=int, default=LOCAL_REPORTING_WORKERS,
+        help="ingest-local-reporting: feeds to fetch at once. Fewer is slower "
+             "and less likely to be throttled.")
     parser.add_argument(
         "--deadline", type=float, default=LOCAL_REPORTING_DEADLINE,
         help="ingest-local-reporting: stop waiting for feeds after this many "
@@ -241,7 +253,7 @@ def main(argv=None) -> int:
         # process at thirty minutes, and everything fetched up to that point was
         # lost with it: seventy per cent of a heavy refresh for nothing stored.
         # It now stops waiting, keeps what arrived, and says what it gave up on.
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
             futures={pool.submit(fetch_local,task):task for task in tasks}
             pending=set(futures)
             try:
