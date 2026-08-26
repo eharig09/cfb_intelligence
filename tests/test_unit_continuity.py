@@ -14,7 +14,8 @@ import tempfile
 import unittest
 
 from sports_aggregator.cfb.models import Player, Team
-from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb.repository import (
+    CFBRepository, _interleave_arrivals)
 from sports_aggregator.cfb.recruiting import (
     evidence_basis, evidence_score, rating_strength,
 )
@@ -368,3 +369,67 @@ class ProductionEvidenceTests(unittest.TestCase):
         finally:
             if os.path.exists(path):
                 os.unlink(path)
+
+
+class ArrivalOrderingTests(unittest.TestCase):
+    """Portal additions and signees interleave rather than one burying the other.
+
+    No single scale produces a mix here, because the two groups do not overlap
+    on one. Ranking by rating put every signee first: an elite high-school
+    rating beats the high-school rating a portal entrant still carries. Ranking
+    by blended evidence put every transfer first: one who played scores above
+    0.85 while the best recruit in the country reaches 0.54, having no college
+    season to show. Both are defensible; both hide a group entirely.
+    """
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        self.repository = CFBRepository(self.path)
+        self.repository.initialize()
+
+    def tearDown(self):
+        if os.path.exists(self.path):
+            os.unlink(self.path)
+
+    @staticmethod
+    def _arrival(name, kind, evidence):
+        return {"name": name, "movement_type": kind, "arrival_evidence": evidence}
+
+    def _order(self, rows):
+        return [row["name"] for row in _interleave_arrivals(rows)]
+
+    def test_the_best_of_each_kind_leads(self):
+        rows = [self._arrival("Transfer A", "TRANSFER_IN", 0.99),
+                self._arrival("Transfer B", "TRANSFER_IN", 0.97),
+                self._arrival("Signee A", "SIGNEE", 0.54),
+                self._arrival("Signee B", "SIGNEE", 0.48)]
+        self.assertEqual(self._order(rows),
+                         ["Transfer A", "Signee A", "Transfer B", "Signee B"])
+
+    def test_neither_group_can_bury_the_other(self):
+        """Twenty transfers must not push every signee off the table."""
+        rows = ([self._arrival(f"Transfer {i}", "TRANSFER_IN", 0.9 - i / 100)
+                 for i in range(20)]
+                + [self._arrival("Top Signee", "SIGNEE", 0.54)])
+        self.assertEqual(self._order(rows)[1], "Top Signee")
+
+    def test_a_group_running_out_does_not_stop_the_rest(self):
+        rows = [self._arrival("Transfer A", "TRANSFER_IN", 0.9),
+                self._arrival("Transfer B", "TRANSFER_IN", 0.8),
+                self._arrival("Signee A", "SIGNEE", 0.5)]
+        self.assertEqual(self._order(rows), ["Transfer A", "Signee A", "Transfer B"])
+
+    def test_other_movement_kinds_follow_rather_than_disappear(self):
+        rows = [self._arrival("Transfer A", "TRANSFER_IN", 0.9),
+                self._arrival("Signee A", "SIGNEE", 0.5),
+                self._arrival("Walk On", "NEWCOMER", 0.7)]
+        order = self._order(rows)
+        self.assertEqual(order[:2], ["Transfer A", "Signee A"])
+        self.assertIn("Walk On", order)
+
+    def test_every_arrival_survives_the_interleave(self):
+        rows = ([self._arrival(f"T{i}", "TRANSFER_IN", 0.9) for i in range(5)]
+                + [self._arrival(f"S{i}", "SIGNEE", 0.5) for i in range(7)]
+                + [self._arrival("Other", "NEWCOMER", 0.4)])
+        self.assertEqual(len(self._order(rows)), len(rows))

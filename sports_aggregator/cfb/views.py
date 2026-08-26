@@ -1922,7 +1922,7 @@ def arrivals_table(arrivals, season, *, caption="Key arrivals"):
         ],
         rows=rows,
         caption=caption,
-        note="ranked by rating, transfers and signees together",
+        note="best of the portal and the signing class, alternating",
         empty="No arrivals identified for this season.",
         dense=True,
     )

@@ -467,10 +467,30 @@ def forget_initialized_schemas() -> None:
     _INITIALIZED_SCHEMAS.clear()
 
 
+def _interleave_arrivals(arrivals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Alternate between portal additions and signees, best of each first."""
+    def ranked(kind: str) -> list[dict[str, Any]]:
+        return sorted((row for row in arrivals if row["movement_type"] == kind),
+                      key=lambda row: (-row["arrival_evidence"], row["name"]))
+
+    transfers, signees = ranked("TRANSFER_IN"), ranked("SIGNEE")
+    others = sorted((row for row in arrivals
+                     if row["movement_type"] not in {"TRANSFER_IN", "SIGNEE"}),
+                    key=lambda row: (-row["arrival_evidence"], row["name"]))
+    merged: list[dict[str, Any]] = []
+    for index in range(max(len(transfers), len(signees))):
+        if index < len(transfers):
+            merged.append(transfers[index])
+        if index < len(signees):
+            merged.append(signees[index])
+    return merged + others
+
+
 class CFBRepository:
     def __init__(self, database_path: str | Path) -> None:
         self._brands: dict[int, dict[str, Any]] | None = None
         self._production_distributions: dict[int, dict[str, list[float]]] = {}
+        self._production_strengths: dict[int, dict[str, float]] = {}
         self._brands_by_school: dict[str, dict[str, Any]] | None = None
         self.path = Path(database_path)
 
@@ -1736,6 +1756,9 @@ class CFBRepository:
         return groups.get(value, ("Other", value.title(), 99))
 
     def roster_movements(self, team_id: int, season: int) -> dict[str, Any]:
+        # Local import: cfb.recruiting depends on this class.
+        from sports_aggregator.cfb.recruiting import evidence_score
+
         team = self.get_team(team_id)
         if team is None:
             return {"season": season, "arrivals": [], "departures": [], "counts": {}}
@@ -1756,8 +1779,10 @@ class CFBRepository:
                 (season, team["school"]),
             )]
             pff = [dict(row) for row in connection.execute(
-                """SELECT normalized_name,interest_score FROM pff_players
-                   WHERE season=? AND cfbd_team_id=?""", (previous_season, team_id)
+                """SELECT normalized_name,cfbd_player_id,interest_score
+                   FROM pff_players
+                   WHERE season=? AND interest_score IS NOT NULL""",
+                (previous_season,)
             )]
         recruits = self.recruit_index(season)
         current_names = {normalize_alias(f"{row['first_name']} {row['last_name']}") for row in current}
@@ -1769,6 +1794,9 @@ class CFBRepository:
         draft_by_name = {row["normalized_name"]: row for row in picks}
         draft_by_id = {row["college_athlete_id"]: row for row in picks if row["college_athlete_id"]}
         interest = {row["normalized_name"]: row["interest_score"] for row in pff}
+        interest_by_id = {row["cfbd_player_id"]: row["interest_score"]
+                          for row in pff if row["cfbd_player_id"]}
+        produced = self.player_production_strength(previous_season)
         arrivals = []
         for row in current:
             name = normalize_alias(f"{row['first_name']} {row['last_name']}")
@@ -1791,6 +1819,8 @@ class CFBRepository:
                 "rating": portal["rating"] if portal else (recruit["rating"] if recruit else None),
                 "stars": portal["stars"] if portal else (recruit["stars"] if recruit else None),
                 "recruit_ranking": recruit["ranking"] if recruit else None,
+                "production_strength": produced.get(row["player_id"], 0.0),
+                "pff_interest": interest_by_id.get(row["player_id"], interest.get(name)),
                 "evidence": evidence,
             })
         departures = []
@@ -1815,17 +1845,25 @@ class CFBRepository:
                 "draft_pick": drafted["overall_pick"] if drafted else None,
                 "interest_score": interest.get(name), "evidence": evidence,
             })
-        # Movement type is a label, not a rank. Sorting on it first meant every
-        # transfer preceded every signee whatever their quality, so a three-star
-        # transfer rated 0.85 was shown while a five-star signee rated 0.99 --
-        # the tenth-ranked recruit in the country -- fell to twenty-first and
-        # off the end of the table. Both ratings come from CFBD on the same
-        # scale, so they compare directly; type only breaks a tie, where a
-        # player with college snaps is the better-evidenced of the two.
-        arrivals.sort(key=lambda row: (
-            -(row["rating"] or 0),
-            {"TRANSFER_IN": 0, "SIGNEE": 1}.get(row["movement_type"], 2),
-            row["name"]))
+        # Ordering all arrivals on one scale cannot produce a mix, because the
+        # two groups do not overlap on any scale that is honest. Rating alone
+        # put every signee first: an elite high-school rating beats the
+        # high-school rating a portal entrant is still carrying. Blended
+        # evidence put every transfer first: a transfer who played scores above
+        # 0.85 while the best recruit in the country reaches 0.54, since he has
+        # no college season to show. Both orderings are defensible and both
+        # hide one group completely.
+        #
+        # So they are ranked within their own kind and then interleaved. A
+        # reader sees the best of each, the Type column says which is which,
+        # and neither list buries the other. Whichever group runs out first,
+        # the remainder simply continues.
+        for row in arrivals:
+            row["arrival_evidence"] = evidence_score(
+                pff_interest=row.get("pff_interest"),
+                recruit_rating=row.get("rating"),
+                production=row.get("production_strength"))
+        arrivals = _interleave_arrivals(arrivals)
         departures.sort(key=lambda row: (
             {"DRAFTED": 0, "TRANSFER_OUT": 1, "ELIGIBILITY_DEPARTURE": 2}.get(row["movement_type"], 3),
             -(row["interest_score"] or 0), row["name"],
@@ -1875,13 +1913,21 @@ class CFBRepository:
             return 0.0
         return round(bisect_left(values, float(value)) / len(values), 4)
 
-    def roster_production_strength(self, team: str, season: int,
-                                   stat_season: int) -> dict[str, float]:
-        """Each roster player's best production percentile, by player id.
+    def player_production_strength(self, stat_season: int) -> dict[str, float]:
+        """Every player's best production percentile that season, by player id.
+
+        Deliberately league-wide rather than per team: an incoming transfer
+        produced somewhere else, and filtering by the current roster's school
+        would find nothing for exactly the players a depth board most needs to
+        place. Cached per season for the same reason team brands are — the
+        answer is identical for every team.
 
         Read directly rather than through `projected_depth`, which recomputes
         every team total and is already called separately by the page.
         """
+        cached = self._production_strengths.get(stat_season)
+        if cached is not None:
+            return cached
         self.initialize()
         wanted = {category: sort_stat(category) for category in CATEGORY_ORDER}
         pairs = [(category, stat) for category, stat in wanted.items() if stat]
@@ -1904,6 +1950,7 @@ class CFBRepository:
             strength = self.production_strength(row["category"], row["value"], stat_season)
             if strength > best.get(row["player_id"], 0.0):
                 best[row["player_id"]] = strength
+        self._production_strengths[stat_season] = best
         return best
 
     def team_depth_chart(self, team_id: int, season: int) -> dict[str, Any]:
@@ -1915,7 +1962,7 @@ class CFBRepository:
         if team is None:
             return {"season": season, "units": {}, "summary": {}}
         roster = self.team_roster(team["school"], season)
-        produced = self.roster_production_strength(team["school"], season, season - 1)
+        produced = self.player_production_strength(season - 1)
         movements = self.roster_movements(team_id, season)
         arrival_by_id = {row["player_id"]: row for row in movements["arrivals"]}
         self.initialize()
