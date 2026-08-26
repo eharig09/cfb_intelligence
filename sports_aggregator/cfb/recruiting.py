@@ -30,6 +30,19 @@ rather than an accident of sort order. All three map to a common 0-1 scale:
   player who has not taken a college snap while the other two describe one who
   has.
 
+Evidence corroborates rather than competing. Taking simply the strongest signal
+threw away the rest, so a back who both produced and graded well ranked level
+with one who only produced. Each further signal now lifts the score a bounded
+fraction of the distance still available, which keeps a player who has done it
+twice ahead of one who has done it once without ever letting the total run away
+from what any single signal could justify.
+
+The bonus is deliberately modest because these signals are not independent: a
+PFF interest score is a grade scaled by playing time, and counting production
+reflects playing time too, so a starter scores well on both largely for the
+same reason. Treating them as independent confirmations would pay twice for
+one fact.
+
 Leaving production out was not a small omission. Across twenty-five teams it
 put a three-star signee above a back who ran for 788 yards, and seventy-seven
 more like it, because a player without a PFF grade scored zero however much he
@@ -66,6 +79,13 @@ RATING_FLOOR, RATING_CEILING = 0.75, 1.0
 #: interest of 85, a player above the 90th percentile of everyone graded.
 PROJECTION_DISCOUNT = 0.55
 
+#: How much a second, weaker signal lifts a player toward the ceiling.
+#:
+#: At 0.5 a player with two signals at 0.6 scores 0.72 rather than 0.6, while
+#: one strong signal and nothing else is unchanged. Kept below 1 because
+#: production and grade largely restate each other.
+CORROBORATION_WEIGHT = 0.5
+
 #: Class size used when scoring a signing class. Classes range from one signee
 #: to several hundred in the raw feed, so a plain sum would rank by volume.
 SCORED_CLASS_SIZE = 20
@@ -86,21 +106,33 @@ def grade_strength(interest_score: float | None) -> float:
     return max(0.0, min(1.0, float(interest_score) / 100.0))
 
 
+def corroborate(stronger: float, weaker: float) -> float:
+    """Fold a second signal into the first without exceeding the ceiling.
+
+    The stronger signal sets the floor; the weaker one closes a fraction of the
+    gap that remains. Absent evidence is zero and therefore costs nothing, which
+    matters because a freshman has only a rating through no fault of his own.
+    """
+    high, low = max(stronger, weaker), min(stronger, weaker)
+    return round(high + CORROBORATION_WEIGHT * low * (1.0 - high), 6)
+
+
 def evidence_score(*, pff_interest: float | None,
                    recruit_rating: float | None,
                    production: float | None = None) -> float:
-    """The strongest prior evidence a player has, on one scale.
+    """How much prior evidence a player carries, on one scale.
 
-    Whichever kind is strongest decides the placement; a player keeps his best
-    evidence rather than an average, because averaging would penalise a
-    productive starter for a thin grade, or an elite recruit for having neither.
+    Production and grade are folded together first: they describe the same
+    college season from two angles, so a player who did well on both is placed
+    above one who did well on either. The recruiting rating, already discounted,
+    is folded in last.
 
-    `production` is already a 0-1 percentile within its own category — see
+    `production` is a 0-1 percentile within its own category — see
     `CFBRepository.production_strength`, which owns the distributions.
     """
-    demonstrated = max(grade_strength(pff_interest), float(production or 0.0))
+    demonstrated = corroborate(grade_strength(pff_interest), float(production or 0.0))
     projected = rating_strength(recruit_rating) * PROJECTION_DISCOUNT
-    return max(demonstrated, projected)
+    return corroborate(demonstrated, projected)
 
 
 def evidence_basis(*, pff_interest: float | None,

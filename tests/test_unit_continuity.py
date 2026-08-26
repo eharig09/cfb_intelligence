@@ -235,10 +235,11 @@ class RecruitingEvidenceTests(unittest.TestCase):
         self.assertAlmostEqual(rating_strength(rating), 0.5, places=3)
         self.assertGreater(graded, projected)
 
-    def test_a_player_keeps_his_better_evidence_rather_than_an_average(self):
+    def test_a_second_signal_adds_rather_than_diluting(self):
+        """Averaging would punish an elite recruit for also having a thin grade."""
         both = evidence_score(pff_interest=20.0, recruit_rating=0.99)
         rating_only = evidence_score(pff_interest=None, recruit_rating=0.99)
-        self.assertEqual(both, rating_only)
+        self.assertGreater(both, rating_only)
 
     def test_a_player_with_no_evidence_scores_zero(self):
         self.assertEqual(evidence_score(pff_interest=None, recruit_rating=None), 0.0)
@@ -285,12 +286,36 @@ class ProductionEvidenceTests(unittest.TestCase):
         marginal = evidence_score(pff_interest=None, recruit_rating=None, production=0.30)
         self.assertGreater(five_star, marginal)
 
-    def test_production_and_grade_are_both_demonstrated_evidence(self):
-        """Whichever is higher stands; neither dilutes the other."""
-        self.assertEqual(
-            evidence_score(pff_interest=20.0, recruit_rating=None, production=0.80), 0.80)
-        self.assertEqual(
-            evidence_score(pff_interest=80.0, recruit_rating=None, production=0.20), 0.80)
+    def test_the_strongest_signal_sets_the_floor(self):
+        """A weak second signal can lift a player, never lower him."""
+        for kwargs in (dict(pff_interest=20.0, recruit_rating=None, production=0.80),
+                       dict(pff_interest=80.0, recruit_rating=None, production=0.20)):
+            with self.subTest(**kwargs):
+                self.assertGreaterEqual(evidence_score(**kwargs), 0.80)
+
+    def test_doing_it_twice_outranks_doing_it_once(self):
+        """The point of blending: corroboration counts for something."""
+        both = evidence_score(pff_interest=90.0, recruit_rating=None, production=0.9)
+        produced_only = evidence_score(pff_interest=None, recruit_rating=None,
+                                       production=0.9)
+        graded_only = evidence_score(pff_interest=90.0, recruit_rating=None)
+        self.assertGreater(both, produced_only)
+        self.assertGreater(both, graded_only)
+
+    def test_a_blended_score_never_exceeds_the_ceiling(self):
+        """Every signal at maximum still lands inside the scale."""
+        self.assertLessEqual(
+            evidence_score(pff_interest=100.0, recruit_rating=1.0, production=1.0), 1.0)
+
+    def test_corroboration_is_bounded_rather_than_independent(self):
+        """Grade and production restate the same season, so pay once, not twice.
+
+        Treating them as independent confirmations would take two mid signals
+        close to certainty; the bonus keeps that in proportion.
+        """
+        blended = evidence_score(pff_interest=60.0, recruit_rating=None, production=0.6)
+        self.assertGreater(blended, 0.6)
+        self.assertLess(blended, 0.85)
 
     def test_the_basis_credits_production_when_it_decides(self):
         self.assertEqual(
