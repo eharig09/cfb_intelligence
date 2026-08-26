@@ -54,6 +54,8 @@ The active application factory is `app.create_app`. It exposes:
 - `/college-football/feed.xml` — national reporting as RSS, linking to publishers
 - `/college-football/teams/<team_id>/feed.xml` — one team's reporting as RSS
 - `/sitemap.xml` and `/robots.txt` — canonical pages only; admin and API excluded
+- `/college-football/scoreboard/?date=&conference=` — one day's games, grouped
+  by the reader's calendar day rather than UTC, filterable by conference
 - `/college-football/search/` — cross-entity search over teams, players, games, reporting
 - `/college-football/admin/links/` — entity link audit with matched text and rule
 - `/api/v1/cfb/links` — the same audit as JSON

@@ -176,6 +176,10 @@
 {% endif %}
 
 <div class="conference-strip">
+    <a class="conference-chip" href="{{ url_for('cfb.scoreboard') }}"
+       title="Every game on a day, with the matchup one click away">
+        <span class="conference-mark is-filled">Scoreboard</span>
+    </a>
     {% for conference in conferences %}
     <a class="conference-chip" title="{{ conference.conference }}"
        href="{{ url_for('cfb.conference_preview', slug=conference.slug, season=season) }}"

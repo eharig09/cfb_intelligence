@@ -1,0 +1,183 @@
+{% extends "_layout.html" %}
+{% from "_tables.html" import conference_mark %}
+
+{% block title %}Scoreboard{% if day %} — {{ day }}{% endif %} | College Football{% endblock %}
+
+{% block head %}
+<style>
+    .board-nav {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+        margin: 12px 0 10px;
+    }
+    .board-nav a, .board-nav .board-day {
+        border: 1px solid var(--line); background: var(--paper);
+        padding: 7px 12px; text-decoration: none; font-size: .78rem; font-weight: 800;
+        min-height: 34px; display: inline-flex; align-items: center;
+    }
+    .board-nav .board-day { background: var(--surface-strong); color: var(--on-strong);
+                            border-color: var(--surface-strong); }
+    .board-nav a[aria-disabled="true"] { opacity: .45; pointer-events: none; }
+    .board-nav form { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+    .board-nav input[type="date"] {
+        border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+        padding: 6px 9px; font: inherit; font-size: .78rem; min-height: 34px;
+    }
+
+    /* Conference filter. Abbreviations only, so the row stays one line. */
+    .board-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
+    .board-filter a { text-decoration: none; }
+    .board-filter .is-selected { outline: 2px solid var(--team); outline-offset: 1px; }
+    .filter-all {
+        display: inline-flex; align-items: center; padding: 2px 8px;
+        border-left: 3px solid var(--line-strong); background: var(--tint);
+        color: var(--ink); font: 900 .6rem/1.35 var(--display-font);
+        letter-spacing: .07em; text-transform: uppercase; white-space: nowrap;
+    }
+
+    /* Cards, not a table: a row here is two teams and a result, and columns
+       would put the away side and the home side in unrelated cells. */
+    .board { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    @media (min-width: 720px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1180px) { .board { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+    .game-card {
+        display: block; background: var(--paper); border: 1px solid var(--line);
+        border-left: 4px solid var(--team); border-radius: 7px; min-width: 0;
+        text-decoration: none; color: var(--ink);
+        transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .game-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-soft); }
+    .game-card:focus-visible { outline: 3px solid var(--team); outline-offset: 2px; }
+    .game-card-top {
+        display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+        padding: 6px 10px; border-bottom: 1px solid var(--line);
+        color: var(--muted); font-size: .64rem; text-transform: uppercase;
+        letter-spacing: .05em; font-weight: 800;
+    }
+    .game-side {
+        display: flex; align-items: center; gap: 8px; padding: 8px 10px; min-width: 0;
+    }
+    .game-side + .game-side { border-top: 1px solid var(--line); }
+    .game-side .team-mark { width: 26px; height: 26px; flex: 0 0 auto; }
+    .game-side .name {
+        flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap; font-weight: 700; font-size: .86rem;
+    }
+    .game-side .score {
+        font: 800 1.05rem/1 var(--display-font); font-variant-numeric: tabular-nums;
+        color: var(--muted);
+    }
+    .game-side.is-winner .score, .game-side.is-winner .name { color: var(--ink); }
+    .game-side.is-winner .score { color: var(--green); }
+    .game-card-foot {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+        padding: 6px 10px; border-top: 1px solid var(--line);
+        color: var(--muted); font-size: .64rem;
+    }
+    /* Deliberately quiet: the card goes to the matchup page, and this is a
+       second destination that must not compete with it. */
+    .preview-link {
+        margin-left: auto; color: var(--rust); font-weight: 800; font-size: .62rem;
+        text-transform: uppercase; letter-spacing: .06em; text-decoration: none;
+    }
+    .preview-link:hover { text-decoration: underline; }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('cfb.today') }}">&larr; College Football Today</a>
+<span class="tagline">Scoreboard</span>
+{% endblock %}
+
+{% block content %}
+<div class="eyebrow">Scoreboard &middot; {{ season }}</div>
+<h1>{% if day %}{{ day }}{% else %}No scheduled games{% endif %}</h1>
+
+{% if days %}
+<nav class="board-nav" aria-label="Choose a day">
+    <a href="{{ url_for('cfb.scoreboard', date=previous_day, conference=selected) }}"
+       {% if not previous_day %}aria-disabled="true" tabindex="-1"{% endif %}
+       aria-label="Previous day with games">&larr; Prev</a>
+    <span class="board-day">{{ total_games }} game{{ '' if total_games == 1 else 's' }}</span>
+    <a href="{{ url_for('cfb.scoreboard', date=next_day, conference=selected) }}"
+       {% if not next_day %}aria-disabled="true" tabindex="-1"{% endif %}
+       aria-label="Next day with games">Next &rarr;</a>
+    <form method="get" action="{{ url_for('cfb.scoreboard') }}">
+        <label for="board-date" class="metric-switch-label">Date</label>
+        <input type="date" id="board-date" name="date" value="{{ day }}"
+               min="{{ days[0].date }}" max="{{ days[-1].date }}">
+        {% if selected %}<input type="hidden" name="conference" value="{{ selected }}">{% endif %}
+        <button type="submit" class="metric-switch-label"
+                style="cursor:pointer;background:var(--tint);border:1px solid var(--line);padding:6px 10px;min-height:34px;">Go</button>
+    </form>
+</nav>
+
+{% if conferences %}
+<nav class="board-filter" aria-label="Filter by conference">
+    <a href="{{ url_for('cfb.scoreboard', date=day) }}"
+       class="{{ 'is-selected' if not selected }}" title="All conferences">
+        <span class="filter-all">All {{ total_games }}</span>
+    </a>
+    {% for item in conferences %}
+    <a href="{{ url_for('cfb.scoreboard', date=day, conference=item.slug) }}"
+       class="{{ 'is-selected' if selected == item.slug }}">
+        {{ conference_mark(item, filled=(selected == item.slug)) }}
+    </a>
+    {% endfor %}
+</nav>
+{% endif %}
+
+{% if games %}
+<div class="board">
+    {% for game in games %}
+    <a class="game-card" data-identity
+       style="--team-light:{{ game.home.accent }};--team-dark:{{ game.home.accent_dark }}"
+       href="{{ url_for('cfb.game_preview', game_id=game.game_id) }}"
+       aria-label="{{ game.away.team }} at {{ game.home.team }} matchup">
+        <div class="game-card-top">
+            <span>{% if game.completed %}Final{% else %}{{ game.kickoff }}{% endif %}
+                  {%- if game.week %} &middot; Wk {{ game.week }}{% endif %}</span>
+            <span>{{ game.television or '' }}</span>
+        </div>
+        {% for side in (game.away, game.home) %}
+        <div class="game-side{{ ' is-winner' if game.winner == side.prefix }}">
+            {% if side.logo %}
+            <span class="team-mark" aria-hidden="true"
+                  style="--mark:url('{{ side.logo }}');--mark-dark:url('{{ side.logo_dark }}')"></span>
+            {% endif %}
+            <span class="name">{{ side.team }}</span>
+            {% if side.points is not none %}<span class="score">{{ side.points }}</span>{% endif %}
+        </div>
+        {% endfor %}
+        <div class="game-card-foot">
+            <span>{{ game.venue or '' }}{% if game.neutral_site %} &middot; neutral{% endif %}</span>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+
+{#- Preview links sit outside the cards: a link inside a link is not valid
+    markup, and the card itself already goes to the matchup page. -#}
+{% set previewed = games | selectattr('preview') | list %}
+{% if previewed %}
+<div class="section-note" style="margin-top:14px;">
+    Written previews found for {{ previewed | length }} of these games:
+    {% for game in previewed %}
+    <a class="preview-link" style="margin-left:0;margin-right:10px;"
+       href="{{ game.preview.url }}" target="_blank" rel="noopener"
+       title="{{ game.preview.headline }}">{{ game.away.team }}&ndash;{{ game.home.team }}</a>
+    {%- endfor %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty">
+    {% if selected_name %}No {{ selected_name }} games on {{ day }}.
+    {% else %}No games are scheduled on {{ day }}.{% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty">No {{ season }} schedule is stored yet.</div>
+{% endif %}
+{% endblock %}

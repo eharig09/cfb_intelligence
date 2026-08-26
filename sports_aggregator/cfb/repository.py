@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from contextlib import closing, contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, time as dtime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import json
 import os
 from pathlib import Path
@@ -465,6 +466,17 @@ def _mark_schema_current(kind: str, path: Path) -> None:
 def forget_initialized_schemas() -> None:
     """Drop the memo. For tests that rebuild a database in place."""
     _INITIALIZED_SCHEMAS.clear()
+
+
+def _to_zone(value: str, zone: ZoneInfo) -> datetime | None:
+    """A stored UTC timestamp read in the reader's timezone."""
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(zone)
 
 
 class CFBRepository:
@@ -2417,6 +2429,59 @@ class CFBRepository:
         selected = sorted(polls, key=poll_priority)[0]
         teams = [dict(row) for row in latest if row["poll"] == selected]
         return {"week": latest_week, "poll": selected, "teams": teams}
+
+    def scoreboard_days(self, season: int, *, timezone_name: str = "America/New_York",
+                        ) -> list[dict[str, Any]]:
+        """Every day that has a game, in the reader's timezone.
+
+        Grouped locally rather than by the stored UTC date: a 7pm Eastern
+        kickoff is stored as the following day in UTC, and 64 of the first 400
+        games of this season fall on a different calendar day under the two
+        readings. Grouping by the stored string would file a sixth of the
+        schedule under the wrong date.
+        """
+        self.initialize()
+        zone = ZoneInfo(timezone_name)
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT start_date, completed FROM games WHERE season=?", (season,)
+            ).fetchall()
+        days: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            local = _to_zone(row["start_date"], zone)
+            if local is None:
+                continue
+            key = local.date().isoformat()
+            entry = days.setdefault(key, {"date": key, "games": 0, "completed": 0})
+            entry["games"] += 1
+            entry["completed"] += int(row["completed"] or 0)
+        return [days[key] for key in sorted(days)]
+
+    def games_on_day(self, day: str, season: int, *,
+                     timezone_name: str = "America/New_York") -> list[dict[str, Any]]:
+        """Every game kicking off on one local calendar day, in start order.
+
+        A UTC window either side of the day is read and then filtered locally,
+        because the stored timestamps are UTC and the day being asked for is not.
+        """
+        self.initialize()
+        zone = ZoneInfo(timezone_name)
+        try:
+            wanted = date.fromisoformat(day)
+        except ValueError:
+            return []
+        window_start = (datetime.combine(wanted, dtime.min, tzinfo=zone)
+                        - timedelta(days=1)).astimezone(timezone.utc).isoformat()
+        window_end = (datetime.combine(wanted, dtime.max, tzinfo=zone)
+                      + timedelta(days=1)).astimezone(timezone.utc).isoformat()
+        with closing(self._connect()) as connection:
+            rows = [dict(row) for row in connection.execute(
+                """SELECT * FROM games
+                   WHERE season=? AND start_date >= ? AND start_date <= ?
+                   ORDER BY start_date""", (season, window_start, window_end))]
+        return [row for row in rows
+                if (local := _to_zone(row["start_date"], zone)) is not None
+                and local.date() == wanted]
 
     def upcoming_games(self, season: int, limit: int = 16) -> list[dict[str, Any]]:
         self.initialize()

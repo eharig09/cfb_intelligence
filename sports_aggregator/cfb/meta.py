@@ -185,6 +185,19 @@ def conference_meta(conference: dict[str, Any], season: int, *,
     )
 
 
+def scoreboard_meta(season: int, *, day: str | None = None,
+                    games: int = 0) -> dict[str, Any]:
+    """The card for one day's slate."""
+    when = f"{day}." if day else ""
+    count = f"{_count(games, 'game')}." if games else ""
+    return page_meta(
+        f"Scoreboard{f' — {day}' if day else ''} | College Football",
+        _sentence(f"College football scoreboard for {season}.", when, count,
+                  "Every game on the day, with the full matchup preview one click away."),
+        path="/college-football/scoreboard/" + (f"?date={day}" if day else ""),
+        kind="website")
+
+
 def today_meta(season: int, *, game_count: int = 0, story_count: int = 0) -> dict[str, Any]:
     counts = []
     if game_count:

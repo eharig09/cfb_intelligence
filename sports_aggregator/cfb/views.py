@@ -12,6 +12,9 @@ from __future__ import annotations
 import json
 from typing import Any, Iterable, Sequence
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from flask import url_for
 
 from sports_aggregator.cfb.draft import position_abbreviation
@@ -2189,3 +2192,69 @@ def games_to_watch_table(games: Sequence[dict[str, Any]],
         note="Provisional, explainable scores",
         empty="No upcoming games are stored for this season.",
     )
+
+
+def scoreboard_games(games, previews, brands, *, timezone_name, conference=None):
+    """One day's games, ready to render, filtered to a conference if asked.
+
+    Not a table: a scoreboard row is two teams and a result, and forcing that
+    into columns puts the away side and the home side in unrelated cells. These
+    are cards, and each carries the identity pair both themes need.
+    """
+    from sports_aggregator.cfb.identity import conference_identity, team_identity
+
+    zone = ZoneInfo(timezone_name)
+    rows = []
+    for game in games:
+        sides = []
+        for prefix in ("away", "home"):
+            brand = team_identity((brands or {}).get(game.get(f"{prefix}_team_id")) or {})
+            sides.append({
+                "prefix": prefix,
+                "team": game.get(f"{prefix}_team"),
+                "team_id": game.get(f"{prefix}_team_id"),
+                "points": game.get(f"{prefix}_points"),
+                "logo": brand.get("logo"),
+                "logo_dark": brand.get("logo_dark") or brand.get("logo"),
+                "accent": brand.get("accent"),
+                "accent_dark": brand.get("accent_dark"),
+                "conference": game.get(f"{prefix}_conference"),
+            })
+        if conference and not any(side["conference"] == conference for side in sides):
+            continue
+        local = datetime.fromisoformat(str(game["start_date"]).replace("Z", "+00:00"))
+        local = local.astimezone(zone)
+        away, home = sides
+        winner = None
+        if game.get("completed") and away["points"] is not None and home["points"] is not None:
+            winner = "away" if away["points"] > home["points"] else (
+                "home" if home["points"] > away["points"] else None)
+        rows.append({
+            "game_id": game["game_id"],
+            "kickoff": local.strftime("%I:%M %p").lstrip("0"),
+            "television": game.get("television"),
+            "venue": game.get("venue"),
+            "neutral_site": bool(game.get("neutral_site")),
+            "completed": bool(game.get("completed")),
+            "week": game.get("week"),
+            "away": away, "home": home, "winner": winner,
+            "conference_identity": (conference_identity(game.get("home_conference"))
+                                    if game.get("home_conference") else None),
+            "preview": (previews or {}).get(game["game_id"]),
+        })
+    return rows
+
+
+def scoreboard_conferences(games, brands=None):
+    """Conferences with a game on this day, for the filter row."""
+    from sports_aggregator.cfb.identity import conference_identity
+
+    del brands
+    names = set()
+    for game in games:
+        for prefix in ("away", "home"):
+            name = game.get(f"{prefix}_conference")
+            if name:
+                names.add(name)
+    return sorted((conference_identity(name) for name in names),
+                  key=lambda item: item["abbreviation"])

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 import os
 from zoneinfo import ZoneInfo
 
@@ -722,6 +722,66 @@ def game_box_score(game_id: int):
     )
 
 
+@cfb_pages.get("/college-football/scoreboard/")
+@cached_page
+def scoreboard():
+    """Every game on one day, with the matchup page one click away."""
+    season = _current_season()
+    repository = _repository()
+    zone = current_app.config.get("CFB_DISPLAY_TIMEZONE", "America/New_York")
+    days = repository.scoreboard_days(season, timezone_name=zone)
+    if not days:
+        return render_template("cfb_scoreboard.html", season=season, day=None,
+                               days=[], games=[], conferences=[], selected=None,
+                               previous_day=None, next_day=None,
+                               meta=page_meta_for.scoreboard_meta(season))
+
+    available = [entry["date"] for entry in days]
+    requested = (request.args.get("date") or "").strip()
+    if requested and requested not in available:
+        # An arbitrary date is not an error: show the nearest day that has
+        # games rather than an empty page with no way forward.
+        requested = min(available, key=lambda value: abs(
+            (date.fromisoformat(value) - date.fromisoformat(requested)).days
+        )) if _is_date(requested) else ""
+    if not requested:
+        today = datetime.now(ZoneInfo(zone)).date().isoformat()
+        requested = next((value for value in available if value >= today), available[-1])
+
+    index = available.index(requested)
+    games = repository.games_on_day(requested, season, timezone_name=zone)
+    selected = (request.args.get("conference") or "").strip() or None
+    conferences = views.scoreboard_conferences(games)
+    if selected and selected not in {item["slug"] for item in conferences}:
+        selected = None
+    selected_name = next((item["conference"] for item in conferences
+                          if item["slug"] == selected), None)
+    previews = _story_repository().game_previews([game["game_id"] for game in games])
+    return render_template(
+        "cfb_scoreboard.html",
+        meta=page_meta_for.scoreboard_meta(season, day=requested, games=len(games)),
+        season=season,
+        day=requested,
+        days=days,
+        previous_day=available[index - 1] if index > 0 else None,
+        next_day=available[index + 1] if index + 1 < len(available) else None,
+        conferences=conferences,
+        selected=selected,
+        selected_name=selected_name,
+        games=views.scoreboard_games(games, previews, repository.team_brands(),
+                                     timezone_name=zone, conference=selected_name),
+        total_games=len(games),
+    )
+
+
+def _is_date(value: str) -> bool:
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
 @cfb_pages.get("/college-football/search/")
 def search_page():
     season = _season()
@@ -1189,6 +1249,8 @@ def sitemap_xml():
     entries: list[dict] = [
         {"loc": _absolute("/college-football/"), "changefreq": "hourly", "priority": 1.0},
         {"loc": _absolute("/college-football/draft/"), "changefreq": "weekly", "priority": 0.6},
+        {"loc": _absolute("/college-football/scoreboard/"),
+         "changefreq": "daily", "priority": 0.8},
     ]
     for conference in repository.conferences():
         if conference.get("slug"):

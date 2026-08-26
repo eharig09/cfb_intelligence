@@ -446,6 +446,41 @@ class StoryRepository:
             connection.commit()
         return {"items":len(items),"stories":len(clusters),"multi_item_stories":multi}
 
+    def game_previews(self, game_ids) -> dict[int, dict]:
+        """The best preview story for each of these games, by game id.
+
+        Only GAME_PREVIEW clusters. A story merely mentioning a game — an injury
+        note, a coaching move — is not a preview of it, and offering one as
+        though it were would make the link untrustworthy.
+        """
+        wanted = [int(game_id) for game_id in game_ids if game_id]
+        if not wanted:
+            return {}
+        self.initialize()
+        placeholders = ",".join("?" for _ in wanted)
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                f"""SELECT sg.game_id, s.story_id, s.headline_canonical, s.story_score,
+                           c.original_url, c.canonical_url, c.publisher_name
+                    FROM story_games sg
+                    JOIN stories s USING(story_id)
+                    LEFT JOIN content_items c ON c.content_id = s.primary_content_id
+                    WHERE sg.game_id IN ({placeholders}) AND s.story_type='GAME_PREVIEW'
+                    ORDER BY sg.game_id, s.story_score DESC""", wanted).fetchall()
+        best: dict[int, dict] = {}
+        for row in rows:
+            item = dict(row)
+            url = item.get("original_url") or item.get("canonical_url")
+            if not url or item["game_id"] in best:
+                continue
+            best[item["game_id"]] = {
+                "story_id": item["story_id"],
+                "headline": item["headline_canonical"],
+                "url": url,
+                "publisher": item.get("publisher_name"),
+            }
+        return best
+
     def list_stories(self,*,limit:int=30,conference:str|None=None,team_id:int|None=None,
                      game_id:int|None=None,player_id:str|None=None,
                      player_season:int|None=None) -> list[dict]:
