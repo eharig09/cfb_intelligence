@@ -22,8 +22,12 @@ def _phase_runner(results: list[dict]):
     tests were not moved across; the module could not be imported on Windows,
     so the breakage stayed invisible.
     """
-    def run(phase, season, *, only=None):
+    captured: list[dict] = []
+
+    def run(phase, season, *, only=None, datasets=None):
+        captured.append({"phase": phase, "only": only, "datasets": datasets})
         return results
+    run.captured = captured
     return run
 
 
@@ -152,3 +156,37 @@ def test_the_cli_stale_window_matches_the_function_default():
     source = inspect.getsource(module.main)
     assert "default=1" in source, "CLI default drifted from the function default"
     assert function_default == 1
+
+
+def test_a_scores_pass_narrows_both_the_steps_and_the_datasets(
+        tmp_path: Path, monkeypatch):
+    """The whole point of the profile: it must not run the roster crawl.
+
+    A game-day pass fires every quarter hour during a slate. If it planned the
+    full twenty-two steps it would take eight minutes and hold the lock through
+    the next four firings.
+    """
+    from sports_aggregator.scheduled_refresh import (
+        SCORES_DATASETS, SCORES_REFRESH_STEPS)
+
+    monkeypatch.setenv("CFB_REFRESH_STATE_PATH", str(tmp_path / "instance"))
+    runner = _phase_runner([
+        {"step": "cfbd-sync", "status": "success", "message": "scoped to games",
+         "seconds": 2.2, "optional": False},
+    ])
+
+    report = run_scheduled_refresh(
+        2026, profile="scores", repo_root=tmp_path, phase_runner=runner)
+
+    assert report["profile"] == "scores"
+    assert runner.captured[0]["only"] == SCORES_REFRESH_STEPS
+    assert runner.captured[0]["datasets"] == SCORES_DATASETS
+
+
+def test_a_heavy_pass_scopes_nothing(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("CFB_REFRESH_STATE_PATH", str(tmp_path / "instance"))
+    runner = _phase_runner([])
+    run_scheduled_refresh(2026, profile="heavy", repo_root=tmp_path,
+                          phase_runner=runner)
+    assert runner.captured[0]["only"] is None
+    assert runner.captured[0]["datasets"] is None

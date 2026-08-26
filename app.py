@@ -11,6 +11,7 @@ import click
 from flask import Flask, abort, jsonify, render_template, request
 from dotenv import load_dotenv
 
+from sports_aggregator.cfb.refresh_window import profile_for
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.web import cfb_pages
 from sports_aggregator.catalog import list_leagues
@@ -24,6 +25,7 @@ from sports_aggregator.cfb.views import height_label
 from sports_aggregator.social.roles import role_label
 from sports_aggregator.tables import format_value
 from sports_aggregator.page_cache import cache
+from sports_aggregator.scheduled_refresh import REFRESH_PROFILES
 from sports_aggregator.web import league_pages
 load_dotenv()
 
@@ -120,10 +122,19 @@ def create_app(test_config: dict | None = None) -> Flask:
         require_refresh_auth()
 
         profile = (request.args.get("profile") or "light").strip().casefold()
-        if profile not in {"light", "heavy"}:
-            abort(400, description="profile must be light or heavy")
-
         season = app.config.get("CFB_DEFAULT_SEASON") or datetime.now().year
+        decision = None
+        if profile == "auto":
+            # The trigger runs in a cron container with no disk, so it cannot
+            # see the schedule. This service can, and decides here.
+            decision = profile_for(app.extensions["cfb_repository"], season=season)
+            profile = decision["profile"]
+            if profile is None:
+                return jsonify({"status": "skipped", "season": season, **decision}), 200
+        elif profile not in REFRESH_PROFILES:
+            abort(400, description="profile must be auto or one of "
+                                   + ", ".join(sorted(REFRESH_PROFILES)))
+
         root = Path(__file__).resolve().parent
         subprocess.Popen(
             [
@@ -138,7 +149,9 @@ def create_app(test_config: dict | None = None) -> Flask:
             cwd=str(root), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             close_fds=True,
         )
-        return jsonify({"status": "accepted", "season": season, "profile": profile}), 202
+        return jsonify({"status": "accepted", "season": season, "profile": profile,
+                        **({"reason": decision["reason"], "games": decision["games"]}
+                           if decision else {})}), 202
 
     @app.get("/internal/cfb-refresh-status")
     def cfb_refresh_status():

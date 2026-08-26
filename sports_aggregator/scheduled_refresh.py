@@ -34,6 +34,28 @@ LIGHT_REFRESH_STEPS = [
     "local-articles",
 ]
 
+#: Steps for a game-day pass: what changes while games are being played.
+#:
+#: The full refresh takes about eight minutes and the schedule ran it four
+#: times a day, so a score posted at 3:30pm first appeared at 6pm and a night
+#: game's final was not on the site until the following morning. Nothing else
+#: in the refresh moves during a Saturday afternoon -- rosters, recruiting,
+#: returning production and the article wire are all unchanged between
+#: kickoffs -- so a game-day pass syncs the games and the market and stops.
+SCORES_REFRESH_STEPS = [
+    "cfbd-sync",
+    "cfbd-lines",
+]
+
+#: The only CFBD dataset a game-day pass reads.
+#:
+#: `cfbd-sync` normally walks eleven datasets including a per-team roster
+#: crawl. Scores live in one of them.
+SCORES_DATASETS = ["games"]
+
+#: Every profile the scheduler accepts.
+REFRESH_PROFILES = frozenset({"light", "heavy", "scores"})
+
 #: Address-space ceiling for each refresh subprocess, in MB.
 #:
 #: The refresh runs as a child of the web service, so both share the
@@ -279,12 +301,15 @@ def _run_scoped_commands(
     return failures
 
 
-def _run_cfbd_split(season: int, *, root: Path, timeout: int, log) -> dict[str, Any]:
+def _run_cfbd_split(season: int, *, root: Path, timeout: int, log,
+                    datasets: list[str] | None = None) -> dict[str, Any]:
     """Run CFBD datasets independently, with the roster split one team at a time."""
     started = datetime.now(timezone.utc)
     failures: list[str] = []
+    planned = [name for name in (datasets or CFBD_DATASET_STEPS)
+               if name in CFBD_DATASET_STEPS]
 
-    for dataset in CFBD_DATASET_STEPS:
+    for dataset in planned:
         print(
             f"    [cfbd] {dataset} start parent_rss_mb={_rss_mb()} "
             f"child_peak_rss_mb={_children_rss_mb()}",
@@ -348,7 +373,9 @@ def _run_cfbd_split(season: int, *, root: Path, timeout: int, log) -> dict[str, 
         "status": "failed" if failures else "success",
         "message": (
             f"failed datasets: {', '.join(failures)}" if failures
-            else f"{len(CFBD_DATASET_STEPS)} datasets complete; roster team-scoped"
+            else (f"{len(planned)} datasets complete; roster team-scoped"
+                  if planned == CFBD_DATASET_STEPS
+                  else f"scoped to {', '.join(planned)}")
         ),
         "seconds": round(elapsed, 1),
         "optional": False,
@@ -410,6 +437,7 @@ def _run_low_memory_phase(
     *,
     root: Path,
     only: list[str] | None = None,
+    datasets: list[str] | None = None,
     timeout: int = 1800,
     log,
     heartbeat: Callable[[], None] | None = None,
@@ -446,7 +474,8 @@ def _run_low_memory_phase(
                 "child_peak_rss_mb": _children_rss_mb(),
             }
         elif step.name == "cfbd-sync":
-            result = _run_cfbd_split(season, root=root, timeout=timeout, log=log)
+            result = _run_cfbd_split(season, root=root, timeout=timeout, log=log,
+                                     datasets=datasets)
         elif step.name == "cfbd-current-player-stats":
             result = _run_player_stats_split(
                 season, root=root, timeout=timeout, log=log, optional=step.optional
@@ -484,8 +513,8 @@ def run_scheduled_refresh(
     phase_runner: Callable[..., list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     normalized_profile = profile.strip().casefold()
-    if normalized_profile not in {"light", "heavy"}:
-        raise ValueError("profile must be 'light' or 'heavy'")
+    if normalized_profile not in REFRESH_PROFILES:
+        raise ValueError("profile must be one of " + ", ".join(sorted(REFRESH_PROFILES)))
 
     root = Path(repo_root) if repo_root else Path(__file__).resolve().parents[1]
     state_override = (os.getenv("CFB_REFRESH_STATE_PATH") or "").strip()
@@ -511,7 +540,9 @@ def run_scheduled_refresh(
 
     stamp = started.strftime("%Y%m%dT%H%M%SZ")
     log_path = logs / f"refresh-{stamp}.log"
-    only = LIGHT_REFRESH_STEPS if normalized_profile == "light" else None
+    only = {"light": LIGHT_REFRESH_STEPS,
+            "scores": SCORES_REFRESH_STEPS}.get(normalized_profile)
+    datasets = SCORES_DATASETS if normalized_profile == "scores" else None
 
     try:
         with log_path.open("w", encoding="utf-8") as log:
@@ -529,11 +560,12 @@ def run_scheduled_refresh(
             os.fsync(log.fileno())
             if phase_runner is None:
                 results = _run_low_memory_phase(
-                    "refresh", season, root=root, only=only, log=log,
-                    heartbeat=lambda: _touch_lock(lock),
+                    "refresh", season, root=root, only=only, datasets=datasets,
+                    log=log, heartbeat=lambda: _touch_lock(lock),
                 )
             else:
-                results = phase_runner("refresh", season, only=only)
+                results = phase_runner("refresh", season, only=only,
+                                       datasets=datasets)
 
         # Tables grow all season; stale statistics send the planner back to
         # scanning. Cheap enough to run every time.
@@ -587,7 +619,8 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(root / ".env")
     parser = argparse.ArgumentParser(description="Run one lock-safe scheduled refresh")
     parser.add_argument("--season", type=int, default=datetime.now().year)
-    parser.add_argument("--profile", choices=("light", "heavy"), default="heavy")
+    parser.add_argument("--profile", choices=tuple(sorted(REFRESH_PROFILES)),
+                        default="heavy")
     # Matches run_scheduled_refresh: liveness and the per-step heartbeat do
     # the real work, so this only has to outlast a single stalled step.
     parser.add_argument("--stale-lock-hours", type=float, default=1)

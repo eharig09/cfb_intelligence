@@ -26,6 +26,16 @@ services:
       # This is a backstop lifetime; set to 0 to disable page caching.
       - key: CFB_PAGE_CACHE_SECONDS
         value: "900"
+      # The refresh schedule lives here, not in the cron service. The cron
+      # container has no disk -- the database mounts to this service alone --
+      # so it cannot see whether a game is being played, and that is the thing
+      # the schedule now turns on.
+      - key: CFB_REFRESH_TIMEZONE
+        value: America/New_York
+      - key: CFB_REFRESH_HOURS
+        value: 6,12,18,23
+      - key: CFB_REFRESH_HEAVY_HOURS
+        value: 6,23
       - key: CFB_DATABASE_PATH
         value: /var/data/cfb.sqlite3
       - key: CFBD_RAW_CACHE_PATH
@@ -44,7 +54,11 @@ services:
   - type: cron
     name: cfb-refresh-trigger
     runtime: python
-    schedule: "0 * * * *"
+    # Every quarter hour. Most firings ask the web service what this moment
+    # calls for, are told "nothing", and exit in about a second. The ones
+    # during a game slate get a five-second pass that syncs the scores and the
+    # market, which is what a score appearing when it happens costs.
+    schedule: "*/15 * * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: python -m sports_aggregator.render_trigger
     envVars:
@@ -52,7 +66,7 @@ services:
         sync: false
       - key: CFB_REFRESH_TOKEN
         sync: false
+      # Only for the timestamp in this job's own log; the decision is made by
+      # the web service, which reads its own copy of this setting.
       - key: CFB_REFRESH_TIMEZONE
         value: America/New_York
-      - key: CFB_REFRESH_HOURS
-        value: 6,12,18,23

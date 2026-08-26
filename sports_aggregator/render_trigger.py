@@ -1,4 +1,14 @@
-"""Hourly Render Cron trigger with Eastern-time schedule selection."""
+"""Render Cron trigger. A clock, and nothing more.
+
+This runs in its own container with no disk: the database mounts to the web
+service alone, so nothing here can see whether a game is being played. It used
+to pick the profile from the hour, which is why a score posted at 3:30pm first
+appeared at 6pm. It now asks for "auto" and the web service -- which has the
+schedule in front of it -- decides between a game-day pass, the light refresh,
+the heavy one, and doing nothing.
+
+Set CFB_REFRESH_PROFILE to pin a profile and skip that decision.
+"""
 
 from __future__ import annotations
 
@@ -17,25 +27,10 @@ def trigger_if_due(
     opener: Callable[..., Any] = urlopen,
 ) -> dict[str, Any]:
     zone_name = os.getenv("CFB_REFRESH_TIMEZONE", "America/New_York")
-    hours = {
-        int(value.strip())
-        for value in os.getenv("CFB_REFRESH_HOURS", "6,12,18,23").split(",")
-        if value.strip()
-    }
-    heavy_hours = {
-        int(value.strip())
-        for value in os.getenv("CFB_REFRESH_HEAVY_HOURS", "6,23").split(",")
-        if value.strip()
-    }
     current = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo(zone_name))
-    if current.hour not in hours:
-        return {
-            "status": "skipped",
-            "reason": "outside_refresh_hours",
-            "local_time": current.isoformat(),
-        }
-
-    profile = "heavy" if current.hour in heavy_hours else "light"
+    # "auto" means the web service chooses; the hour gate lives there now,
+    # alongside the schedule it has to consult to know about a game in play.
+    profile = (os.getenv("CFB_REFRESH_PROFILE") or "auto").strip().casefold()
     url = (os.getenv("CFB_REFRESH_URL") or "").strip()
     token = (os.getenv("CFB_REFRESH_TOKEN") or "").strip()
     if not url or not token:
@@ -57,13 +52,25 @@ def trigger_if_due(
         status = getattr(response, "status", 200)
     if not 200 <= status < 300:
         raise RuntimeError(f"refresh endpoint returned HTTP {status}: {body[:200]}")
+    # A 200 rather than a 202 is the service saying this moment called for
+    # nothing. That is a normal outcome now that the cron fires every quarter
+    # hour, and it should not read as a refresh that happened.
     return {
-        "status": "triggered",
-        "profile": profile,
+        "status": "triggered" if status == 202 else "skipped",
+        "requested": profile,
+        "profile": _resolved_profile(body) or profile,
         "http_status": status,
         "local_time": current.isoformat(),
         "response": body[:500],
     }
+
+
+def _resolved_profile(body: str) -> str | None:
+    """What the service said it ran, when it answered in JSON."""
+    try:
+        return (json.loads(body) or {}).get("profile")
+    except (json.JSONDecodeError, AttributeError):
+        return None
 
 
 def main() -> int:
