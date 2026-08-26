@@ -57,6 +57,10 @@
     }
     .matchup-versus strong { font: 900 .78rem Arial, sans-serif; letter-spacing: .06em; }
     .matchup-versus span { color: var(--on-strong-muted); font-size: .52rem; margin-top: 3px; text-transform: uppercase; }
+    .subhead {
+        font: 800 1.02rem var(--display-font); margin: 20px 0 0;
+        padding-top: 14px; border-top: 1px solid var(--line);
+    }
     .matchup-event-line {
         display: flex; justify-content: center; flex-wrap: wrap; gap: 5px 12px;
         margin: 0 0 8px; color: var(--muted); font-size: .7rem;
@@ -277,17 +281,33 @@
         apart deliberately &mdash; where they disagree is the information.
     </div>
     {{ data_table(model_table) }}
+    {#- The books themselves, under the comparison they feed rather than in a
+        band of their own further down the page. -#}
+    <h3 class="subhead">Book by book</h3>
+    <div class="section-note">
+        Each book with its movement since opening. A slate view has room for one
+        number and averages these; here there is room for all of them, and the
+        spread between them is the part worth reading.
+    </div>
+    {{ data_table(market_table) }}
 </section>
 
-{% if weather %}
+
+{#- Weather used to be a band of its own directly above this one, with its
+    own heading and note, rendering the same card grid to answer the same
+    question: what is around this game that is not the two teams. It is the
+    first card here now. -#}
 <section class="section" data-mobile-tab-panel="overview">
-    <h2>Kickoff weather</h2>
+    <h2>Situation</h2>
     <div class="section-note">
-        Open-Meteo forecast for the venue at kickoff.
-        {% if weather.snapshots > 1 %}{{ weather.snapshots }} snapshots taken; the
-        change since the first is shown where it moved.{% endif %}
+        Conditions, schedule, travel and availability context. A trap spot describes
+        the calendar, not a prediction about the result.
+        {% if weather and weather.snapshots > 1 %}The forecast has been taken
+        {{ weather.snapshots }} times; the change since the first is shown where it
+        moved.{% endif %}
     </div>
     <div class="situation">
+        {% if weather %}
         <article class="situation-card">
             <h3>{% if weather.indoor %}Indoor venue{% else %}{{ weather.condition }}{% endif %}</h3>
             {% if weather.indoor %}
@@ -313,17 +333,7 @@
             <p>{{ flag.detail }}.</p>
         </article>
         {% endfor %}
-    </div>
-</section>
-{% endif %}
-
-<section class="section" data-mobile-tab-panel="overview">
-    <h2>Situation</h2>
-    <div class="section-note">
-        Schedule, travel and availability context. A trap spot describes the calendar,
-        not a prediction about the result.
-    </div>
-    <div class="situation">
+        {% endif %}
         {% for spot in situation.schedule_spots %}
         <article class="situation-card">
             <h3>{{ spot.headline }}</h3>
@@ -361,14 +371,6 @@
     </div>
 </section>
 
-<section class="section" data-mobile-tab-panel="stats">
-    <h2>Market</h2>
-    <div class="section-note">
-        Each book is shown separately with its movement since opening. Disagreement
-        between books is information, so quotes are never averaged into one number.
-    </div>
-    {{ data_table(market_table) }}
-</section>
 
 <section class="section" data-mobile-tab-panel="matchups">
     <h2>Matchups to watch</h2>
