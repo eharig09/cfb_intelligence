@@ -1,4 +1,4 @@
-"""Signing classes, and how recruiting evidence compares with a college grade.
+"""Signing classes, and how the three kinds of prior evidence compare.
 
 The `recruits` table was synced by a bootstrap step and read by nothing. Every
 consequence of that showed up on the same page: a five-star quarterback ranked
@@ -7,13 +7,18 @@ the bottom third of graded players, and never appeared under notable arrivals
 at all because twenty transfers were listed ahead of him by category rather
 than by quality.
 
-Comparing the two kinds of evidence
------------------------------------
+Comparing the three kinds of evidence
+-------------------------------------
 
-A recruiting rating and a PFF grade measure different things, so ranking one
-against the other needs an explicit rule rather than an accident of sort order.
-The rule here puts both on a common 0-1 scale and prefers production at equal
-standing:
+A player arrives at a depth board with up to three things on his record: what he
+produced, how he was graded, and what he was rated coming out of school. They
+measure different things, so ranking one against another needs an explicit rule
+rather than an accident of sort order. All three map to a common 0-1 scale:
+
+* Counting production is normalised **within its category**, because the
+  categories are not remotely comparable: median passing yards is 185 against a
+  99th percentile of 3,711, while a defensive tackle count runs 8 to 96. A
+  percentile within the category says how a player did against his own kind.
 
 * A PFF interest score already runs roughly 0-95 across the graded population,
   and dividing by 100 tracks its percentile closely through the third quartile
@@ -22,7 +27,13 @@ standing:
 * A recruiting rating occupies a narrow band — 0.75 at the bottom of two stars
   to 0.999 at the top of five — so it is stretched across the same 0-1 range.
 * Recruiting evidence is then discounted, because it is an opinion about a
-  player who has not taken a college snap while a grade describes one who has.
+  player who has not taken a college snap while the other two describe one who
+  has.
+
+Leaving production out was not a small omission. Across twenty-five teams it
+put a three-star signee above a back who ran for 788 yards, and seventy-seven
+more like it, because a player without a PFF grade scored zero however much he
+had actually done.
 
 The discount is what keeps this honest in both directions. An elite recruit
 outranks a seventh-percentile backup, which is the case that was visibly wrong.
@@ -76,25 +87,34 @@ def grade_strength(interest_score: float | None) -> float:
 
 
 def evidence_score(*, pff_interest: float | None,
-                   recruit_rating: float | None) -> float:
+                   recruit_rating: float | None,
+                   production: float | None = None) -> float:
     """The strongest prior evidence a player has, on one scale.
 
-    Whichever kind of evidence is stronger decides the placement; a player with
-    both keeps the better of the two rather than an average, because averaging
-    would penalise an elite recruit for also having a thin grade.
+    Whichever kind is strongest decides the placement; a player keeps his best
+    evidence rather than an average, because averaging would penalise a
+    productive starter for a thin grade, or an elite recruit for having neither.
+
+    `production` is already a 0-1 percentile within its own category — see
+    `CFBRepository.production_strength`, which owns the distributions.
     """
-    return max(grade_strength(pff_interest),
-               rating_strength(recruit_rating) * PROJECTION_DISCOUNT)
+    demonstrated = max(grade_strength(pff_interest), float(production or 0.0))
+    projected = rating_strength(recruit_rating) * PROJECTION_DISCOUNT
+    return max(demonstrated, projected)
 
 
 def evidence_basis(*, pff_interest: float | None,
                    recruit_rating: float | None,
-                   stars: int | None) -> str | None:
+                   stars: int | None,
+                   production: float | None = None) -> str | None:
     """Which evidence placed a player, in words, so the board can say."""
+    produced = float(production or 0.0)
     graded = grade_strength(pff_interest)
     projected = rating_strength(recruit_rating) * PROJECTION_DISCOUNT
-    if graded <= 0 and projected <= 0:
+    if max(produced, graded, projected) <= 0:
         return None
+    if produced >= graded and produced >= projected:
+        return "prior-season production"
     if projected > graded:
         # "signee" would be wrong for a transfer, who carries a high-school
         # rating too. The rating is what placed him either way.

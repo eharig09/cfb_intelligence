@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 import json
@@ -13,7 +14,8 @@ from typing import Any, Iterable, Iterator
 
 from sports_aggregator.cfb.identity import conference_slug as _conference_slug
 from sports_aggregator.cfb.models import Game, PollRanking, Team, normalize_alias
-from sports_aggregator.cfb.statlines import category_label, qualifier, sort_stat
+from sports_aggregator.cfb.statlines import (
+    CATEGORY_ORDER, category_label, qualifier, sort_stat)
 
 
 SCHEMA = """
@@ -468,6 +470,7 @@ def forget_initialized_schemas() -> None:
 class CFBRepository:
     def __init__(self, database_path: str | Path) -> None:
         self._brands: dict[int, dict[str, Any]] | None = None
+        self._production_distributions: dict[int, dict[str, list[float]]] = {}
         self._brands_by_school: dict[str, dict[str, Any]] | None = None
         self.path = Path(database_path)
 
@@ -1833,6 +1836,76 @@ class CFBRepository:
         return {"season": season, "previous_season": previous_season,
                 "arrivals": arrivals, "departures": departures, "counts": counts}
 
+    def production_distribution(self, season: int) -> dict[str, list[float]]:
+        """Sorted headline values per category, for ranking within a category.
+
+        The categories are not comparable to one another: median passing yards
+        is 185 against a 99th percentile of 3,711, while a defensive tackle
+        count runs 8 to 96. Comparing raw values across them is meaningless, so
+        a player is placed against others doing the same job.
+
+        Cached per season on the instance; the underlying rows only change when
+        a refresh runs.
+        """
+        cached = self._production_distributions.get(season)
+        if cached is not None:
+            return cached
+        self.initialize()
+        wanted = {category: sort_stat(category) for category in CATEGORY_ORDER}
+        wanted = {category: stat for category, stat in wanted.items() if stat}
+        distribution: dict[str, list[float]] = {category: [] for category in wanted}
+        with closing(self._connect()) as connection:
+            for category, stat in wanted.items():
+                distribution[category] = [
+                    float(row[0]) for row in connection.execute(
+                        """SELECT numeric_value FROM player_season_stats
+                           WHERE season=? AND category=? AND stat_type=?
+                             AND numeric_value > 0
+                           ORDER BY numeric_value""", (season, category, stat))]
+        self._production_distributions[season] = distribution
+        return distribution
+
+    def production_strength(self, category: str, value: float | None,
+                            season: int) -> float:
+        """Where a value sits among everyone else doing the same job, 0-1."""
+        if not value or value <= 0:
+            return 0.0
+        values = self.production_distribution(season).get(category) or []
+        if not values:
+            return 0.0
+        return round(bisect_left(values, float(value)) / len(values), 4)
+
+    def roster_production_strength(self, team: str, season: int,
+                                   stat_season: int) -> dict[str, float]:
+        """Each roster player's best production percentile, by player id.
+
+        Read directly rather than through `projected_depth`, which recomputes
+        every team total and is already called separately by the page.
+        """
+        self.initialize()
+        wanted = {category: sort_stat(category) for category in CATEGORY_ORDER}
+        pairs = [(category, stat) for category, stat in wanted.items() if stat]
+        if not pairs:
+            return {}
+        clauses = " OR ".join("(category=? AND stat_type=?)" for _ in pairs)
+        params: list[Any] = [stat_season]
+        for category, stat in pairs:
+            params.extend((category, stat))
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                f"""SELECT player_id, category, MAX(numeric_value) value
+                    FROM player_season_stats
+                    WHERE season=? AND ({clauses}) AND numeric_value > 0
+                    GROUP BY player_id, category""", params).fetchall()
+        best: dict[str, float] = {}
+        for row in rows:
+            if not row["player_id"]:
+                continue
+            strength = self.production_strength(row["category"], row["value"], stat_season)
+            if strength > best.get(row["player_id"], 0.0):
+                best[row["player_id"]] = strength
+        return best
+
     def team_depth_chart(self, team_id: int, season: int) -> dict[str, Any]:
         # Imported here rather than at module scope: cfb.recruiting depends on
         # this class, so a top-level import would be circular.
@@ -1842,6 +1915,7 @@ class CFBRepository:
         if team is None:
             return {"season": season, "units": {}, "summary": {}}
         roster = self.team_roster(team["school"], season)
+        produced = self.roster_production_strength(team["school"], season, season - 1)
         movements = self.roster_movements(team_id, season)
         arrival_by_id = {row["player_id"]: row for row in movements["arrivals"]}
         self.initialize()
@@ -1879,6 +1953,7 @@ class CFBRepository:
                     "recruit_rating": arrival.get("rating") if arrival else None,
                     "recruit_stars": arrival.get("stars") if arrival else None,
                     "pff_graded_at": graded_at.get(row["player_id"]),
+                    "production_strength": produced.get(row["player_id"], 0.0),
                     "pff_interest": pff_by_id.get(row["player_id"], pff_by_name.get(name))}
             unit, group, order = self._position_group(row.get("position"))
             item["group_order"] = order
@@ -1886,14 +1961,17 @@ class CFBRepository:
         for groups in unit_rows.values():
             for players in groups.values():
                 # Rank on the strongest prior evidence a player has, whichever
-                # kind it is. Grade alone put a five-star ranked tenth in the
-                # country fourth on his own depth chart, behind three backups in
-                # the 7th, 12th and 29th percentiles of graded players, because
-                # any grade outranked any recruit. See cfb.recruiting for how
-                # the two are made comparable and why projection is discounted.
+                # kind it is: what he produced, how he was graded, or what he
+                # was rated. Grade alone put a five-star fourth on his own depth
+                # chart behind three backups in the bottom third of graded
+                # players. Grade plus rating, without production, then put a
+                # three-star signee above a back who ran for 788 yards, because
+                # an ungraded player scored zero however much he had done. See
+                # cfb.recruiting for how the three are made comparable.
                 players.sort(key=lambda row: (
                     -evidence_score(pff_interest=row.get("pff_interest"),
-                                    recruit_rating=row.get("recruit_rating")),
+                                    recruit_rating=row.get("recruit_rating"),
+                                    production=row.get("production_strength")),
                     not row["is_returner"],
                     -(row.get("class_year") or 0), row.get("jersey") or 999, row["name"],
                 ))

@@ -262,3 +262,80 @@ class RecruitingEvidenceTests(unittest.TestCase):
         self.assertEqual(rating_strength(0.5), 0.0)
         self.assertEqual(rating_strength(1.5), 1.0)
         self.assertEqual(rating_strength(None), 0.0)
+
+
+class ProductionEvidenceTests(unittest.TestCase):
+    """Production belongs in the ranking, and outranks a projection.
+
+    Adding recruiting evidence without it swung the board the other way: across
+    twenty-five teams a three-star signee sat above a back who ran for 788
+    yards, and seventy-seven more like it, because a player with no PFF grade
+    scored zero however much he had actually done.
+    """
+
+    def test_a_productive_player_outranks_a_signee(self):
+        """The case that broke when recruiting was added on its own."""
+        back = evidence_score(pff_interest=None, recruit_rating=None, production=0.947)
+        signee = evidence_score(pff_interest=None, recruit_rating=0.85)
+        self.assertGreater(back, signee)
+
+    def test_an_elite_recruit_still_outranks_a_marginal_producer(self):
+        """A five-star should not sit behind eighteen rushing yards."""
+        five_star = evidence_score(pff_interest=None, recruit_rating=0.9939)
+        marginal = evidence_score(pff_interest=None, recruit_rating=None, production=0.30)
+        self.assertGreater(five_star, marginal)
+
+    def test_production_and_grade_are_both_demonstrated_evidence(self):
+        """Whichever is higher stands; neither dilutes the other."""
+        self.assertEqual(
+            evidence_score(pff_interest=20.0, recruit_rating=None, production=0.80), 0.80)
+        self.assertEqual(
+            evidence_score(pff_interest=80.0, recruit_rating=None, production=0.20), 0.80)
+
+    def test_the_basis_credits_production_when_it_decides(self):
+        self.assertEqual(
+            evidence_basis(pff_interest=None, recruit_rating=0.85, stars=3,
+                           production=0.94),
+            "prior-season production")
+
+    def test_the_basis_still_credits_a_rating_when_that_decides(self):
+        self.assertEqual(
+            evidence_basis(pff_interest=None, recruit_rating=0.9939, stars=5,
+                           production=0.10),
+            "5-star rating")
+
+    def test_a_player_with_nothing_on_record_scores_zero(self):
+        self.assertEqual(
+            evidence_score(pff_interest=None, recruit_rating=None, production=None), 0.0)
+        self.assertIsNone(
+            evidence_basis(pff_interest=None, recruit_rating=None, stars=None,
+                           production=0.0))
+
+    def test_production_is_ranked_within_its_own_category(self):
+        """Categories are not comparable: 788 rushing yards is elite, 788
+        passing yards is a backup's season."""
+        handle, path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        try:
+            repository = CFBRepository(path)
+            repository.initialize()
+            with repository.transaction() as connection:
+                for index in range(100):
+                    connection.execute(
+                        """INSERT INTO player_season_stats(season,player_id,player,team,
+                           position,category,stat_type,stat_value,numeric_value)
+                           VALUES(2025,?,?,'T','RB','rushing','YDS',?,?)""",
+                        (f"r{index}", f"Back {index}", str(index * 10), index * 10))
+                    connection.execute(
+                        """INSERT INTO player_season_stats(season,player_id,player,team,
+                           position,category,stat_type,stat_value,numeric_value)
+                           VALUES(2025,?,?,'T','QB','passing','YDS',?,?)""",
+                        (f"q{index}", f"Passer {index}", str(index * 40), index * 40))
+            rushing = repository.production_strength("rushing", 800, 2025)
+            passing = repository.production_strength("passing", 800, 2025)
+            self.assertGreater(rushing, passing)
+            self.assertEqual(repository.production_strength("rushing", 0, 2025), 0.0)
+            self.assertEqual(repository.production_strength("nonsense", 500, 2025), 0.0)
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
