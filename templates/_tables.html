@@ -42,6 +42,15 @@
 {%- if href and (href.startswith('http://') or href.startswith('https://')) %} target="_blank" rel="noopener"{% endif %}
 {%- endmacro %}
 
+{#- Column keys the stylesheet targets, for the matchup page's team rails.
+    `col-key-` was emitted on every cell of every table on every page and
+    matched nothing outside this set: 33 KB of class attributes on one team
+    page. tests/test_markup_weight.py reads the selectors out of cfb.css and
+    fails if this drifts from them. -#}
+{%- set STYLED_COLUMN_KEYS = ('away_offense', 'away', 'away_defense',
+                              'home_offense', 'home', 'home_defense',
+                              'edge', 'advantage') %}
+
 {% macro data_table(table, extra_class='') %}
     {%- if table.rows %}
     {%- set mobile_compact = (table.columns | length) <= 9 %}
@@ -60,7 +69,9 @@
                 <tr>
                     {%- for column in table.columns %}
                     <th scope="col"
-                        class="col-{{ column.align }} col-key-{{ column.key | replace('_', '-') }}{{ ' col-rank' if column.format == 'rank' }}"
+                        class="col-{{ column.align }}
+                            {{- ' col-key-' ~ column.key | replace('_', '-') if column.key in STYLED_COLUMN_KEYS }}
+                            {{- ' col-rank' if column.format == 'rank' }}"
                         data-sortable="true" data-sort-kind="{{ 'number' if column.numeric else 'text' }}"
                         tabindex="0" aria-sort="none"
                         {%- if column.title %} title="{{ column.title }}; activate to sort"{% else %} title="Activate to sort"{% endif %}>{{ column.label }}</th>
@@ -76,14 +87,19 @@
                     {%- set sub = row.get(column.key ~ '_sub') %}
                     {%- set state_class = row.get(column.key ~ '_class') %}
                     {%- set scale_position = row.get(column.key ~ '_scale_position') %}
-                    <td class="col-{{ column.align }} col-key-{{ column.key | replace('_', '-') }}
+                    {%- set sort_value = row.get(column.key ~ '_sort', row.get(column.key))
+                                          if row.get(column.key) is not none else '' %}
+                    <td class="col-{{ column.align }}
+                        {{- ' col-key-' ~ column.key | replace('_', '-') if column.key in STYLED_COLUMN_KEYS }}
                         {{- ' num' if column.numeric }}
                         {{- ' emphasis' if column.emphasis }}
                         {{- ' is-empty' if text == '—' }}
                         {{- ' ' ~ state_class if state_class }}"
-                        data-label="{{ column.label }}"
                         {%- if state_class == 'advantage' %} title="Comparison edge"{% endif %}
-                        data-sort-value="{{ row.get(column.key ~ '_sort', row.get(column.key)) if row.get(column.key) is not none else '' }}">
+                        {#- Only when it differs from what the cell shows. The sort
+                            script already falls back to textContent, and 79% of these
+                            merely repeated the visible text: 45 KB per team page. -#}
+                        {%- if sort_value is not none and sort_value|string != text|string %} data-sort-value="{{ sort_value }}"{% endif %}>
                         {%- set conference = row.get(column.key ~ '_conference') %}
                         {%- set logo = row.get(column.key ~ '_logo') %}
                         {%- set logo_dark = row.get(column.key ~ '_logo_dark') %}
@@ -115,8 +131,7 @@
             <tfoot>
                 <tr>
                     {%- for column in table.columns %}
-                    <td class="col-{{ column.align }}{{ ' num' if column.numeric }}"
-                        data-label="{{ column.label }}">
+                    <td class="col-{{ column.align }}{{ ' num' if column.numeric }}">
                         {{- table.total_row.get(column.key) | cell(column.format) -}}
                     </td>
                     {%- endfor %}

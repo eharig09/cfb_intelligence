@@ -51,9 +51,12 @@ class FormatTests(unittest.TestCase):
                 rows=[{"team": "Michigan", "record": "10-2"}],
             ))
         self.assertIn("mobile-compact", html)
+        # A real table with real headers, rather than cards built from per-cell
+        # label attributes: the headers are what carry the column names.
         self.assertIn("<thead>", html)
-        self.assertIn('data-label="Team"', html)
-        self.assertIn('data-label="Record"', html)
+        self.assertIn(">Team</th>", html)
+        self.assertIn(">Record</th>", html)
+        self.assertIn("Michigan", html)
 
     def test_wide_stat_tables_keep_a_local_swipe_region(self):
         app = create_app({"TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False})
@@ -87,8 +90,10 @@ class FormatTests(unittest.TestCase):
                 columns=[Column("value", "Value", format="f1")],
                 rows=[{"value": 42.0, "value_class": "advantage"}],
             ))
-        self.assertIn('class="col-right col-key-value num advantage"', html)
+        self.assertIn("advantage", html)
         self.assertIn('title="Comparison edge"', html)
+        # `value` is not a column the stylesheet targets, so no key class.
+        self.assertNotIn("col-key-value", html)
 
     def test_comparison_scale_is_compact_and_accessibly_labeled(self):
         app = create_app({"TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False})
