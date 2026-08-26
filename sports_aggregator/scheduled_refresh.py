@@ -56,6 +56,16 @@ SCORES_DATASETS = ["games"]
 #: Every profile the scheduler accepts.
 REFRESH_PROFILES = frozenset({"light", "heavy", "scores"})
 
+#: How long a killed run's progress is worth resuming from.
+#:
+#: Each step is already its own process and commits before the next one
+#: starts, so the work a killed run did is on disk. What was missing is any
+#: memory of it: the next run began at step one and spent its budget redoing
+#: what was already done, which on a 512 MB instance is how a refresh can fail
+#: repeatedly without ever reaching the end. Beyond this window the data is
+#: stale enough to be worth fetching again.
+RESUME_WINDOW_HOURS = 12.0
+
 #: Address-space ceiling for each refresh subprocess, in MB.
 #:
 #: The refresh runs as a child of the web service, so both share the
@@ -245,6 +255,56 @@ def _conferences(root: Path) -> list[str]:
         _database_path(root),
         "SELECT DISTINCT conference FROM teams WHERE conference IS NOT NULL ORDER BY conference",
     )
+
+
+def _progress_path(instance: Path) -> Path:
+    return instance / "refresh_progress.json"
+
+
+def _read_progress(instance: Path) -> dict[str, Any]:
+    try:
+        return json.loads(_progress_path(instance).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _resumable_steps(instance: Path, season: int, profile: str, *,
+                     window_hours: float, now: datetime) -> set[str]:
+    """Steps a recent unfinished run already completed.
+
+    A run that reached the end is not resumed from -- that would skip the whole
+    refresh. Neither is one for a different season or profile, or one old
+    enough that its data is stale again.
+    """
+    if window_hours <= 0:
+        return set()
+    record = _read_progress(instance)
+    if not record or record.get("completed"):
+        return set()
+    if record.get("season") != season or record.get("profile") != profile:
+        return set()
+    try:
+        started = datetime.fromisoformat(str(record.get("started_at")))
+    except (TypeError, ValueError):
+        return set()
+    if (now - started).total_seconds() > window_hours * 3600:
+        return set()
+    return {name for name, entry in (record.get("steps") or {}).items()
+            if entry.get("status") == "success"}
+
+
+def _write_progress(instance: Path, record: dict[str, Any]) -> None:
+    """Flush to disk immediately: the reader is the next run after a kill."""
+    path = _progress_path(instance)
+    try:
+        with path.open("w", encoding="utf-8") as handle:
+            json.dump(record, handle, separators=(",", ":"))
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError:
+        # Progress is an optimisation. Losing it costs a repeated step, not a
+        # refresh, so it must never be the thing that stops one.
+        pass
 
 
 def _run_command(command: list[str], *, timeout: int, log) -> tuple[str, str, float]:
@@ -441,6 +501,8 @@ def _run_low_memory_phase(
     timeout: int = 1800,
     log,
     heartbeat: Callable[[], None] | None = None,
+    completed: set[str] | None = None,
+    on_step: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
     plan = [step for step in steps(season) if phase in step.phases]
     if only:
@@ -449,6 +511,21 @@ def _run_low_memory_phase(
 
     results: list[dict[str, Any]] = []
     for step in plan:
+        if completed and step.name in completed:
+            # Its own process already ran and committed; a previous attempt
+            # died later in the plan.
+            result = {
+                "step": step.name, "status": "skipped",
+                "message": "already completed by an earlier attempt",
+                "seconds": 0.0, "optional": step.optional,
+                "parent_rss_mb": _rss_mb(),
+                "child_peak_rss_mb": _children_rss_mb(),
+            }
+            print(f"[--] {step.name}: resumed, already done", file=log, flush=True)
+            results.append(result)
+            if on_step is not None:
+                on_step(result)
+            continue
         # Progress, so a refresh that is working keeps its lock and one that
         # has stalled or been killed ages out quickly.
         if heartbeat is not None:
@@ -501,6 +578,8 @@ def _run_low_memory_phase(
             flush=True,
         )
         results.append(result)
+        if on_step is not None:
+            on_step(result)
     return results
 
 
@@ -510,6 +589,8 @@ def run_scheduled_refresh(
     profile: str = "heavy",
     repo_root: str | Path | None = None,
     stale_lock_hours: float = 1,
+    resume_hours: float = RESUME_WINDOW_HOURS,
+    only: list[str] | None = None,
     phase_runner: Callable[..., list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     normalized_profile = profile.strip().casefold()
@@ -540,9 +621,30 @@ def run_scheduled_refresh(
 
     stamp = started.strftime("%Y%m%dT%H%M%SZ")
     log_path = logs / f"refresh-{stamp}.log"
-    only = {"light": LIGHT_REFRESH_STEPS,
-            "scores": SCORES_REFRESH_STEPS}.get(normalized_profile)
+    only = only or {"light": LIGHT_REFRESH_STEPS,
+                    "scores": SCORES_REFRESH_STEPS}.get(normalized_profile)
     datasets = SCORES_DATASETS if normalized_profile == "scores" else None
+
+    # What a previous attempt already finished. Each step is its own process
+    # and commits before the next begins, so that work is on disk; without
+    # this the next run spends its budget doing it again.
+    completed = _resumable_steps(instance, season, normalized_profile,
+                                 window_hours=resume_hours, now=started)
+    progress = {
+        "season": season, "profile": normalized_profile,
+        "started_at": started.isoformat(), "completed": False,
+        "resumed_from": sorted(completed),
+        "steps": {name: {"status": "success", "resumed": True}
+                  for name in sorted(completed)},
+    }
+    _write_progress(instance, progress)
+
+    def record_step(result: dict[str, Any]) -> None:
+        progress["steps"][str(result.get("step"))] = {
+            "status": str(result.get("status")),
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+        _write_progress(instance, progress)
 
     try:
         with log_path.open("w", encoding="utf-8") as log:
@@ -562,6 +664,7 @@ def run_scheduled_refresh(
                 results = _run_low_memory_phase(
                     "refresh", season, root=root, only=only, datasets=datasets,
                     log=log, heartbeat=lambda: _touch_lock(lock),
+                    completed=completed, on_step=record_step,
                 )
             else:
                 results = phase_runner("refresh", season, only=only,
@@ -605,7 +708,13 @@ def run_scheduled_refresh(
             "required_failure_count": len(required_failures),
             "parent_peak_rss_mb": _rss_mb(),
             "child_peak_rss_mb": _children_rss_mb(),
+            "resumed_steps": sorted(completed),
         }
+        # Reaching here means the plan was walked end to end. The next run
+        # starts from the top rather than skipping everything.
+        progress["completed"] = True
+        progress["finished_at"] = finished.isoformat()
+        _write_progress(instance, progress)
         history = instance / "scheduled_refresh_history.jsonl"
         with history.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(report, separators=(",", ":")) + "\n")
@@ -624,10 +733,28 @@ def main(argv: list[str] | None = None) -> int:
     # Matches run_scheduled_refresh: liveness and the per-step heartbeat do
     # the real work, so this only has to outlast a single stalled step.
     parser.add_argument("--stale-lock-hours", type=float, default=1)
+    parser.add_argument(
+        "--resume-hours", type=float, default=RESUME_WINDOW_HOURS,
+        help="Skip steps a run in the last N hours already finished. 0 disables.")
+    parser.add_argument(
+        "--only", nargs="+", metavar="STEP",
+        help="Run only these steps, by name. Use --list-steps to see them.")
+    parser.add_argument(
+        "--list-steps", action="store_true",
+        help="Print the refresh steps in order and exit.")
     args = parser.parse_args(argv)
+    if args.list_steps:
+        for step in steps(args.season):
+            if "refresh" not in step.phases:
+                continue
+            mark = "optional" if step.optional else "required"
+            print(f"{step.name:28} {mark:9} {step.description}")
+        return 0
     report = run_scheduled_refresh(
         args.season,
         profile=args.profile,
+        resume_hours=args.resume_hours,
+        only=args.only,
         repo_root=root,
         stale_lock_hours=args.stale_lock_hours,
     )
