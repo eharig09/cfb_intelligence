@@ -162,8 +162,10 @@ class ScoresProfileTests(unittest.TestCase):
     def test_the_profile_is_accepted_by_the_scheduler(self):
         self.assertIn("scores", REFRESH_PROFILES)
 
-    def test_it_syncs_the_games_and_the_market_and_nothing_else(self):
-        self.assertEqual(SCORES_REFRESH_STEPS, ["cfbd-sync", "cfbd-lines"])
+    def test_it_syncs_the_result_the_box_score_and_the_market(self):
+        """Everything a played game changes, and nothing a slate does not."""
+        self.assertEqual(SCORES_REFRESH_STEPS,
+                         ["cfbd-sync", "cfbd-box-scores", "cfbd-lines"])
 
     def test_it_reads_one_cfbd_dataset(self):
         """The roster crawl is the expensive part and none of it moves."""

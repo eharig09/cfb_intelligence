@@ -20,6 +20,16 @@ from urllib3.util.retry import Retry
 LOGGER = logging.getLogger(__name__)
 DEFAULT_BASE_URL = "https://api.collegefootballdata.com"
 
+#: A week that is over never changes, so its box scores are cached for a year.
+FINISHED_WEEK_TTL = 31536000
+
+#: A week still being played changes every few minutes. Caching one of those
+#: for a year would freeze a Saturday afternoon at whatever the first request
+#: happened to catch, which is what the single TTL used to do. Long enough that
+#: a pass every quarter hour is not four requests an hour for the same bytes,
+#: short enough that a line score is never a refresh cycle stale.
+LIVE_WEEK_TTL = 240
+
 
 class CFBDConfigurationError(RuntimeError):
     pass
@@ -200,19 +210,21 @@ class CFBDClient:
         )
 
     def game_team_box_scores(self, year: int, week: int,
-                             force: bool = False) -> list[dict]:
+                             force: bool = False,
+                             cache_ttl_seconds: int = FINISHED_WEEK_TTL) -> list[dict]:
         return self.get(
             "/games/teams",
             {"year": year, "week": week, "seasonType": "both", "classification": "fbs"},
-            cache_ttl_seconds=31536000, force=force,
+            cache_ttl_seconds=cache_ttl_seconds, force=force,
         )
 
     def game_player_box_scores(self, year: int, week: int,
-                               force: bool = False) -> list[dict]:
+                               force: bool = False,
+                               cache_ttl_seconds: int = FINISHED_WEEK_TTL) -> list[dict]:
         return self.get(
             "/games/players",
             {"year": year, "week": week, "seasonType": "both", "classification": "fbs"},
-            cache_ttl_seconds=31536000, force=force,
+            cache_ttl_seconds=cache_ttl_seconds, force=force,
         )
 
     def rankings(self, year: int, force: bool = False) -> list[dict]:

@@ -61,6 +61,15 @@ def steps(season: int, *, history_from: int | None = None,
         Step("cfbd-models", "CFBD CORE ratings and ESPN FPI model data",
              ["sports_aggregator.cfb.models_cli", "sync", "--year", year],
              ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
+        # Box scores were only ever synced by the history phase, for seasons
+        # that were already over. Nothing refreshed the current one, so a game
+        # played this season had an empty box score page and never joined the
+        # opponent-history record. Scoped to the weeks still moving, because a
+        # full season is most of half a million rows.
+        Step("cfbd-box-scores", "Box scores for the weeks just played",
+             ["sports_aggregator.cfb.cli", "sync-box-scores", "--year", year,
+              "--recent-weeks", "2"],
+             ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),
         Step("cfbd-lines", "Fast market-only betting-line refresh",
              ["sports_aggregator.cfb.cli", "sync-lines", "--year", year, "--force"],
              ("initial", "refresh"), requires_env=("CFBD_API_KEY",)),

@@ -44,10 +44,11 @@ LIGHT_REFRESH_STEPS = [
 #: kickoffs -- so a game-day pass syncs the games and the market and stops.
 SCORES_REFRESH_STEPS = [
     "cfbd-sync",
+    "cfbd-box-scores",
     "cfbd-lines",
 ]
 
-#: The only CFBD dataset a game-day pass reads.
+#: The only CFBD dataset a game-day pass reads through `cfbd-sync`.
 #:
 #: `cfbd-sync` normally walks eleven datasets including a per-team roster
 #: crawl. Scores live in one of them.

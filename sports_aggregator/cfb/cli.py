@@ -7,9 +7,12 @@ from datetime import datetime
 import json
 import os
 
+from typing import Any
+
 from dotenv import load_dotenv
 
-from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError
+from sports_aggregator.cfb.cfbd import (
+    FINISHED_WEEK_TTL, LIVE_WEEK_TTL, CFBDClient, CFBDConfigurationError)
 from sports_aggregator.cfb.models import Game, Player
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.sync import CFBDataSync
@@ -32,12 +35,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--database", default=None, help="Override CFB_DATABASE_PATH")
     parser.add_argument("--from-year", type=int, default=None,
                         help="First season for backfill (inclusive)")
+    parser.add_argument(
+        "--recent-weeks", type=int, default=None, metavar="N",
+        help="sync-box-scores: only the last N completed weeks. The current "
+             "season's newest weeks are the ones that move; re-walking every "
+             "week of a finished season costs hundreds of thousands of rows.")
     parser.add_argument("--to-year", type=int, default=None,
                         help="Last season for backfill (inclusive)")
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, client: Any = None) -> int:
+    """`client` is a seam for tests: the real one needs a key and a network."""
     load_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -47,7 +56,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(repository.status(args.year), indent=2, default=str))
         return 0
 
-    client = CFBDClient(raw_cache_path=os.getenv("CFBD_RAW_CACHE_PATH", "instance/cfbd_raw"))
+    client = client or CFBDClient(
+        raw_cache_path=os.getenv("CFBD_RAW_CACHE_PATH", "instance/cfbd_raw"))
     if not client.configured:
         raise CFBDConfigurationError("CFBD_API_KEY is required for sync")
     if args.command == "sync-roster-context":
@@ -141,18 +151,31 @@ def main(argv: list[str] | None = None) -> int:
             if not wanted:
                 print(f"{year} box scores: cached (SQLite)")
                 continue
-            if args.force:
+            if args.force and not args.recent_weeks:
+                # Clearing the season and then re-importing two weeks of it
+                # would delete the rest, so a scoped pass never clears.
                 repository.clear_box_scores(year)
             weeks = repository.completed_weeks(year)
+            # A week that is over never changes again; one still being played
+            # changes every few minutes. Only the recent ones are read live.
+            live_weeks: set[int] = set()
+            if args.recent_weeks:
+                weeks = weeks[-args.recent_weeks:]
+                if year >= datetime.now().year:
+                    live_weeks = set(weeks)
+            ttl = {week: (LIVE_WEEK_TTL if week in live_weeks else FINISHED_WEEK_TTL)
+                   for week in weeks}
             dataset_failed = {name: False for name in wanted}
             for week in weeks:
                 jobs = []
                 if "team_box_scores" in wanted:
                     jobs.append(("team_box_scores", lambda week=week, year=year: repository.store_game_team_box_scores(
-                        client.game_team_box_scores(year, week, args.force))))
+                        client.game_team_box_scores(
+                            year, week, args.force, cache_ttl_seconds=ttl[week]))))
                 if "player_box_scores" in wanted:
                     jobs.append(("player_box_scores", lambda week=week, year=year: repository.store_game_player_box_scores(
-                        client.game_player_box_scores(year, week, args.force))))
+                        client.game_player_box_scores(
+                            year, week, args.force, cache_ttl_seconds=ttl[week]))))
                 for name, operation in jobs:
                     try:
                         print(f"{year} week {week} {name}: success ({operation()})")
@@ -162,7 +185,9 @@ def main(argv: list[str] | None = None) -> int:
                         print(f"{year} week {week} {name}: failed ({exc})")
             counts = repository.box_score_counts(year)
             for name in wanted:
-                if not dataset_failed[name]:
+                if not dataset_failed[name] and not args.recent_weeks:
+                    # A scoped pass has not seen the whole season, so it must
+                    # not tell a later full run that the season is complete.
                     repository.mark_history_dataset(year, name, counts[name])
         print(f"sync-box-scores {first}-{last} complete; {len(failures)} failures")
         return 1 if failures else 0
