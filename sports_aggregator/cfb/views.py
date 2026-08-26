@@ -2211,7 +2211,9 @@ def _market_line(game, line):
     return {
         "favourite": None if level else ("home" if spread < 0 else "away"),
         "spread": "PK" if level else f"-{abs(spread):g}",
-        "total": f"O/U {total:g}" if total is not None else None,
+        # No "O/U" label: the row already carries the signed spread above it,
+        # and an unsigned number opposite it can only be the total.
+        "total": f"{total:g}" if total is not None else None,
         # Books are stored per provider and disagree; the count says how many
         # were averaged into this, rather than implying one true number.
         "books": books,

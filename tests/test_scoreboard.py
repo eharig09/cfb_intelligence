@@ -209,7 +209,7 @@ class MarketLineTests(unittest.TestCase):
                             {"spread": -47.5, "total": 55.0, "books": 3})
         self.assertEqual(line["favourite"], "home")
         self.assertEqual(line["spread"], "-47.5")
-        self.assertEqual(line["total"], "O/U 55")
+        self.assertEqual(line["total"], "55")
         self.assertEqual(line["title"], "Consensus of 3 books")
 
     def test_a_positive_spread_belongs_to_the_away_team(self):
@@ -304,11 +304,18 @@ class ScoreboardExtrasTests(unittest.TestCase):
     def test_the_spread_rides_on_the_favourite_and_the_total_on_the_other(self):
         away, home = self._sides("2026-09-04")
         self.assertIn("Ohio State", away)
-        self.assertIn("O/U 48", away)
+        self.assertIn("48", away)
         self.assertNotIn("-6.5", away)
         self.assertIn("Michigan", home)
         self.assertIn("-6.5", home)          # the average of -6 and -7
-        self.assertNotIn("O/U", home)
+        self.assertNotIn("48", home)
+
+    def test_the_total_is_unlabelled_and_unsigned(self):
+        """The minus sign opposite it is the only label it needs."""
+        away, _ = self._sides("2026-09-04")
+        self.assertNotIn("O/U", away)
+        self.assertNotIn("-48", away)
+        self.assertIn('title="Market total"', self._body("2026-09-04"))
 
     def test_the_spread_says_which_books_agreed(self):
         self.assertIn('title="Consensus of 2 books"', self._body("2026-09-04"))
@@ -324,7 +331,7 @@ class ScoreboardExtrasTests(unittest.TestCase):
         """It belongs beside a team, not in the footnote with the venue."""
         body = self._body("2026-09-04")
         foot = re.search(r'<div class="game-card-foot">(.*?)</div>', body, re.S)
-        self.assertNotIn("O/U", foot.group(1))
+        self.assertNotIn("48", foot.group(1))
         self.assertNotIn("-6.5", foot.group(1))
 
     def test_elo_is_not_shown(self):
