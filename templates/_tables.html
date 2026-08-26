@@ -80,9 +80,10 @@
                         class="col-{{ column.align }}
                             {{- ' col-key-' ~ column.key | replace('_', '-') if column.key in STYLED_COLUMN_KEYS }}
                             {{- ' col-rank' if column.format == 'rank' }}"
-                        data-sortable="true" data-sort-kind="{{ 'number' if column.numeric else 'text' }}"
+                        {%- if table.sortable %} data-sortable="true" data-sort-kind="{{ column.sort_kind }}"
                         tabindex="0" aria-sort="none"
-                        {%- if column.title %} title="{{ column.title }}; activate to sort"{% else %} title="Activate to sort"{% endif %}>{{ column.label }}</th>
+                        {%- if column.title %} title="{{ column.title }}; activate to sort"{% else %} title="Activate to sort"{% endif %}
+                        {%- elif column.title %} title="{{ column.title }}"{% endif %}>{{ column.label }}</th>
                     {%- endfor %}
                 </tr>
             </thead>
@@ -106,8 +107,11 @@
                         {%- if state_class == 'advantage' %} title="Comparison edge"{% endif %}
                         {#- Only when it differs from what the cell shows. The sort
                             script already falls back to textContent, and 79% of these
-                            merely repeated the visible text: 45 KB per team page. -#}
-                        {%- if sort_value is not none and sort_value|string != text|string %} data-sort-value="{{ sort_value }}"{% endif %}>
+                            merely repeated the visible text: 45 KB per team page. An
+                            empty one said nothing either: the script reads "" as
+                            absent and falls back to the em dash regardless. -#}
+                        {%- if sort_value is not none and sort_value|string
+                               and sort_value|string != text|string %} data-sort-value="{{ sort_value }}"{% endif %}>
                         {%- set conference = row.get(column.key ~ '_conference') %}
                         {%- set logo = row.get(column.key ~ '_logo') %}
                         {%- set logo_dark = row.get(column.key ~ '_logo_dark') %}

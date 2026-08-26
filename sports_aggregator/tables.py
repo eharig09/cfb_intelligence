@@ -28,14 +28,29 @@ class Column:
     align: str | None = None
     title: str | None = None
     emphasis: bool = False
+    #: Sort as this kind regardless of how the column is displayed.
+    #:
+    #: Display and order are not the same question. A column of stat lines --
+    #: "23 car / 118 yd" -- is text to read and a number to rank by, and sorting
+    #: it as text compares character by character: 1, 1, 2, 23, 3, 3, 4. Setting
+    #: this to "number" makes the row's `<key>_sort` value the thing compared,
+    #: without turning the column into right-aligned tabular digits.
+    sort: str | None = None
 
     def __post_init__(self) -> None:
         if self.align is None:
             object.__setattr__(self, "align", "right" if self.numeric else "left")
+        if self.sort not in (None, "number", "text"):
+            raise ValueError(f"unknown sort kind: {self.sort!r}")
 
     @property
     def numeric(self) -> bool:
         return self.format in NUMERIC_FORMATS
+
+    @property
+    def sort_kind(self) -> str:
+        """What the sort script compares this column as."""
+        return self.sort or ("number" if self.numeric else "text")
 
 
 @dataclass
@@ -49,6 +64,12 @@ class Table:
     empty: str = "No data is stored for this view yet."
     total_row: dict[str, Any] | None = None
     dense: bool = False
+    #: Whether the headers offer sorting at all.
+    #:
+    #: A key/value list -- one metric per row, each on its own scale -- has no
+    #: order to put its value column in, and a control that cannot mean anything
+    #: is worse than no control.
+    sortable: bool = True
 
     def __bool__(self) -> bool:
         return bool(self.rows)
@@ -63,7 +84,8 @@ class Table:
             "note": self.note,
             "columns": [
                 {"key": column.key, "label": column.label, "format": column.format,
-                 "align": column.align, "title": column.title}
+                 "align": column.align, "title": column.title,
+                 "sort": column.sort_kind}
                 for column in self.columns
             ],
             "rows": self.rows,

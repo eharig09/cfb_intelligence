@@ -10,6 +10,7 @@ table objects.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Iterable, Sequence
 
 from datetime import datetime
@@ -19,10 +20,41 @@ from flask import url_for
 
 from sports_aggregator.cfb.draft import position_abbreviation
 from sports_aggregator.cfb.identity import conference_identity, dark_accent
+from sports_aggregator.cfb.recruiting import evidence_score
 from sports_aggregator.cfb.repository import _logo_pair
 from sports_aggregator.cfb.statlines import (
     CATEGORY_ORDER, category_label, leader_table, player_stat_tables, sort_stat)
 from sports_aggregator.tables import Column, Table, format_value
+
+
+#: The first number in a formatted line, which is what a reader ranks it by.
+_LEADING_NUMBER = re.compile(r"[-+]?\d+(?:\.\d+)?")
+
+
+def leading_number(text: Any) -> float | None:
+    """Order a display string by the first number in it.
+
+    A stat line reads "23 car / 118 yd / 1 TD" and sorts, as text, character by
+    character: "2" then a space beats "2" then "3", so the column comes out
+    1, 1, 2, 23, 3, 3, 4. The leading figure is the one the line leads with and
+    the one a reader is ranking on, so it is the one compared.
+    """
+    match = _LEADING_NUMBER.search(str(text or ""))
+    return float(match.group()) if match else None
+
+
+def record_order(text: Any) -> float | None:
+    """A "W-L" record as one comparable number: wins, then the win share.
+
+    Sorted as text, 10-2 lands between 1-11 and 2-10. Wins lead, and the share
+    separates two teams on the same win total, so 5-2 outranks 5-7.
+    """
+    match = re.fullmatch(r"\s*(\d+)\s*-\s*(\d+)\s*", str(text or ""))
+    if not match:
+        return None
+    wins, losses = int(match.group(1)), int(match.group(2))
+    played = wins + losses
+    return wins + (wins / played if played else 0.0)
 
 
 def height_label(inches: Any) -> str | None:
@@ -72,6 +104,9 @@ def historical_games_table(games: Sequence[dict[str, Any]], *,
         "season": row.get("season"), "date": row.get("date_label"),
         "opponent": row.get("opponent"), "site": row.get("site"),
         "result": row.get("result"), "score": row.get("score"),
+        # "35-31" sorts as text between "3-0" and "4-1"; the points scored are
+        # what the column is read for.
+        "score_sort": leading_number(row.get("score")),
         "score_url": row.get("game_url"), "slot": row.get("slot"),
         "conference": row.get("opponent_conference"),
         "conference_conference": (conference_identity(row["opponent_conference"])
@@ -83,16 +118,20 @@ def historical_games_table(games: Sequence[dict[str, Any]], *,
         columns=[Column("season", "Season", format="int", align="right"),
                  Column("date", "Date"), Column("opponent", "Opponent"),
                  Column("site", "Site"), Column("result", "Result", emphasis=True),
-                 Column("score", "Score", align="right"), Column("slot", "Window"),
+                 Column("score", "Score", align="right", sort="number",
+                        title="Sorted by points scored"),
+                 Column("slot", "Window"),
                  Column("conference", "Opp. conf."), Column("box_score", "Detail")],
         rows=rows, caption=caption, dense=True,
         empty="No completed historical games are stored for this selection.")
 
 
 def season_history_table(seasons: Sequence[dict[str, Any]]) -> Table:
+    rows = [{**row, "record_sort": record_order(row.get("record"))} for row in seasons]
     return Table(
         columns=[Column("season", "Season", format="int", align="right"),
-                 Column("record", "Record", emphasis=True),
+                 Column("record", "Record", emphasis=True, sort="number",
+                        title="Sorted by wins"),
                  Column("ppg_for", "PPG", format="f1", align="right"),
                  Column("ppg_against", "Opp PPG", format="f1", align="right"),
                  Column("average_margin", "Margin", format="signed", align="right"),
@@ -102,7 +141,7 @@ def season_history_table(seasons: Sequence[dict[str, Any]]) -> Table:
                         title="Share of offensive plays meeting CFBD success thresholds"),
                  Column("defense_success_rate", "Def success allowed", format="rate", align="right",
                         title="Share of opponent plays meeting CFBD success thresholds; lower is better")],
-        rows=seasons, caption="Season results and efficiency", dense=True,
+        rows=rows, caption="Season results and efficiency", dense=True,
         empty="Historical season summaries populate after the history backfill.")
 
 
@@ -260,12 +299,19 @@ def opponent_performance_table(rows: Sequence[dict[str, Any]], *,
             "rushing": row.get("rushing"), "receiving": row.get("receiving"),
             "defense": row.get("defense"), "detail": "Box", "detail_url": row.get("game_url"),
         })
+        # Each line leads with the figure it is ranked on -- carries, catches,
+        # tackles -- so that is what the column compares.
+        for key in ("passing", "rushing", "receiving", "defense"):
+            data[-1][key + "_sort"] = leading_number(data[-1][key])
     columns = ([Column("player", "Player", emphasis=True), Column("position", "Pos")]
                if include_player else []) + [
         Column("date", "Date"), Column("team", "Played for"),
-        Column("opponent", "Opponent"), Column("passing", "Passing"),
-        Column("rushing", "Rushing"), Column("receiving", "Receiving"),
-        Column("defense", "Defense"), Column("detail", "Detail")]
+        Column("opponent", "Opponent"),
+        Column("passing", "Passing", sort="number", title="Sorted by completions"),
+        Column("rushing", "Rushing", sort="number", title="Sorted by carries"),
+        Column("receiving", "Receiving", sort="number", title="Sorted by receptions"),
+        Column("defense", "Defense", sort="number", title="Sorted by tackles"),
+        Column("detail", "Detail")]
     return Table(columns=columns, rows=data, caption="Prior games against this opponent",
                  dense=True, empty="No cached player box score against this opponent.")
 
@@ -327,6 +373,8 @@ def standings_table(standings: Sequence[dict[str, Any]], season: int) -> Table:
             "conference_record": _record(row, "conference_wins", "conference_losses", "conference_ties"),
             "overall_record": _record(row, "wins", "losses", "ties"),
             "games": row.get("games"),
+            "conference_record_sort": record_order(row.get("conference_record")),
+            "overall_record_sort": record_order(row.get("overall_record")),
             "expected_wins": row.get("expected_wins"),
             "elo": row.get("elo"),
             "elo_sub": f"#{row['elo_rank']} FBS" if row.get("elo_rank") else None,
@@ -336,8 +384,10 @@ def standings_table(standings: Sequence[dict[str, Any]], season: int) -> Table:
         columns=[
             Column(key="rank", label="#", format="rank", align="right", title="Current poll rank"),
             Column(key="school", label="Team", align="left", emphasis=True),
-            Column(key="conference_record", label="Conf", align="right", title="Conference record"),
-            Column(key="overall_record", label="Overall", align="right", title="Overall record"),
+            Column(key="conference_record", label="Conf", align="right", sort="number",
+                   title="Conference record, sorted by wins"),
+            Column(key="overall_record", label="Overall", align="right", sort="number",
+                   title="Overall record, sorted by wins"),
             Column(key="games", label="GP", format="int", title="Games played"),
             Column(key="expected_wins", label="xWins", format="f1",
                    title="CFBD expected wins from game-level win probability"),
@@ -900,10 +950,20 @@ def depth_chart_tables(depth_chart: dict[str, Any], season: int,
                                    else None),
                     "class_year": player.get("class_year"),
                     "height": height_label(player.get("height")),
+                    # "6-10" sorts as text between "6-1" and "6-2".
+                    "height_sort": player.get("height"),
                     "weight": player.get("weight"),
                     "origin": origin,
                     "production": (evidence.get("summary")
                                     or _recruit_summary(player)),
+                    # The column mixes kinds of evidence -- yards, a grade, a
+                    # star rating -- so no figure in the text orders it. This is
+                    # the blend the board itself is ranked on, which makes
+                    # sorting the column reproduce the order it arrived in.
+                    "production_sort": evidence_score(
+                        pff_interest=player.get("pff_interest"),
+                        recruit_rating=player.get("recruit_rating"),
+                        production=player.get("production_strength")),
                     "pff_interest": player.get("pff_interest"),
                     "pff_interest_sub": (player.get("pff_graded_at")
                                          if player.get("pff_graded_at")
@@ -917,11 +977,14 @@ def depth_chart_tables(depth_chart: dict[str, Any], season: int,
                         Column(key="name", label="Player", align="left", emphasis=True),
                         Column(key="class_year", label="Cl", format="rank", align="right",
                                title="Class year, 1 through 4"),
-                        Column(key="height", label="Ht", align="right"),
+                        Column(key="height", label="Ht", align="right", sort="number"),
                         Column(key="weight", label="Wt", format="int", title="Pounds"),
                         Column(key="origin", label="Origin", align="left"),
                         Column(key="production", label="Prior production", align="left",
-                               title="Last season's headline production, and where it was earned"),
+                               sort="number",
+                               title="Last season's headline production, and where it "
+                                     "was earned; sorted on the blended evidence the "
+                                     "board is ordered by"),
                         Column(key="pff_interest", label="PFF", format="f1",
                                title="2025 PFF interest score, and the school it "
                                      "was earned at when that differs"),
@@ -1265,6 +1328,9 @@ def preseason_context_table(away_team: str, away_quality: dict[str, Any],
         caption="Preseason context",
         note="Context signals, not a predictive composite",
         empty="No preseason context signals are stored for these teams.",
+        # One signal per row, each on its own scale: a column holding "59.9%"
+        # and "16" has no order, so the headers do not offer one.
+        sortable=False,
     )
 
 
@@ -1284,6 +1350,7 @@ def quality_cards_table(quality: dict[str, Any]) -> Table:
         rows=rows,
         caption="Preseason context",
         empty="No preseason context signals are stored.",
+        sortable=False,
     )
 
 
@@ -1474,7 +1541,11 @@ def opponent_quality_table(away_team: str, away: dict[str, Any], home_team: str,
                           Column("edge", "Tougher slate", align="left", emphasis=True)],
                  rows=rows, caption=f"{season} opponent quality", dense=True,
                  note="Pregame Elo is at kickoff; the centered scale runs away team left to home team right",
-                 empty=f"No completed {season} opponents have model coverage.")
+                 empty=f"No completed {season} opponents have model coverage.",
+                 # One measure per row, each on its own scale -- Elo against a
+                 # count of ranked opponents -- so the columns have no order.
+                 sortable=False,
+                 )
 
 
 def team_opponent_quality_table(team: str, quality: dict[str, Any], season: int, *,
@@ -1493,6 +1564,7 @@ def team_opponent_quality_table(team: str, quality: dict[str, Any], season: int,
             columns=[Column("metric", "Schedule measure", align="left", emphasis=True),
                      Column("value", team, align="right")],
             rows=rows, dense=True, caption=f"{season} opponent quality",
+            sortable=False,
             empty=(f"Opponent quality appears here once {season} games are played."
                    if upcoming
                    else f"No completed {season} opponent ratings are stored."))
@@ -1512,6 +1584,7 @@ def team_opponent_quality_table(team: str, quality: dict[str, Any], season: int,
                           Column("value", team, align="right")], rows=rows, dense=True,
                  caption=f"{season} opponent quality",
                  note="Ratings remain separate because Elo, CORE, and polls use different scales",
+                 sortable=False,
                  empty=(f"No {season} games have been played yet." if upcoming
                         else f"No completed {season} opponent ratings are stored."))
 
@@ -1539,7 +1612,7 @@ def roster_table(roster: Sequence[dict[str, Any]], season: int) -> Table:
             Column(key="name", label="Player", align="left", emphasis=True),
             Column(key="position", label="Pos", align="left"),
             Column(key="class_year", label="Cl", format="rank", align="right"),
-            Column(key="height", label="Ht", align="right"),
+            Column(key="height", label="Ht", align="right", sort="number"),
             Column(key="weight", label="Wt", format="int"),
         ],
         rows=rows,
@@ -2044,6 +2117,9 @@ def model_comparison_table(game, fpi, lines, elo, core=None):
         rows=rows,
         caption="Model & market comparison",
         note="kept separate, never averaged",
+        # Three rows, three scales: an FPI margin, an Elo rating, and a spread.
+        # There is nothing to put them in order by.
+        sortable=False,
         empty="No model or market view is stored for this game.",
     )
 
