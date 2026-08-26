@@ -189,20 +189,13 @@
         </section>
 
         <section class="section" data-mobile-tab-panel="roster">
-            <h2>Portal impact</h2>
-            <div class="section-note">
-                Ranked by prior production first, grade second, and recruiting opinion
-                last. A blank impact score means no prior production is on record, which
-                is not the same as low impact.
-            </div>
-            {{ data_table(transfers_table) }}
-        </section>
-
-        <section class="section" data-mobile-tab-panel="roster">
             <h2>Roster movement</h2>
             <div class="section-note">
-                Portal and draft labels are sourced; graduation and eligibility labels are
-                roster-comparison inferences and are marked as such in the evidence column.
+                Everyone in and everyone out, with what each is worth. Impact blends prior
+                production, grade and recruiting rating; a blank means none of the three is
+                on record, which is not the same as low impact. Portal and draft labels are
+                sourced, while graduation and eligibility labels are inferred from comparing
+                the two rosters.
             </div>
             <div class="split">
                 <div>{{ data_table(arrivals_table) }}</div>

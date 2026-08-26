@@ -496,9 +496,6 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
                            team_id=packet["team"]["team_id"]),
             season, include_team=False, dense=True),
         "identity": team_identity(_repository().brand_for(packet["team"]["team_id"])),
-        "transfers_table": views.transfer_impact_table(
-            rank_transfers(_repository(), season=season,
-                           team_id=packet["team"]["team_id"], limit=15), season),
     }
 
 

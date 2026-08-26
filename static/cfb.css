@@ -314,7 +314,14 @@ table.data .emphasis { font-weight: 700; }
 table.data .col-rank { color: var(--muted); width: 2.4rem; }
 table.data td a { text-decoration: none; font-weight: 700; }
 table.data td a:hover { text-decoration: underline; }
-table.data .sub { display: block; color: var(--muted); font-size: .68rem; font-weight: 400; margin-top: 1px; }
+/* Wraps rather than setting the column width. A sub-line is usually longer
+   than the value above it, and in a narrow container -- the team page aside is
+   a third of the page -- one long sub was pushing its table into a sideways
+   scroll. */
+table.data .sub {
+    display: block; color: var(--muted); font-size: .68rem; font-weight: 400;
+    margin-top: 1px; white-space: normal; overflow-wrap: anywhere;
+}
 table.data .pos { color: var(--muted); font-size: .72rem; }
 
 /* Team identity inside a cell: colored rule, mark, then the name. */

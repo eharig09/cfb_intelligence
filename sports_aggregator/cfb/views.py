@@ -323,7 +323,7 @@ def position_philosophy_table(rows: Sequence[dict[str, Any]], season: int | None
         "RB": ("rush_yards", "Rush yards", "rush_yards_share"),
         "WR": ("receiving_yards", "Receiving yards", "receiving_yards_share"),
         "TE": ("receiving_yards", "Receiving yards", "receiving_yards_share"),
-        "OL": (None, "No individual production stat", None),
+        "OL": (None, "No individual stat", None),
         "DL": ("sacks", "Sacks", "sacks_share"),
         "EDGE": ("sacks", "Sacks", "sacks_share"),
         "LB": ("tackles", "Tackles", "tackles_share"),
@@ -339,7 +339,11 @@ def position_philosophy_table(rows: Sequence[dict[str, Any]], season: int | None
         result.append({
             "group": group_label(group), "production": value,
             "production_sub": label, "share": row.get(share) if share else None,
-            "pff_grade": row.get("pff_grade"), "pff_grade_sub": row.get("pff_detail"),
+            "pff_grade": row.get("pff_grade"),
+            # The full detail runs "coverage 70.8; defense 70.2; pass rush
+            # 64.2" -- three facets under a four-character number, in a column
+            # a third of the page wide. The best one is the one the number is.
+            "pff_grade_sub": (row.get("pff_detail") or "").split(";")[0] or None,
         })
     return Table(
         # This renders in the team page's aside, which is about a third of the
@@ -1006,27 +1010,51 @@ def depth_chart_tables(depth_chart: dict[str, Any], season: int,
 
 
 def movements_table(rows: Sequence[dict[str, Any]], season: int, *, arrivals: bool) -> Table:
-    """Arrivals or departures with the evidence for each classification."""
+    """Arrivals or departures, each with what he is worth rather than why he is listed.
+
+    The Evidence column repeated, on every row, how the label had been reached
+    -- "CFBD transfer portal", "Roster comparison" -- which is provenance for
+    the label rather than anything about the player, and which the section note
+    now says once. The width it held goes to the two numbers a reader is
+    actually weighing: the composite rating, and the blended
+    production-grade-rating score the depth board is ordered by.
+    """
     direction_key = "origin" if arrivals else "destination"
-    entries = [{
-        "name": row.get("name"),
-        "name_url": _player_url(row.get("player_id"), season),
-        "position": row.get("position"),
-        "movement_type": (row.get("movement_type") or "").replace("_", " ").title(),
-        "counterparty": row.get(direction_key),
-        "evidence": row.get("evidence"),
-    } for row in rows]
+    entries = []
+    for row in rows:
+        evidence = row.get("movement_evidence")
+        measured = (row.get("production_strength") or row.get("pff_interest")
+                    or row.get("rating"))
+        entries.append({
+            "name": row.get("name"),
+            "name_url": _player_url(row.get("player_id"), season),
+            "position": row.get("position"),
+            "movement_type": (row.get("movement_type") or "").replace("_", " ").title(),
+            "counterparty": row.get(direction_key),
+            "rating": row.get("rating"),
+            # Nothing on record is a blank, not a zero: a zero would read as a
+            # measurement, and this is the absence of one.
+            "impact": (round(100 * float(evidence), 1)
+                       if evidence is not None and measured else None),
+        })
     return Table(
         columns=[
             Column(key="name", label="Player", align="left", emphasis=True),
             Column(key="position", label="Pos", align="left"),
-            Column(key="movement_type", label="Type", align="left"),
+            Column(key="movement_type", label="Type", align="left",
+                   title="Portal and draft labels are sourced; graduation and "
+                         "eligibility are inferred from the roster comparison"),
             Column(key="counterparty", label="From" if arrivals else "To", align="left"),
-            Column(key="evidence", label="Evidence", align="left",
-                   title="Why this player was classified this way"),
+            Column(key="rating", label="Rating", format="f3",
+                   title="Recruiting composite: portal rating for transfers, "
+                         "recruiting rating for signees"),
+            Column(key="impact", label="Impact", format="f1",
+                   title="Prior production, grade and rating blended; blank when "
+                         "none of the three is on record"),
         ],
         rows=entries,
         caption="Arrivals" if arrivals else "Departures",
+        note="by impact",
         empty="No arrivals identified." if arrivals else "No departures identified.",
         dense=True,
     )

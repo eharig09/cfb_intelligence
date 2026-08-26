@@ -1837,6 +1837,13 @@ class CFBRepository:
                 "draft_round": drafted["round"] if drafted else None,
                 "draft_pick": drafted["overall_pick"] if drafted else None,
                 "interest_score": interest.get(name), "evidence": evidence,
+                # A departure is measured the same way an arrival is: what he
+                # produced, how he was graded, what he was rated. He was on last
+                # season's roster, so the production index already holds him.
+                "rating": portal["rating"] if portal else None,
+                "stars": portal["stars"] if portal else None,
+                "production_strength": produced.get(row["player_id"], 0.0),
+                "pff_interest": interest.get(name),
             })
         # Rating, and rating alone. Both numbers are the same CFBD recruiting
         # composite on the same scale -- 4-star transfers run 0.90-0.97 against
@@ -1850,11 +1857,17 @@ class CFBRepository:
         # above 0.85 while the best recruit in the country reaches 0.54. When a
         # team's signees outrank its portal additions here, that is a fact about
         # the team, and the page splits the two so both are visible anyway.
+        for row in departures:
+            row["movement_evidence"] = evidence_score(
+                pff_interest=row.get("pff_interest"),
+                recruit_rating=row.get("rating"),
+                production=row.get("production_strength"))
         for row in arrivals:
             row["arrival_evidence"] = evidence_score(
                 pff_interest=row.get("pff_interest"),
                 recruit_rating=row.get("rating"),
                 production=row.get("production_strength"))
+            row["movement_evidence"] = row["arrival_evidence"]
         arrivals.sort(key=lambda row: (
             -(row["rating"] or 0),
             {"TRANSFER_IN": 0, "SIGNEE": 1}.get(row["movement_type"], 2),

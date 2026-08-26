@@ -13,6 +13,8 @@ import os
 import tempfile
 import unittest
 
+from app import create_app
+
 from sports_aggregator.cfb.models import Player, Team
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.views import arrivals_of_kind
@@ -415,3 +417,91 @@ class ArrivalOrderingTests(unittest.TestCase):
         both = (arrivals_of_kind(rows, ("TRANSFER_IN", "NEWCOMER"))
                 + arrivals_of_kind(rows, ("SIGNEE",)))
         self.assertEqual(len(both), len(rows))
+
+
+class MovementColumnTests(unittest.TestCase):
+    """Roster movement measures the player, not the classification.
+
+    The Evidence column repeated on every row how the label was reached --
+    "CFBD transfer portal", "Roster comparison" -- which is provenance for the
+    label rather than anything about the player. The section note says it once
+    now, and the width goes to a rating and an impact score.
+    """
+
+    def _table(self, *, arrivals, rows):
+        from sports_aggregator.cfb import views
+
+        app = create_app({"TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False})
+        with app.test_request_context():
+            return views.movements_table(rows, 2026, arrivals=arrivals)
+
+    def _row(self, **overrides):
+        row = {"name": "A Player", "player_id": "1", "position": "WR",
+               "movement_type": "TRANSFER_IN", "origin": "Elsewhere",
+               "destination": "Elsewhere", "evidence": "CFBD transfer portal",
+               "rating": 0.921, "movement_evidence": 0.673,
+               "production_strength": 0.5, "pff_interest": 71.0}
+        row.update(overrides)
+        return row
+
+    def test_the_evidence_column_is_gone(self):
+        for arrivals in (True, False):
+            with self.subTest(arrivals=arrivals):
+                table = self._table(arrivals=arrivals, rows=[self._row()])
+                labels = [column.label for column in table.columns]
+                self.assertNotIn("Evidence", labels)
+                self.assertEqual(labels[-2:], ["Rating", "Impact"])
+
+    def test_no_row_still_carries_the_evidence_text(self):
+        table = self._table(arrivals=True, rows=[self._row()])
+        self.assertNotIn("CFBD transfer portal", str(table.rows[0].values()))
+
+    def test_impact_is_the_blended_score_on_a_hundred_point_scale(self):
+        table = self._table(arrivals=True, rows=[self._row()])
+        self.assertEqual(table.rows[0]["impact"], 67.3)
+        self.assertEqual(table.rows[0]["rating"], 0.921)
+
+    def test_nothing_on_record_is_blank_rather_than_zero(self):
+        """A zero would read as a measurement; this is the absence of one."""
+        table = self._table(arrivals=True, rows=[self._row(
+            rating=None, movement_evidence=0.0, production_strength=0.0,
+            pff_interest=None)])
+        self.assertIsNone(table.rows[0]["impact"])
+
+    def test_a_departure_is_measured_the_same_way(self):
+        table = self._table(arrivals=False, rows=[self._row(
+            movement_type="DRAFTED", rating=None, movement_evidence=0.993)])
+        self.assertEqual(table.rows[0]["impact"], 99.3)
+        self.assertIsNone(table.rows[0]["rating"])
+
+
+class PhilosophyWidthTests(unittest.TestCase):
+    """It renders in an aside a third of the page wide."""
+
+    def test_the_grade_detail_is_one_facet_not_three(self):
+        from sports_aggregator.cfb.views import position_philosophy_table
+
+        table = position_philosophy_table([{
+            "position_group": "LB", "tackles": 376, "tackles_share": 40.2,
+            "pff_grade": 70.8,
+            "pff_detail": "coverage 70.8; defense 70.2; pass rush 64.2",
+        }], 2026)
+        self.assertEqual(table.rows[0]["pff_grade_sub"], "coverage 70.8")
+
+    def test_no_cell_label_is_long_enough_to_set_a_wide_column(self):
+        from sports_aggregator.cfb.views import position_philosophy_table
+
+        table = position_philosophy_table([
+            {"position_group": group, "pff_grade": 70.0, "pff_detail": None}
+            for group in ("QB", "RB", "WR", "TE", "OL", "DL", "EDGE", "LB", "SECONDARY")
+        ], 2026)
+        for row in table.rows:
+            with self.subTest(group=row["group"]):
+                self.assertLessEqual(len(row["production_sub"] or ""), 20)
+
+    def test_a_missing_detail_stays_missing(self):
+        from sports_aggregator.cfb.views import position_philosophy_table
+
+        table = position_philosophy_table(
+            [{"position_group": "QB", "pff_grade": None, "pff_detail": None}], 2026)
+        self.assertIsNone(table.rows[0]["pff_grade_sub"])
