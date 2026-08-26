@@ -342,9 +342,15 @@ def position_philosophy_table(rows: Sequence[dict[str, Any]], season: int | None
             "pff_grade": row.get("pff_grade"), "pff_grade_sub": row.get("pff_detail"),
         })
     return Table(
+        # This renders in the team page's aside, which is about a third of the
+        # page wide. A header wider than the number under it sets the column
+        # width, and four of those overflow the aside and scroll sideways
+        # inside it. Each says what it is in its title instead.
         columns=[Column("group", "Group", emphasis=True),
-                 Column("production", "Relevant production", format="big", align="right"),
-                 Column("share", "Unit share", format="pct", align="right",
+                 Column("production", "Production", format="big", align="right",
+                        title="The one production statistic that means most at "
+                              "this position; the row says which"),
+                 Column("share", "Share", format="pct", align="right",
                         title="Share of the team's production in that statistic"),
                  Column("pff_grade", "Top PFF", format="f1", align="right",
                         title="Best stored PFF dataset grade; dataset details appear below")],

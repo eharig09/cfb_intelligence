@@ -60,8 +60,12 @@
     <div class="fact"><b>{% if record %}{{ record.wins }}&ndash;{{ record.losses }}{% else %}0&ndash;0{% endif %}</b><span>Overall</span></div>
     <div class="fact"><b>{% if record %}{{ record.conference_wins }}&ndash;{{ record.conference_losses }}{% else %}0&ndash;0{% endif %}</b><span>Conference</span></div>
     <div class="fact"><b>{{ rank or '—' }}</b><span>{{ ranking_poll or 'National rank' }}</span></div>
-    <div class="fact"><b>{{ summary.continuity_pct | cell('pct') }}</b><span>Roster continuity</span></div>
-    <div class="fact"><b>{{ movements.counts.get('TRANSFER_IN', 0) }}</b><span>Transfer arrivals</span></div>
+    {#- Roster shape, which the Team quality table below does not carry.
+        Continuity and transfer arrivals used to sit here too, repeating that
+        table exactly; it keeps them, because it is the one that says where
+        each number came from. -#}
+    <div class="fact"><b>{{ summary.players }}</b><span>Roster size</span></div>
+    <div class="fact"><b>{{ summary.upperclassmen_pct | cell('pct') }}</b><span>Upperclassmen</span></div>
     <div class="fact"><b>{{ movements.counts.get('DRAFTED', 0) }}</b><span>Drafted departures</span></div>
 </div>
 

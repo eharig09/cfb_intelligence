@@ -461,3 +461,49 @@ class StatCoverageTests(unittest.TestCase):
         # A season with nothing stored is all gaps, not an absent row.
         self.assertTrue(any(row["season"] == 2019 and row["total"] == 0
                             for row in report["grid"]))
+
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+class TeamPageLayoutTests(unittest.TestCase):
+    """Two surfaces near the top of the team page were saying the same thing.
+
+    The facts strip and the Team quality table both carried roster continuity
+    and transfer arrivals, identically, a couple of hundred pixels apart. The
+    table is the one with a Source column, so it keeps them.
+    """
+
+    def test_the_strip_and_the_quality_table_do_not_overlap(self):
+        from sports_aggregator.cfb.views import quality_cards_table
+
+        with open(os.path.join(PROJECT_ROOT, "templates", "cfb_team.html"),
+                  encoding="utf-8") as handle:
+            markup = handle.read()
+        strip = markup[markup.index('<div class="facts">'):
+                       markup.index('<nav class="mobile-page-tabs"')]
+        for signal in ("Roster continuity", "Transfer arrivals"):
+            with self.subTest(signal=signal):
+                self.assertNotIn(signal, strip,
+                                 "the Team quality table already says this, with a source")
+
+    def test_the_strip_still_says_what_shape_the_roster_is(self):
+        with open(os.path.join(PROJECT_ROOT, "templates", "cfb_team.html"),
+                  encoding="utf-8") as handle:
+            markup = handle.read()
+        strip = markup[markup.index('<div class="facts">'):
+                       markup.index('<nav class="mobile-page-tabs"')]
+        self.assertIn("Roster size", strip)
+        self.assertIn("Upperclassmen", strip)
+        # Six cells: the grid is repeat(6) at full width and a short row would
+        # leave holes in it.
+        self.assertEqual(strip.count('<div class="fact">'), 6)
+
+    def test_the_aside_table_headers_are_narrow_enough_for_the_aside(self):
+        """A header wider than its numbers sets the column width."""
+        from sports_aggregator.cfb.views import position_philosophy_table
+
+        table = position_philosophy_table([], 2026)
+        for column in table.columns:
+            with self.subTest(column=column.key):
+                self.assertLessEqual(len(column.label), 10, column.label)
