@@ -66,7 +66,9 @@ def profile_for(repository, *, now: datetime | None = None,
         return {"profile": None, "reason": "between_scheduled_ticks", "games": 0,
                 "local_time": moment.isoformat()}
 
-    heavy = _hours("CFB_REFRESH_HEAVY_HOURS", "6,23")
+    # Keep the expensive full pass overnight by default. Evening refreshes are
+    # intentionally light so refresh work does not compete with active users.
+    heavy = _hours("CFB_REFRESH_HEAVY_HOURS", "23")
     light = _hours("CFB_REFRESH_HOURS", "6,12,18,23")
     news = _hours("CFB_REFRESH_NEWS_HOURS", "8,10,14,16,20,22")
     if moment.hour in heavy:
