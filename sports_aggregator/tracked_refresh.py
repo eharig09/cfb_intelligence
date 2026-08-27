@@ -45,6 +45,8 @@ def _key_columns(info: list[sqlite3.Row]) -> list[str]:
 
 
 def _snapshot(database: Path, snapshot: Path, season: int) -> list[str]:
+    """Copy only the modest core tables; large history/box-score tables are excluded."""
+    del season  # the full tracked tables are needed so older rows are not false positives
     snapshot.unlink(missing_ok=True)
     copied: list[str] = []
     with sqlite3.connect(snapshot) as out:
@@ -55,11 +57,9 @@ def _snapshot(database: Path, snapshot: Path, season: int) -> list[str]:
             ).fetchone()
             if not exists:
                 continue
-            info = out.execute(f"PRAGMA live.table_info({_quote(table)})").fetchall()
-            columns = [str(row[1]) for row in info]
-            where = " WHERE season=?" if "season" in columns else ""
-            sql = f"CREATE TABLE {_quote(table)} AS SELECT * FROM live.{_quote(table)}{where}"
-            out.execute(sql, (season,)) if where else out.execute(sql)
+            out.execute(
+                f"CREATE TABLE {_quote(table)} AS SELECT * FROM live.{_quote(table)}"
+            )
             copied.append(table)
         out.commit()
     return copied
@@ -125,7 +125,7 @@ def _diff_table(connection: sqlite3.Connection, table: str) -> dict[str, Any] | 
     if changed and len(samples) < MAX_SAMPLES_PER_TABLE:
         limit = MAX_SAMPLES_PER_TABLE - len(samples)
         rows = connection.execute(
-            f"SELECT n.*, o.rowid AS __old_rowid FROM main.{_quote(table)} n "
+            f"SELECT n.* FROM main.{_quote(table)} n "
             f"JOIN snap.{_quote(table)} o ON {match} WHERE {changed_expr} LIMIT ?", (limit,)
         ).fetchall()
         for new_row in rows:
