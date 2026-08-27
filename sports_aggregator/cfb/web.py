@@ -583,6 +583,8 @@ def game_preview(game_id: int):
     away_identity["elo"] = elo.get(game["away_team_id"]) or {}
     home_identity["elo"] = elo.get(game["home_team_id"]) or {}
     history = matchup_history(repository, game)
+    # Read once: this was three identical queries for the same game.
+    market = game_lines(repository, game_id)
     prior_player_games = matchup_player_history(repository, game)
     core_by_team = {
         game["away_team_id"]: repository.team_metrics(
@@ -615,9 +617,9 @@ def game_preview(game_id: int):
         weather=views.weather_panel(weather_for_game(repository, game_id)),
         model_table=views.model_comparison_table(
             game, fpi_for_game(repository, game_id),
-            game_lines(repository, game_id), elo, core_by_team),
-        lines=game_lines(repository, game_id),
-        market_table=views.market_table(game_lines(repository, game_id), game),
+            market, elo, core_by_team),
+        lines=market,
+        market_table=views.market_table(market, game),
         # Every arrival ranked together, not portal additions alone: a team's
         # best signee belongs beside the transfers he is competing with.
         away_arrivals_table=views.arrivals_table(
@@ -706,7 +708,7 @@ def game_preview(game_id: int):
         history=history,
         history_games_table=views.historical_games_table(
             history["recent"], caption=f"Recent meetings — {game['away_team']} perspective"),
-        ats=matchup_ats(repository, game),
+        ats=matchup_ats(repository, game, total=market.get("consensus_total")),
         prior_player_games=prior_player_games,
         prior_player_games_table=views.opponent_performance_table(prior_player_games),
     )

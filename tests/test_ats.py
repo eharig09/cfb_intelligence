@@ -188,3 +188,82 @@ class AgainstTheSpreadTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SeasonAndAppliedNumberTests(AgainstTheSpreadTests):
+    """The other two readings shown beside the tenure record."""
+
+    def test_this_season_counts_only_this_season(self):
+        from sports_aggregator.cfb.ats import season_record
+
+        self.repository.replace_games(2024, [_game(1, 2024, 45, 0)])
+        self.repository.replace_games(2025, [_game(2, 2025, 45, 0)])
+        with closing(self.repository._connect()) as connection:
+            for game_id, season in ((1, 2024), (2, 2025)):
+                connection.execute(
+                    """INSERT INTO game_lines(game_id,season,provider,spread,
+                       over_under,formatted_spread,fetched_at)
+                       VALUES(?,?,'BOOK',-7.0,45.0,'','')""", (game_id, season))
+            connection.commit()
+        record = season_record(self.repository, 1, season=2025)
+        self.assertEqual(record["games"], 1)
+        self.assertEqual(record["label"], "2025")
+
+    def test_a_season_with_nothing_played_has_no_record(self):
+        """The row keeps its heading; the numbers are simply not there yet."""
+        from sports_aggregator.cfb.ats import season_record
+
+        self._seed([(1, 2025, 31, 21, -7.0, 45.0)])
+        self.assertIsNone(season_record(self.repository, 1, season=2026))
+
+    # -- one number applied backwards --------------------------------------
+
+    def test_the_applied_number_grades_every_game_against_the_same_total(self):
+        """Not each game against its own; that is what the season row says."""
+        from sports_aggregator.cfb.ats import versus_total
+
+        self._seed([(1, 2025, 31, 21, -7.0, 70.0),   # 52 points
+                    (2, 2025, 10, 7, -7.0, 20.0),    # 17 points
+                    (3, 2025, 28, 24, -7.0, 40.0)])  # 52 points
+        applied = versus_total(self.repository, 1, season=2025, total=47.5)
+        self.assertEqual(applied["over"], 2, "52 and 52 clear 47.5")
+        self.assertEqual(applied["under"], 1, "17 does not")
+        self.assertEqual(applied["record"], "2-1")
+        self.assertEqual(applied["rate"], 66.7)
+
+    def test_a_game_landing_exactly_on_the_applied_number_is_a_push(self):
+        from sports_aggregator.cfb.ats import versus_total
+
+        self._seed([(1, 2025, 24, 24, -7.0, 45.0)])
+        applied = versus_total(self.repository, 1, season=2025, total=48.0)
+        self.assertEqual(applied["record"], "0-0-1")
+
+    def test_it_counts_games_with_no_stored_line(self):
+        """It needs the result and tonight's number, not last week's quote."""
+        from sports_aggregator.cfb.ats import versus_total
+
+        self.repository.replace_games(2025, [_game(1, 2025, 31, 21)])
+        applied = versus_total(self.repository, 1, season=2025, total=40.0)
+        self.assertEqual(applied["games"], 1)
+        self.assertEqual(applied["over"], 1)
+
+    def test_no_number_means_no_reading(self):
+        from sports_aggregator.cfb.ats import versus_total
+
+        self._seed([(1, 2025, 31, 21, -7.0, 45.0)])
+        self.assertIsNone(versus_total(self.repository, 1, season=2025, total=None))
+
+    # -- the packet the page reads -----------------------------------------
+
+    def test_the_matchup_packet_carries_all_three_for_both_sides(self):
+        from sports_aggregator.cfb.ats import matchup_ats
+
+        self._seed([(1, 2025, 31, 21, -7.0, 45.0)])
+        packet = matchup_ats(
+            self.repository,
+            {"season": 2025, "home_team_id": 1, "away_team_id": 2}, total=47.5)
+        self.assertEqual(sorted(packet), ["away", "home"])
+        for side in ("away", "home"):
+            with self.subTest(side=side):
+                self.assertEqual(sorted(packet[side]), ["season", "tenure", "versus"])
+                self.assertIsNotNone(packet[side]["versus"])

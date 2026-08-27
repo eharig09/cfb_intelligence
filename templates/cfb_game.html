@@ -69,16 +69,34 @@
         border-left: 4px solid var(--team); border-radius: 6px; padding: 10px 12px;
         min-width: 0;
     }
-    .ats-card.is-provisional { opacity: .82; }
-    .ats-card h4 { font: 800 1rem var(--display-font); margin: 0; }
-    .ats-meta { color: var(--muted); font-size: .66rem; margin-top: 2px; }
-    .ats-line {
-        display: grid; grid-template-columns: 4.2rem auto 1fr; gap: 8px;
-        align-items: baseline; margin-top: 7px;
+    .ats-card h4 { font: 800 1rem var(--display-font); margin: 0 0 6px; }
+    .ats-grid { width: 100%; border-collapse: collapse; }
+    .ats-grid thead th {
+        color: var(--muted); font: 800 .58rem var(--display-font);
+        text-transform: uppercase; letter-spacing: .07em; text-align: right;
+        padding-bottom: 3px;
     }
-    .ats-line span { color: var(--muted); font-size: .62rem; text-transform: uppercase; letter-spacing: .07em; }
-    .ats-line b { font: 800 1.05rem/1 var(--display-font); font-variant-numeric: tabular-nums; }
-    .ats-line i { color: var(--muted); font-size: .7rem; font-style: normal; font-variant-numeric: tabular-nums; }
+    .ats-grid tbody th {
+        text-align: left; font-size: .74rem; font-weight: 800; padding: 6px 8px 6px 0;
+        border-top: 1px solid var(--line);
+    }
+    .ats-grid td {
+        text-align: right; padding: 6px 0 6px 8px; border-top: 1px solid var(--line);
+        font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+    .ats-grid b { font: 800 .98rem/1.15 var(--display-font); display: block; }
+    .ats-grid .sub {
+        display: block; color: var(--muted); font-size: .62rem; font-weight: 400;
+        margin-top: 1px;
+    }
+    /* A rate over eight games is not a tendency; it is shown, quietly. */
+    .ats-grid tr.is-provisional b, .ats-grid tr.is-provisional th { opacity: .7; }
+    .ats-grid td.is-empty { color: var(--muted); font-size: .7rem; text-align: left; }
+    /* The current number applied backwards, set apart from the two records. */
+    .ats-grid tr.ats-versus th, .ats-grid tr.ats-versus td {
+        border-top: 2px solid var(--line-strong);
+    }
+    .ats-grid tr.ats-versus b { color: var(--rust); }
     .subhead {
         font: 800 1.02rem var(--display-font); margin: 20px 0 0;
         padding-top: 14px; border-top: 1px solid var(--line);
@@ -311,28 +329,49 @@
     {% if ats.away or ats.home %}
     <h3 class="subhead">Against the number</h3>
     <div class="section-note">
-        Completed games under each team's current coach, from the consensus line
-        at the time. A record of what happened, not a forecast.
+        Three readings of the same question. This season is what the team is doing
+        now; the coach's tenure is what it has done since the program last changed
+        hands; and the last row applies <em>this game's</em> total to every game
+        played this year, which says whether tonight's number is a high one for
+        this team. Records of what happened, not forecasts.
     </div>
     <div class="ats-pair">
         {% for side, record in [(game.away_team, ats.away), (game.home_team, ats.home)] %}
         {% if record %}
-        <article class="ats-card{{ ' is-provisional' if record.provisional }}">
+        <article class="ats-card">
             <h4>{{ side }}</h4>
-            <div class="ats-meta">{{ record.coach }} &middot; {{ record.span }}</div>
-            <div class="ats-line">
-                <span>Spread</span>
-                <b>{{ record.ats_record }}</b>
-                <i>{{ record.cover_rate | cell('f1') }}%</i>
-            </div>
-            <div class="ats-line">
-                <span>Total</span>
-                <b>{{ record.total_record }}</b>
-                <i>{{ record.over_rate | cell('f1') }}% over</i>
-            </div>
-            {% if record.provisional %}
-            <div class="ats-meta">Only {{ record.games }} games; too few to read as a tendency.</div>
-            {% endif %}
+            <table class="ats-grid">
+                <thead>
+                    <tr><th scope="col"></th><th scope="col">Spread</th><th scope="col">Total</th></tr>
+                </thead>
+                <tbody>
+                    {#- The season row keeps its heading when it has no record
+                        yet, so the table reads as waiting rather than broken. -#}
+                    {% for fallback, lens in [(game.season ~ ' season', record.season),
+                                              ('Current coach', record.tenure)] %}
+                    <tr class="{{ 'is-provisional' if lens and lens.provisional }}">
+                        <th scope="row">{{ lens.label if lens else fallback }}
+                            {%- if lens and lens.span != lens.label %}<span class="sub">{{ lens.span }}</span>{% endif %}</th>
+                        {% if lens %}
+                        <td><b>{{ lens.ats_record }}</b><span class="sub">{{ lens.cover_rate | cell('f1') }}%</span></td>
+                        <td><b>{{ lens.total_record }}</b><span class="sub">{{ lens.over_rate | cell('f1') }}% over</span></td>
+                        {% else %}
+                        <td class="is-empty" colspan="2">No games played yet</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                    {#- The current number applied backwards, which is a different
+                        question from how each game did against its own. -#}
+                    {% if record.versus %}
+                    <tr class="ats-versus">
+                        <th scope="row">{{ record.versus.label }}
+                            <span class="sub">this year's games</span></th>
+                        <td colspan="2"><b>{{ record.versus.record }}</b><span class="sub">
+                            {{ record.versus.rate | cell('f1') }}% of {{ record.versus.games }}</span></td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
         </article>
         {% endif %}
         {% endfor %}

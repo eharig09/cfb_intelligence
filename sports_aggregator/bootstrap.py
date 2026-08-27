@@ -27,6 +27,18 @@ from typing import Any
 from dotenv import load_dotenv
 
 
+#: Earliest season results, coaches and lines are filled back to.
+#:
+#: A fixed floor rather than a rolling window: it is the point a coach's record
+#: against the number can be counted from, and that should not shorten by a
+#: year every September. Kirby Smart took Georgia in 2016 and the records were
+#: reading "2019 or earlier" because 2019 was as far back as anything went.
+RESULT_HISTORY_FLOOR = 2015
+
+#: Seasons of box scores and player history, which are the expensive ones.
+DETAIL_HISTORY_SEASONS = 7
+
+
 @dataclass
 class Step:
     name: str
@@ -162,19 +174,24 @@ def steps(season: int, *, history_from: int | None = None,
              ("initial", "refresh"), optional=True),
     ]
 
-    first_history = history_from if history_from is not None else season - 7
+    # Two horizons, because the two kinds of history cost wildly different
+    # amounts. Results, coaches and lines are a few thousand rows a season and
+    # are what a coach's record against the number is counted from, so they
+    # reach back to RESULT_HISTORY_FLOOR. Box scores and player history are
+    # closer to half a million rows a season, so they stay a rolling window --
+    # extending those to 2015 would have added roughly two million rows to a
+    # database already asking 1.7 GB of a 5 GB disk.
+    first_results = history_from if history_from is not None else min(
+        RESULT_HISTORY_FLOOR, season - DETAIL_HISTORY_SEASONS)
+    first_detail = history_from if history_from is not None else (
+        season - DETAIL_HISTORY_SEASONS)
     last_history = history_to if history_to is not None else season - 1
-    for historical_year in range(first_history, last_history + 1):
+
+    for historical_year in range(first_results, last_history + 1):
         plan.append(Step(
             f"game-history-{historical_year}",
             f"Games, records, team stats and coaches for {historical_year}",
             ["sports_aggregator.cfb.cli", "sync-history", "--year", str(historical_year)],
-            ("history",), requires_env=("CFBD_API_KEY",),
-        ))
-        plan.append(Step(
-            f"history-{historical_year}",
-            f"Player statistics and roster history for {historical_year}",
-            ["sports_aggregator.cfb.history_cli", "--year", str(historical_year)],
             ("history",), requires_env=("CFBD_API_KEY",),
         ))
         # Without this a fresh install has lines for the current season only,
@@ -183,6 +200,14 @@ def steps(season: int, *, history_from: int | None = None,
             f"lines-history-{historical_year}",
             f"Closing betting lines for {historical_year}",
             ["sports_aggregator.cfb.cli", "sync-lines", "--year", str(historical_year)],
+            ("history",), requires_env=("CFBD_API_KEY",),
+        ))
+
+    for historical_year in range(first_detail, last_history + 1):
+        plan.append(Step(
+            f"history-{historical_year}",
+            f"Player statistics and roster history for {historical_year}",
+            ["sports_aggregator.cfb.history_cli", "--year", str(historical_year)],
             ("history",), requires_env=("CFBD_API_KEY",),
         ))
         plan.append(Step(
