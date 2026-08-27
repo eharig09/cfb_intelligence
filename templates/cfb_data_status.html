@@ -39,6 +39,9 @@
   <section class="data-status-section">
     <h2>What changed</h2>
     <p class="data-status-muted">Latest tracked {{ status.change_ledger.profile|title }} refresh · {{ status.change_ledger.finished_label }}{% if status.change_ledger.relative_label != 'unknown' %} · {{ status.change_ledger.relative_label }}{% endif %}</p>
+    {% if status.change_ledger.tracking_error %}
+      <p class="data-status-warn">Change tracking was incomplete for this run: {{ status.change_ledger.tracking_error }}</p>
+    {% endif %}
     <div class="data-status-grid">
       <div class="data-status-card"><strong>Added</strong><span class="data-status-ok">{{ status.change_ledger.added }}</span></div>
       <div class="data-status-card"><strong>Changed</strong><span>{{ status.change_ledger.changed }}</span></div>
@@ -59,7 +62,7 @@
       </details>
       {% endfor %}
     {% else %}
-      <p class="data-status-muted">No row-level changes were detected in the tracked core datasets.</p>
+      <p class="data-status-muted">No row-level changes were detected in the tracked datasets.</p>
     {% endif %}
   </section>
   {% endif %}
@@ -96,6 +99,6 @@
     {% else %}<p class="data-status-muted">No completed refresh history is available yet.</p>{% endif %}
   </section>
 
-  <p class="data-status-note">Change tracking compares a temporary before-refresh SQLite snapshot with the refreshed core tables, then deletes the snapshot. Samples are capped to keep the ledger small. Raw logs, process IDs, filesystem paths, credentials, and exception traces are intentionally omitted.</p>
+  <p class="data-status-note">Change tracking compares a temporary before-refresh SQLite snapshot with refreshed core and content tables, then deletes the snapshot. Samples are capped to keep the ledger small. Raw logs, process IDs, filesystem paths, credentials, and detailed exception traces are intentionally omitted.</p>
 </div>
 {% endblock %}
