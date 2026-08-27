@@ -39,9 +39,6 @@
           href="{{ url_for('cfb.national_feed') }}">
     {%- block feeds %}{% endblock %}
 
-
-    {# One theme, so nothing has to be resolved before the stylesheet loads
-       and there is no first paint to correct. #}
     <meta name="theme-color" content="#10151c">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icon.svg') }}">
@@ -55,6 +52,13 @@
         <a href="{{ url_for('index') }}">Sports News Aggregator</a>
         <span class="tagline">Teams &rarr; Players &rarr; Games &rarr; Reporting</span>
         {% endblock %}
+        <a href="{{ url_for('cfb_data_status.data_status') }}"
+           title="Open data refresh status"
+           style="margin-left:auto;white-space:nowrap;color:inherit;text-decoration:none;font-size:.74rem;opacity:.62;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:.28rem .52rem">
+          {% if data_freshness.running %}● Refreshing data
+          {% elif data_freshness.relative and data_freshness.relative != 'unknown' %}● Updated {{ data_freshness.relative }}
+          {% else %}● Data status{% endif %}
+        </a>
         <form class="header-search" action="/college-football/search/" method="get" role="search">
             <input type="search" name="q" placeholder="Search" aria-label="Search teams, players, games">
         </form>
@@ -63,13 +67,6 @@
 <main>
 {% block content %}{% endblock %}
 </main>
-<footer style="max-width:1180px;margin:0 auto;padding:.6rem 1rem 1.25rem;text-align:right;font-size:.76rem;opacity:.56">
-    <a href="{{ url_for('cfb_data_status.data_status') }}" style="color:inherit;text-decoration:none">
-      {% if data_freshness.running %}Data refresh running
-      {% elif data_freshness.relative and data_freshness.relative != 'unknown' %}Data updated {{ data_freshness.relative }}
-      {% else %}Data status{% endif %}
-    </a>
-</footer>
 {% block scripts %}{% endblock %}
 <script src="{{ url_for('static', filename='cfb_tables.js', v='20260825-dark') }}" defer></script>
 </body>
