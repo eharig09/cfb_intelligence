@@ -1,14 +1,8 @@
-"""The cron trigger, which is a clock and nothing more.
-
-It runs in a container with no disk. The database mounts to the web service
-alone, so nothing here can see whether a game is being played -- which is why
-choosing the profile from the hour meant a score posted at 3:30pm first
-appeared at 6pm. The trigger now asks for "auto" every time and the service
-decides; these tests hold it to that, and to reporting honestly when the answer
-was "nothing to do".
-"""
+"""The Render cron trigger asks the web service to choose the smallest refresh."""
 
 from datetime import datetime, timezone
+from urllib.error import HTTPError
+import io
 import json
 import os
 import unittest
@@ -54,14 +48,11 @@ class RenderTriggerTests(unittest.TestCase):
 
     @patch.dict(os.environ, ENVIRONMENT, clear=False)
     def test_every_firing_asks_the_service_to_choose(self):
-        """No hour gate here: the gate moved to where the schedule is."""
         opener, requests = _opener(_Response())
         for hour in (3, 10, 15, 21):
-            with self.subTest(hour=hour):
-                report = trigger_if_due(
-                    now=datetime(2026, 9, 5, hour, tzinfo=timezone.utc),
-                    opener=opener)
-                self.assertEqual(report["requested"], "auto")
+            report = trigger_if_due(
+                now=datetime(2026, 9, 5, hour, tzinfo=timezone.utc), opener=opener)
+            self.assertEqual(report["requested"], "auto")
         self.assertEqual(len(requests), 4)
         self.assertIn("profile=auto", requests[0].full_url)
 
@@ -84,7 +75,6 @@ class RenderTriggerTests(unittest.TestCase):
 
     @patch.dict(os.environ, ENVIRONMENT, clear=False)
     def test_a_moment_calling_for_nothing_is_not_reported_as_a_refresh(self):
-        """Firing every quarter hour, most firings do nothing."""
         opener, _ = _opener(_Response(status=200, payload={
             "status": "skipped", "profile": None,
             "reason": "outside_refresh_hours"}))
@@ -92,29 +82,63 @@ class RenderTriggerTests(unittest.TestCase):
             now=datetime(2026, 9, 5, 9, tzinfo=timezone.utc), opener=opener)
         self.assertEqual(report["status"], "skipped")
 
-    @patch.dict(os.environ, dict(ENVIRONMENT, CFB_REFRESH_PROFILE="heavy"),
-                clear=False)
+    @patch.dict(os.environ, dict(ENVIRONMENT, CFB_REFRESH_PROFILE="heavy"), clear=False)
     def test_a_pinned_profile_skips_the_decision(self):
-        opener, requests = _opener(_Response(payload={"status": "accepted",
-                                                      "profile": "heavy"}))
+        opener, requests = _opener(_Response(payload={"status": "accepted", "profile": "heavy"}))
         report = trigger_if_due(
             now=datetime(2026, 9, 5, 9, tzinfo=timezone.utc), opener=opener)
         self.assertEqual(report["requested"], "heavy")
         self.assertIn("profile=heavy", requests[0].full_url)
 
-    @patch.dict(os.environ, {"CFB_REFRESH_URL": "", "CFB_REFRESH_TOKEN": ""},
-                clear=False)
-    def test_missing_configuration_is_an_error_rather_than_a_silent_skip(self):
+    @patch.dict(os.environ, {"CFB_REFRESH_URL": "", "CFB_REFRESH_TOKEN": ""}, clear=False)
+    def test_missing_configuration_is_an_error(self):
         with self.assertRaises(RuntimeError):
             trigger_if_due(now=datetime(2026, 9, 5, 18, tzinfo=timezone.utc),
                            opener=lambda *_a, **_k: _Response())
 
     @patch.dict(os.environ, ENVIRONMENT, clear=False)
-    def test_a_failing_endpoint_is_raised_rather_than_swallowed(self):
-        opener, _ = _opener(_Response(status=500, payload={"error": "boom"}))
+    def test_retryable_503_can_recover(self):
+        calls = []
+        responses = [_Response(status=503, payload={"error": "deploying"}), _Response()]
+
+        def opener(_request, **_kwargs):
+            calls.append(True)
+            return responses.pop(0)
+
+        sleeps = []
+        report = trigger_if_due(
+            now=datetime(2026, 9, 5, 18, tzinfo=timezone.utc), opener=opener,
+            sleeper=sleeps.append, attempts=2)
+        self.assertEqual(report["status"], "triggered")
+        self.assertEqual(report["attempt"], 2)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(sleeps, [2.0])
+
+    @patch.dict(os.environ, ENVIRONMENT, clear=False)
+    def test_http_error_body_is_preserved(self):
+        def opener(_request, **_kwargs):
+            raise HTTPError(
+                "https://example.onrender.com", 503, "Service Unavailable", {},
+                io.BytesIO(b'{"error":"instance restarting"}'))
+
+        with self.assertRaisesRegex(RuntimeError, "instance restarting"):
+            trigger_if_due(
+                now=datetime(2026, 9, 5, 18, tzinfo=timezone.utc), opener=opener,
+                sleeper=lambda _seconds: None, attempts=2)
+
+    @patch.dict(os.environ, ENVIRONMENT, clear=False)
+    def test_non_retryable_auth_failure_fails_immediately(self):
+        calls = []
+
+        def opener(_request, **_kwargs):
+            calls.append(True)
+            return _Response(status=401, payload={"error": "bad token"})
+
         with self.assertRaises(RuntimeError):
-            trigger_if_due(now=datetime(2026, 9, 5, 18, tzinfo=timezone.utc),
-                           opener=opener)
+            trigger_if_due(
+                now=datetime(2026, 9, 5, 18, tzinfo=timezone.utc), opener=opener,
+                sleeper=lambda _seconds: None)
+        self.assertEqual(len(calls), 1)
 
 
 if __name__ == "__main__":
