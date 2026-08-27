@@ -409,13 +409,19 @@ table.data td.state-departed .sub { color: var(--red); }
 .stream-source { color: var(--muted); font-size: .62rem; }
 
 /* Situational notes: schedule spots, travel and availability beside a game. */
-.situation { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
-@media (min-width: 780px) { .situation { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); } }
-.situation-card { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--gold); padding: 12px 14px; }
-.situation-card h3 { font: 800 .95rem var(--display-font); margin: 0 0 6px; }
-.situation-card p { margin: 0; font-size: .78rem; line-height: 1.5; }
+/* `align-items: start` is the whole difference. Grid items stretch to the row
+   by default, so a card reading "96F at kickoff" was drawn the full height of
+   the availability list beside it -- four tall boxes for two lines of text. */
+.situation {
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px;
+    align-items: start;
+}
+@media (min-width: 780px) { .situation { grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); } }
+.situation-card { background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--gold); padding: 9px 11px; }
+.situation-card h3 { font: 800 .85rem var(--display-font); margin: 0 0 4px; }
+.situation-card p { margin: 0; font-size: .74rem; line-height: 1.45; }
 .situation-card .meta { margin-top: 5px; }
-.situation-list { margin: 6px 0 0; padding-left: 16px; font-size: .76rem; line-height: 1.55; }
+.situation-list { margin: 5px 0 0; padding-left: 15px; font-size: .72rem; line-height: 1.45; }
 
 /* ---------- story lists ---------- */
 

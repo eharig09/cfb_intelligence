@@ -39,7 +39,7 @@
 {% block content %}
 <section class="hero">
     <div>
-        <div class="eyebrow">{{ season }} team intelligence</div>
+        <div class="eyebrow"><a href="{{ url_for('cfb.today') }}">{{ season }} team intelligence</a></div>
         <h1>{% if rank %}<span style="color:var(--rust)">#{{ rank }}</span> {% endif %}{{ team.school }}</h1>
         <div class="meta">
             {% if team.conference %}<a class="conference-tag" href="{{ url_for('cfb.conference_preview', slug=team.conference | lower | replace(' ', '-'), season=season) }}">{{ team.conference }}</a>{% endif %}
@@ -78,7 +78,11 @@
 
 <div class="layout">
     <div>
-        <section class="section" data-mobile-tab-panel="overview">
+        {#- The year switches link to #tab-overview and #tab-stats. Those ids
+            were only ever created by the mobile tab script, so on a desktop
+            they matched nothing and changing a year returned you to the top of
+            the page. They are real anchors now. -#}
+        <section class="section" id="tab-overview" data-mobile-tab-panel="overview">
             <h2>{% if schedule_is_upcoming %}Upcoming schedule{% else %}{{ schedule_year }} schedule{% endif %}</h2>
             <div class="section-note">
                 The team page defaults to remaining games. Completed seasons are available
@@ -94,7 +98,7 @@
             {{ data_table(opponent_quality_table) }}
         </section>
 
-        <section class="section" data-mobile-tab-panel="stats">
+        <section class="section" id="tab-stats" data-mobile-tab-panel="stats">
             <h2>Team quality</h2>
             <div class="section-note">
                 {% if quality.state == 'PRESEASON' %}

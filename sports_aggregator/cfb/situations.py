@@ -55,6 +55,20 @@ BYE_WEEK_DAYS = 12
 #: Topics that describe availability rather than opinion.
 AVAILABILITY_TOPICS = ("INJURY", "DEPTH_CHART", "ROSTER")
 
+#: Content types that can carry availability news.
+#:
+#: The topic alone let in a Big 12 power-rankings video and a fall-camp
+#: podcast, both of which mention rosters without reporting anything about
+#: one. Availability is reported or said on the record; it is not previewed,
+#: reacted to, or ranked.
+AVAILABILITY_TYPES = ("REPORTING", "INTERVIEW")
+
+#: Most teams an item may resolve to and still be about a team.
+#:
+#: "BIG 12 POWER RANKINGS ARE HERE" resolved to six at once. Nothing that
+#: mentions six programmes is telling a reader who is available on Saturday.
+AVAILABILITY_MAX_TEAMS = 3
+
 #: Rough longitude bands for US time zones, used only to describe a shift.
 TIMEZONE_BOUNDS = ((-180, -115, "Pacific"), (-115, -100, "Mountain"),
                    (-100, -85, "Central"), (-85, 180, "Eastern"))
@@ -272,25 +286,42 @@ def availability_reports(repository: CFBRepository, game: dict[str, Any],
                          limit: int = 8) -> list[dict[str, Any]]:
     """Injury, depth-chart and roster items resolved to either team."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
-    placeholders = ",".join("?" for _ in AVAILABILITY_TOPICS)
+    topics = ",".join("?" for _ in AVAILABILITY_TOPICS)
+    types = ",".join("?" for _ in AVAILABILITY_TYPES)
     with closing(repository._connect()) as connection:
         try:
             rows = connection.execute(
-                f"""SELECT DISTINCT c.content_id,c.platform,c.content_type,c.title,c.body_text,
-                    c.canonical_url,c.published_at,c.source_role,c.publisher_name,c.author_name,
-                    ct.confidence,t.school,t.color,
-                    e.name source_name,tp.topic
+                f"""SELECT c.content_id,c.platform,c.content_type,c.title,c.body_text,
+                    c.canonical_url,c.published_at,c.source_role,c.publisher_name,
+                    c.author_name,ct.confidence,t.school,t.color,e.name source_name,
+                    MIN(tp.topic) topic
                     FROM content_items c
                     JOIN content_sport_decisions sd USING(content_id)
                     JOIN content_topics tp ON tp.content_id=c.content_id
                     JOIN content_teams ct ON ct.content_id=c.content_id
                     JOIN teams t ON t.team_id=ct.team_id
                     LEFT JOIN source_entities e USING(source_entity_id)
-                    WHERE sd.eligible=1 AND tp.topic IN ({placeholders}) AND ct.team_id IN (?,?)
-                    AND ct.confidence>=0.75 AND c.published_at>=?
+                    WHERE sd.eligible=1 AND tp.topic IN ({topics})
+                    AND c.content_type IN ({types})
+                    AND ct.team_id IN (?,?) AND ct.confidence>=0.75
+                    AND c.published_at>=?
+                    -- The subject, not a mention. An item carrying another
+                    -- school more strongly is that school's news: "Former UNC
+                    -- QB named starter at Wake Forest" reads as Wake Forest at
+                    -- 0.98 and North Carolina at 0.90, and it is Wake Forest's.
+                    AND ct.confidence >= (SELECT MAX(o.confidence)
+                                          FROM content_teams o
+                                          WHERE o.content_id=c.content_id)
+                    AND (SELECT COUNT(*) FROM content_teams o
+                         WHERE o.content_id=c.content_id) <= ?
+                    -- One row per item: an item tagged both DEPTH_CHART and
+                    -- ROSTER was being listed twice, which is the duplicate
+                    -- visible on the page.
+                    GROUP BY c.content_id, ct.team_id
                     ORDER BY c.published_at DESC LIMIT ?""",
-                (*AVAILABILITY_TOPICS, game["home_team_id"], game["away_team_id"],
-                 cutoff, limit)).fetchall()
+                (*AVAILABILITY_TOPICS, *AVAILABILITY_TYPES,
+                 game["home_team_id"], game["away_team_id"],
+                 cutoff, AVAILABILITY_MAX_TEAMS, limit)).fetchall()
         except Exception:
             return []
     from sports_aggregator.social.content import display_text, display_timestamp, label_linked_piece
