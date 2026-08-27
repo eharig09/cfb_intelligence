@@ -36,13 +36,7 @@ def _env_flag(name: str, default: bool) -> bool:
 
 
 def _legacy_dashboards_default() -> bool:
-    """Keep heavyweight baseball analytics out of constrained Render workers.
-
-    Importing the legacy Reds stack loads pandas, NumPy, matplotlib, seaborn,
-    scikit-learn and pybaseball. Local development keeps the historical default;
-    Render advertises itself with ``RENDER=true`` and defaults to the lightweight
-    CFB application unless an operator explicitly opts back in.
-    """
+    """Keep heavyweight baseball analytics out of constrained Render workers."""
     return not _env_flag("RENDER", False)
 
 
@@ -56,13 +50,26 @@ def _tail_lines(path: Path, limit: int = 80) -> list[str]:
         return []
 
 
+def _cache_dir(app: Flask) -> str:
+    configured = (os.getenv("CFB_PAGE_CACHE_DIR") or "").strip()
+    if configured:
+        return configured
+    database = Path(os.getenv("CFB_DATABASE_PATH") or os.path.join(app.instance_path, "cfb.sqlite3"))
+    return str(database.parent / "page_cache")
+
+
 def create_app(test_config: dict | None = None) -> Flask:
     """Application factory used by local, production, and test entry points."""
     app = Flask(__name__)
 
     app.config.from_mapping(
-        CACHE_TYPE="flask_caching.backends.simplecache.SimpleCache",
-        CACHE_DEFAULT_TIMEOUT=3600,
+        # Rendered pages can be hundreds of KB. Keeping them in SimpleCache
+        # competes directly with refresh children for the 512 MB service RAM.
+        # FileSystemCache keeps that bulk on the persistent disk instead.
+        CACHE_TYPE="FileSystemCache",
+        CACHE_DIR=_cache_dir(app),
+        CACHE_THRESHOLD=int(os.getenv("CFB_PAGE_CACHE_THRESHOLD", "150")),
+        CACHE_DEFAULT_TIMEOUT=int(os.getenv("CFB_PAGE_CACHE_SECONDS", "900")),
         REGISTER_LEGACY_DASHBOARDS=_env_flag(
             "REGISTER_LEGACY_DASHBOARDS", _legacy_dashboards_default()),
         CFB_DEFAULT_SEASON=int(os.getenv("CFB_DEFAULT_SEASON", "0")) or None,
@@ -86,18 +93,10 @@ def create_app(test_config: dict | None = None) -> Flask:
         app.config["CFB_DATABASE_PATH"]
     )
     source_database_path = app.extensions["cfb_repository"].path
-    app.extensions["source_registry"] = app.config.get("SOURCE_REGISTRY") or SourceRegistry(
-        source_database_path
-    )
-    app.extensions["unified_source_registry"] = app.config.get(
-        "UNIFIED_SOURCE_REGISTRY"
-    ) or UnifiedSourceRegistry(source_database_path)
-    app.extensions["content_repository"] = app.config.get("CONTENT_REPOSITORY") or ContentRepository(
-        source_database_path
-    )
-    app.extensions["story_repository"] = app.config.get("STORY_REPOSITORY") or StoryRepository(
-        source_database_path
-    )
+    app.extensions["source_registry"] = app.config.get("SOURCE_REGISTRY") or SourceRegistry(source_database_path)
+    app.extensions["unified_source_registry"] = app.config.get("UNIFIED_SOURCE_REGISTRY") or UnifiedSourceRegistry(source_database_path)
+    app.extensions["content_repository"] = app.config.get("CONTENT_REPOSITORY") or ContentRepository(source_database_path)
+    app.extensions["story_repository"] = app.config.get("STORY_REPOSITORY") or StoryRepository(source_database_path)
 
     def require_refresh_auth() -> None:
         expected = str(app.config.get("CFB_REFRESH_TOKEN") or "").strip()
@@ -110,48 +109,30 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.route("/")
     def index():
-        return render_template(
-            "index.html",
-            leagues=list_leagues(),
-            legacy_dashboards=app.config["REGISTER_LEGACY_DASHBOARDS"],
-        )
+        return render_template("index.html", leagues=list_leagues(), legacy_dashboards=app.config["REGISTER_LEGACY_DASHBOARDS"])
 
     @app.post("/internal/cfb-refresh")
     def start_cfb_refresh():
         """Let a Render Cron Job trigger work inside the web service filesystem."""
         require_refresh_auth()
-
         profile = (request.args.get("profile") or "light").strip().casefold()
         season = app.config.get("CFB_DEFAULT_SEASON") or datetime.now().year
         decision = None
         if profile == "auto":
-            # The trigger runs in a cron container with no disk, so it cannot
-            # see the schedule. This service can, and decides here.
             decision = profile_for(app.extensions["cfb_repository"], season=season)
             profile = decision["profile"]
             if profile is None:
                 return jsonify({"status": "skipped", "season": season, **decision}), 200
         elif profile not in REFRESH_PROFILES:
-            abort(400, description="profile must be auto or one of "
-                                   + ", ".join(sorted(REFRESH_PROFILES)))
+            abort(400, description="profile must be auto or one of " + ", ".join(sorted(REFRESH_PROFILES)))
 
         root = Path(__file__).resolve().parent
         subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "sports_aggregator.scheduled_refresh",
-                "--season",
-                str(season),
-                "--profile",
-                profile,
-            ],
-            cwd=str(root), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            close_fds=True,
+            [sys.executable, "-m", "sports_aggregator.scheduled_refresh", "--season", str(season), "--profile", profile],
+            cwd=str(root), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True,
         )
         return jsonify({"status": "accepted", "season": season, "profile": profile,
-                        **({"reason": decision["reason"], "games": decision["games"]}
-                           if decision else {})}), 202
+                        **({"reason": decision["reason"], "games": decision["games"]} if decision else {})}), 202
 
     @app.get("/internal/cfb-refresh-status")
     def cfb_refresh_status():
@@ -160,13 +141,8 @@ def create_app(test_config: dict | None = None) -> Flask:
         database = Path(app.config["CFB_DATABASE_PATH"])
         instance = database.parent
         logs = instance / "refresh_logs"
-        candidates = sorted(
-            logs.glob("refresh-*.log"),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True,
-        ) if logs.exists() else []
+        candidates = sorted(logs.glob("refresh-*.log"), key=lambda path: path.stat().st_mtime, reverse=True) if logs.exists() else []
         latest_log = candidates[0] if candidates else None
-
         history_path = instance / "scheduled_refresh_history.jsonl"
         history_lines = _tail_lines(history_path, 1)
         last_refresh = None
@@ -175,7 +151,6 @@ def create_app(test_config: dict | None = None) -> Flask:
                 last_refresh = json.loads(history_lines[-1])
             except json.JSONDecodeError:
                 last_refresh = {"status": "unreadable_history_record"}
-
         lock_path = instance / "scheduled_refresh.lock"
         lock = None
         if lock_path.exists():
@@ -183,59 +158,38 @@ def create_app(test_config: dict | None = None) -> Flask:
                 lock = json.loads(lock_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 lock = {"present": True}
-
         return jsonify({
-            "running": lock_path.exists(),
-            "lock": lock,
-            "last_refresh": last_refresh,
+            "running": lock_path.exists(), "lock": lock, "last_refresh": last_refresh,
             "latest_log": str(latest_log) if latest_log else None,
             "latest_log_lines": _tail_lines(latest_log, 100) if latest_log else [],
         })
 
-    # One number formatter for every template, so the same statistic cannot
-    # render as 0.686, 68.6% and 0.7% on three different pages.
     app.jinja_env.filters["cell"] = format_value
     app.jinja_env.filters["height"] = height_label
-    # Story provenance is rendered from stored role codes; the reader-facing
-    # name for each belongs in one place.
     app.jinja_env.filters["role"] = role_label
-    # (light, dark) marks from a raw CFBD logos list.
     app.jinja_env.filters["logo_pair"] = _logo_pair
-
     app.register_blueprint(league_pages)
     app.register_blueprint(cfb_pages)
 
     @app.cli.command("sync-cfb")
-    @click.option(
-        "--year",
-        type=int,
-        default=lambda: app.config.get("CFB_DEFAULT_SEASON") or datetime.now().year,
-    )
+    @click.option("--year", type=int, default=lambda: app.config.get("CFB_DEFAULT_SEASON") or datetime.now().year)
     @click.option("--force", is_flag=True, help="Bypass cached CFBD responses.")
     @click.option("--basic", is_flag=True, help="Skip advanced stats and CORE ratings.")
     def sync_cfb(year: int, force: bool, basic: bool) -> None:
-        """Synchronize the college-football structured data store."""
         from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError
         from sports_aggregator.cfb.sync import CFBDataSync
-
         client = CFBDClient(raw_cache_path=app.config["CFBD_RAW_CACHE_PATH"])
         if not client.configured:
             raise click.ClickException(str(CFBDConfigurationError("CFBD_API_KEY is required")))
-        report = CFBDataSync(client, app.extensions["cfb_repository"]).sync(
-            year, force=force, include_advanced=not basic
-        )
+        report = CFBDataSync(client, app.extensions["cfb_repository"]).sync(year, force=force, include_advanced=not basic)
         for dataset in report.datasets:
             click.echo(f"{dataset.dataset}: {dataset.status} ({dataset.count})")
         if not report.succeeded:
             raise click.ClickException("One or more CFBD datasets failed; inspect application logs.")
 
-    # These dashboards predate the generic aggregation layer and import large
-    # analytics dependencies. Keep their URLs stable while allowing lightweight
-    # processes and tests to opt out during the migration.
     if app.config["REGISTER_LEGACY_DASHBOARDS"]:
         from blueprints.bengals import bengals
         from reds.reds import reds
-
         app.register_blueprint(reds, url_prefix="/reds")
         app.register_blueprint(bengals, url_prefix="/bengals")
     return app
