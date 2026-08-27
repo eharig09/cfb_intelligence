@@ -4,9 +4,7 @@ services:
     runtime: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    # These pages are CPU-bound, so a second thread adds concurrent memory
-    # pressure without useful throughput. Disk-backed page caching makes repeat
-    # requests cheap while leaving maximum headroom for refresh subprocesses.
+    # One worker/thread leaves the most headroom on the constrained web service.
     startCommand: gunicorn --workers 1 --threads 1 --timeout 120 --max-requests 500 --max-requests-jitter 50 run:app
     healthCheckPath: /api/v1/cfb/status
     envVars:
@@ -16,11 +14,10 @@ services:
         value: "1"
       - key: MALLOC_ARENA_MAX
         value: "2"
-      # Keep enough headroom for Gunicorn + the refresh parent inside the
-      # 512 MB Render service. A child that needs more should fail/degrade
-      # rather than taking down the entire web instance.
+      # Segments are intentionally small; keep a hard child ceiling so a bad
+      # source degrades one run instead of taking down the whole web service.
       - key: CFB_REFRESH_CHILD_MB
-        value: "220"
+        value: "200"
       - key: CFB_PAGE_CACHE_SECONDS
         value: "900"
       - key: CFB_PAGE_CACHE_DIR
@@ -29,18 +26,29 @@ services:
         value: "150"
       - key: CFB_REFRESH_TIMEZONE
         value: America/New_York
+
+      # Every scheduled "light" tick below is resolved by tracked_refresh into
+      # exactly one bounded segment. There is no scheduled all-in-one refresh.
       - key: CFB_REFRESH_HOURS
-        value: 6,12,18,23
-      # Run the expensive full pass once overnight. The 6 PM tick remains a
-      # light refresh so game-day traffic and refresh work do not collide.
+        value: 6,10,12,16,18,22,23
       - key: CFB_REFRESH_HEAVY_HOURS
+        value: ""
+      - key: CFB_REFRESH_CORE_HOURS
+        value: 6,18
+      - key: CFB_REFRESH_CONTENT_HOURS
+        value: 10,16
+      - key: CFB_REFRESH_ROSTER_HOURS
+        value: "12"
+      - key: CFB_REFRESH_STATS_HOURS
+        value: "22"
+      - key: CFB_REFRESH_MODEL_HOURS
         value: "23"
-      # Local reporting is deliberately decoupled from light/heavy refreshes.
-      # Each news run processes one persisted shard and exits.
+
+      # Local reporting remains its own small shard at separate hours.
       - key: CFB_REFRESH_NEWS_HOURS
-        value: 8,10,14,16,20,22
+        value: 8,14,20
       - key: CFB_LOCAL_NEWS_SHARD_SIZE
-        value: "50"
+        value: "25"
       - key: CFB_DATABASE_PATH
         value: /var/data/cfb.sqlite3
       - key: CFBD_RAW_CACHE_PATH
@@ -59,8 +67,8 @@ services:
   - type: cron
     name: cfb-refresh-trigger
     runtime: python
-    # Auto decides on the web service: 15-minute score pulses while games are
-    # active, hourly result/box-score passes, and one-shot scheduled jobs.
+    # Auto checks every 15 minutes for game-day score pulses. Scheduled data
+    # segments only launch at minute zero of their assigned hours.
     schedule: "*/15 * * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: python -m sports_aggregator.render_trigger
