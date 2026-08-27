@@ -63,6 +63,13 @@
 <main>
 {% block content %}{% endblock %}
 </main>
+<footer style="max-width:1180px;margin:0 auto;padding:.6rem 1rem 1.25rem;text-align:right;font-size:.76rem;opacity:.56">
+    <a href="{{ url_for('cfb_data_status.data_status') }}" style="color:inherit;text-decoration:none">
+      {% if data_freshness.running %}Data refresh running
+      {% elif data_freshness.relative and data_freshness.relative != 'unknown' %}Data updated {{ data_freshness.relative }}
+      {% else %}Data status{% endif %}
+    </a>
+</footer>
 {% block scripts %}{% endblock %}
 <script src="{{ url_for('static', filename='cfb_tables.js', v='20260825-dark') }}" defer></script>
 </body>

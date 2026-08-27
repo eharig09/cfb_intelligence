@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from sports_aggregator.cfb.refresh_window import profile_for
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.web import cfb_pages
+from sports_aggregator.cfb.data_status import data_status_pages
 from sports_aggregator.catalog import list_leagues
 from sports_aggregator.service import build_default_service
 from sports_aggregator.social.registry import SourceRegistry
@@ -170,6 +171,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.jinja_env.filters["logo_pair"] = _logo_pair
     app.register_blueprint(league_pages)
     app.register_blueprint(cfb_pages)
+    app.register_blueprint(data_status_pages)
 
     @app.cli.command("sync-cfb")
     @click.option("--year", type=int, default=lambda: app.config.get("CFB_DEFAULT_SEASON") or datetime.now().year)

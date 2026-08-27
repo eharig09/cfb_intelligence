@@ -1,0 +1,94 @@
+{% extends "_layout.html" %}
+{% block title %}College Football Data Status{% endblock %}
+
+{% block head %}
+<style>
+.data-status-wrap{max-width:1050px;margin:0 auto;padding:1.25rem 1rem 3rem}.data-status-hero{display:flex;justify-content:space-between;gap:1rem;align-items:flex-end;margin-bottom:1.25rem}.data-status-hero h1{margin:.15rem 0 .35rem}.data-status-muted{color:#9aa6b2}.data-status-pill{display:inline-flex;align-items:center;gap:.4rem;border:1px solid #2b3440;border-radius:999px;padding:.35rem .65rem;font-size:.85rem}.data-status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.8rem;margin:1rem 0 1.5rem}.data-status-card{border:1px solid #28313b;border-radius:10px;padding:.9rem;background:#121922}.data-status-card strong{display:block;margin-bottom:.3rem}.data-status-ok{color:#8ed39a}.data-status-warn{color:#e4c56a}.data-status-bad{color:#ef8b8b}.data-status-table{width:100%;border-collapse:collapse}.data-status-table th,.data-status-table td{text-align:left;padding:.65rem .5rem;border-bottom:1px solid #252e38;vertical-align:top}.data-status-table th{font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;color:#9aa6b2}.data-status-counts{font-size:.85rem;color:#b6c0ca}.data-status-section{margin-top:1.7rem}.data-status-note{font-size:.88rem;color:#8f9ba7;margin-top:1rem}.data-status-run{display:grid;grid-template-columns:minmax(90px,.7fr) minmax(150px,1.4fr) .8fr .8fr;gap:.7rem;padding:.65rem 0;border-bottom:1px solid #252e38;align-items:center}@media(max-width:720px){.data-status-hero{display:block}.data-status-run{grid-template-columns:1fr 1fr}.data-status-table{font-size:.9rem}.data-status-table th:nth-child(4),.data-status-table td:nth-child(4){display:none}}
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('index') }}">Sports News Aggregator</a>
+<span class="tagline">College Football · Data Status</span>
+{% endblock %}
+
+{% block content %}
+<div class="data-status-wrap">
+  <div class="data-status-hero">
+    <div>
+      <div class="data-status-muted">Quiet system view</div>
+      <h1>Data Status</h1>
+      <div class="data-status-muted">Last completed refresh: {{ status.latest_finished_label }}{% if status.latest_relative_label != 'unknown' %} · {{ status.latest_relative_label }}{% endif %}</div>
+    </div>
+    <div class="data-status-pill">
+      {% if status.running %}<span class="data-status-warn">●</span> Refresh running
+      {% elif status.latest_status == 'success' %}<span class="data-status-ok">●</span> Healthy
+      {% elif status.latest_status == 'degraded' %}<span class="data-status-warn">●</span> Degraded
+      {% elif status.latest_status == 'failed' %}<span class="data-status-bad">●</span> Needs attention
+      {% else %}<span>●</span> No status yet{% endif %}
+    </div>
+  </div>
+
+  <div class="data-status-grid">
+    <div class="data-status-card"><strong>Latest profile</strong><span class="data-status-muted">{{ status.latest_profile|title }}</span></div>
+    <div class="data-status-card"><strong>Latest result</strong><span class="data-status-muted">{{ status.latest_status|title }}</span></div>
+    <div class="data-status-card"><strong>Refresh activity</strong><span class="data-status-muted">{{ 'Running now' if status.running else 'Idle' }}</span></div>
+  </div>
+
+  <section class="data-status-section">
+    <h2>Latest refresh sections</h2>
+    {% if status.sections %}
+    <table class="data-status-table">
+      <thead><tr><th>Section</th><th>Status</th><th>Updated</th><th>What changed</th></tr></thead>
+      <tbody>
+      {% for row in status.sections %}
+        <tr>
+          <td><strong>{{ row.label }}</strong></td>
+          <td>
+            {% if row.status == 'success' %}<span class="data-status-ok">Success</span>
+            {% elif row.status == 'skipped' %}<span class="data-status-muted">Skipped</span>
+            {% elif row.status in ('failed','timeout') %}<span class="data-status-bad">{{ row.status|title }}</span>
+            {% else %}{{ row.status|title }}{% endif %}
+          </td>
+          <td>{{ row.time_label }}{% if row.relative_label != 'unknown' %}<div class="data-status-counts">{{ row.relative_label }}</div>{% endif %}</td>
+          <td>
+            {% if row.added is defined or row.updated is defined or row.count is defined %}
+              <span class="data-status-counts">
+              {% if row.added is defined %}{{ row.added }} added{% endif %}
+              {% if row.updated is defined %}{% if row.added is defined %} · {% endif %}{{ row.updated }} updated{% endif %}
+              {% if row.count is defined %}{% if row.added is defined or row.updated is defined %} · {% endif %}{{ row.count }} processed{% endif %}
+              </span>
+            {% elif row.message %}
+              <span class="data-status-counts">{{ row.message }}</span>
+            {% else %}
+              <span class="data-status-muted">Completed</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="data-status-muted">No per-section refresh history has been recorded yet. The next scheduled refresh will populate this view.</p>
+    {% endif %}
+  </section>
+
+  <section class="data-status-section">
+    <h2>Recent refreshes</h2>
+    {% if status.recent_runs %}
+      {% for run in status.recent_runs %}
+      <div class="data-status-run">
+        <strong>{{ run.profile|title }}</strong>
+        <span>{{ run.finished_label }}</span>
+        <span class="{% if run.status == 'success' %}data-status-ok{% elif run.status == 'degraded' %}data-status-warn{% elif run.status == 'failed' %}data-status-bad{% endif %}">{{ run.status|title }}</span>
+        <span class="data-status-muted">{% if run.seconds is not none %}{{ run.seconds|round|int }}s{% endif %}{% if run.step_count %} · {{ run.step_count }} steps{% endif %}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="data-status-muted">No completed refresh history is available yet.</p>
+    {% endif %}
+  </section>
+
+  <p class="data-status-note">This page intentionally omits raw logs, process IDs, filesystem paths, credentials, and exception traces. Detailed operational diagnostics remain available only through the authenticated internal status endpoint.</p>
+</div>
+{% endblock %}
