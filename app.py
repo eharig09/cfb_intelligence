@@ -129,7 +129,7 @@ def create_app(test_config: dict | None = None) -> Flask:
 
         root = Path(__file__).resolve().parent
         subprocess.Popen(
-            [sys.executable, "-m", "sports_aggregator.scheduled_refresh", "--season", str(season), "--profile", profile],
+            [sys.executable, "-m", "sports_aggregator.tracked_refresh", "--season", str(season), "--profile", profile],
             cwd=str(root), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True,
         )
         return jsonify({"status": "accepted", "season": season, "profile": profile,
