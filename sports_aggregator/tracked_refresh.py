@@ -18,6 +18,7 @@ MAX_SAMPLES_PER_TABLE = 8
 TRACKED_TABLES = (
     "teams", "players", "games", "game_lines", "records", "coaches",
     "rankings", "team_stats", "advanced_stats", "core_ratings",
+    "content_items", "content_ingestion_runs",
 )
 
 
@@ -40,13 +41,16 @@ def _key_columns(info: list[sqlite3.Row]) -> list[str]:
     if primary:
         return primary
     names = [str(row[1]) for row in info]
-    preferred = [name for name in names if name in {"season", "game_id", "player_id", "team_id", "school", "provider"}]
+    preferred = [name for name in names if name in {
+        "season", "game_id", "player_id", "team_id", "school", "provider",
+        "content_id", "run_id",
+    }]
     return preferred or names[:1]
 
 
 def _snapshot(database: Path, snapshot: Path, season: int) -> list[str]:
-    """Copy only the modest core tables; large history/box-score tables are excluded."""
-    del season  # the full tracked tables are needed so older rows are not false positives
+    """Copy modest tracked tables; huge historical detail tables stay excluded."""
+    del season
     snapshot.unlink(missing_ok=True)
     copied: list[str] = []
     with sqlite3.connect(snapshot) as out:
@@ -73,7 +77,13 @@ def _key_match(alias_a: str, alias_b: str, keys: list[str]) -> str:
 
 def _row_key(row: sqlite3.Row, keys: list[str]) -> str:
     parts = [f"{key}={row[key]}" for key in keys if key in row.keys()]
-    return ", ".join(parts)[:180]
+    if "platform" in row.keys() and row["platform"]:
+        parts.append(str(row["platform"]))
+    if "title" in row.keys() and row["title"]:
+        parts.append(str(row["title"]))
+    if "publisher_name" in row.keys() and row["publisher_name"]:
+        parts.append(str(row["publisher_name"]))
+    return " · ".join(parts)[:220]
 
 
 def _diff_table(connection: sqlite3.Connection, table: str) -> dict[str, Any] | None:
@@ -138,6 +148,8 @@ def _diff_table(connection: sqlite3.Connection, table: str) -> dict[str, Any] | 
             if old is not None:
                 for column in nonkeys:
                     if new_row[column] != old[column]:
+                        if column in {"raw_json", "body_text", "evidence_json", "factors_json", "errors_json"}:
+                            continue
                         changed_fields.append({
                             "field": column,
                             "before": str(old[column])[:80],
@@ -149,26 +161,27 @@ def _diff_table(connection: sqlite3.Connection, table: str) -> dict[str, Any] | 
     return {"table": table, "added": int(added), "changed": int(changed), "removed": int(removed), "samples": samples}
 
 
-def _write_ledger(instance: Path, report: dict[str, Any], database: Path, snapshot: Path, tables: list[str]) -> None:
-    if not database.exists() or not snapshot.exists():
-        return
+def _write_ledger(instance: Path, report: dict[str, Any], database: Path, snapshot: Path,
+                  tables: list[str], tracking_error: str | None = None) -> None:
     changes: list[dict[str, Any]] = []
-    with sqlite3.connect(database) as connection:
-        connection.row_factory = sqlite3.Row
-        connection.execute("ATTACH DATABASE ? AS snap", (str(snapshot),))
-        for table in tables:
-            try:
-                result = _diff_table(connection, table)
-            except sqlite3.Error:
-                result = None
-            if result and (result["added"] or result["changed"] or result["removed"]):
-                changes.append(result)
+    if database.exists() and snapshot.exists():
+        with sqlite3.connect(database) as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("ATTACH DATABASE ? AS snap", (str(snapshot),))
+            for table in tables:
+                try:
+                    result = _diff_table(connection, table)
+                except sqlite3.Error:
+                    result = None
+                if result and (result["added"] or result["changed"] or result["removed"]):
+                    changes.append(result)
     ledger = {
         "profile": report.get("profile"),
         "season": report.get("season"),
         "status": report.get("status"),
         "started_at": report.get("started_at"),
         "finished_at": report.get("finished_at") or datetime.now(timezone.utc).isoformat(),
+        "tracking_error": (tracking_error or "")[:240],
         "changes": changes,
         "totals": {
             "added": sum(item["added"] for item in changes),
@@ -193,12 +206,29 @@ def main(argv: list[str] | None = None) -> int:
     instance = database.parent
     snapshot = instance / ".refresh_before.sqlite3"
     tables: list[str] = []
+    tracking_error: str | None = None
     try:
         if database.exists():
-            tables = _snapshot(database, snapshot, args.season)
+            try:
+                tables = _snapshot(database, snapshot, args.season)
+            except Exception as exc:
+                tracking_error = f"snapshot failed: {type(exc).__name__}: {exc}"
+                tables = []
+                snapshot.unlink(missing_ok=True)
+
+        # The underlying refresh is authoritative. Change tracking must never stop it.
         report = run_scheduled_refresh(args.season, profile=args.profile, repo_root=root)
+
         if report.get("status") != "skipped":
-            _write_ledger(instance, report, database, snapshot, tables)
+            try:
+                _write_ledger(instance, report, database, snapshot, tables, tracking_error)
+            except Exception as exc:
+                # Preserve the successful/failed refresh report even when audit tracking fails.
+                tracking_error = f"ledger failed: {type(exc).__name__}: {exc}"
+                try:
+                    _write_ledger(instance, report, database, Path("__missing__"), [], tracking_error)
+                except Exception:
+                    pass
         print(json.dumps(report, sort_keys=True))
         return 0 if report.get("status") == "skipped" else int(report.get("exit_code", 1))
     finally:
