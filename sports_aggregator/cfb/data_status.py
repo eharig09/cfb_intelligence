@@ -44,6 +44,8 @@ _TABLE_LABELS = {
     "team_stats": "Team statistics",
     "advanced_stats": "Advanced statistics",
     "core_ratings": "CORE ratings",
+    "content_items": "News & social content",
+    "content_ingestion_runs": "Content ingestion runs",
 }
 
 
@@ -153,7 +155,7 @@ def _safe_change_ledger(instance: Path) -> dict[str, Any] | None:
                 })
             samples.append({
                 "kind": str(sample.get("kind") or "changed")[:20],
-                "key": str(sample.get("key") or "")[:180],
+                "key": str(sample.get("key") or "")[:220],
                 "fields": fields,
             })
         table = str(item.get("table") or "unknown")
@@ -173,6 +175,7 @@ def _safe_change_ledger(instance: Path) -> dict[str, Any] | None:
         "added": int(totals.get("added") or 0),
         "changed": int(totals.get("changed") or 0),
         "removed": int(totals.get("removed") or 0),
+        "tracking_error": str(raw.get("tracking_error") or "")[:240],
         "tables": tables,
     }
 
