@@ -277,11 +277,16 @@ class CFBDClient:
         """Documented /venues endpoint; stadium locations rarely change."""
         return self.get("/venues", {}, cache_ttl_seconds=2592000, force=force)
 
-    def betting_lines(self, year: int, force: bool = False) -> list[dict]:
-        """Documented /lines endpoint; quotes move, so the cache stays short."""
+    def betting_lines(self, year: int, force: bool = False,
+                      cache_ttl_seconds: int = 1800) -> list[dict]:
+        """Documented /lines endpoint; quotes move, so the cache stays short.
+
+        A finished season's quotes do not move at all, which is why the caller
+        backfilling one passes FINISHED_WEEK_TTL instead.
+        """
         return self.get(
             "/lines", {"year": year, "seasonType": "both"},
-            cache_ttl_seconds=1800, force=force,
+            cache_ttl_seconds=cache_ttl_seconds, force=force,
         )
 
     def core_ratings(self, year: int, force: bool = False) -> list[dict]:

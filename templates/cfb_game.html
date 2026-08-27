@@ -57,6 +57,28 @@
     }
     .matchup-versus strong { font: 900 .78rem Arial, sans-serif; letter-spacing: .06em; }
     .matchup-versus span { color: var(--on-strong-muted); font-size: .52rem; margin-top: 3px; text-transform: uppercase; }
+    /* Two records side by side: the comparison is between the teams, so they
+       have to be readable against each other rather than one after the other. */
+    .ats-pair {
+        display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px;
+        margin: 12px 0 4px;
+    }
+    @media (min-width: 720px) { .ats-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .ats-card {
+        background: var(--paper); border: 1px solid var(--line);
+        border-left: 4px solid var(--team); border-radius: 6px; padding: 10px 12px;
+        min-width: 0;
+    }
+    .ats-card.is-provisional { opacity: .82; }
+    .ats-card h4 { font: 800 1rem var(--display-font); margin: 0; }
+    .ats-meta { color: var(--muted); font-size: .66rem; margin-top: 2px; }
+    .ats-line {
+        display: grid; grid-template-columns: 4.2rem auto 1fr; gap: 8px;
+        align-items: baseline; margin-top: 7px;
+    }
+    .ats-line span { color: var(--muted); font-size: .62rem; text-transform: uppercase; letter-spacing: .07em; }
+    .ats-line b { font: 800 1.05rem/1 var(--display-font); font-variant-numeric: tabular-nums; }
+    .ats-line i { color: var(--muted); font-size: .7rem; font-style: normal; font-variant-numeric: tabular-nums; }
     .subhead {
         font: 800 1.02rem var(--display-font); margin: 20px 0 0;
         padding-top: 14px; border-top: 1px solid var(--line);
@@ -281,8 +303,42 @@
         apart deliberately &mdash; where they disagree is the information.
     </div>
     {{ data_table(model_table) }}
-    {#- The books themselves, under the comparison they feed rather than in a
-        band of their own further down the page. -#}
+    {#- How each side has done against the number it was given, which is the
+        question a line invites and the comparison above cannot answer. Bounded
+        by the current coach, because a coaching change turns over the scheme,
+        the staff and half the roster at once, and a record reaching past one is
+        measuring a different team. -#}
+    {% if ats.away or ats.home %}
+    <h3 class="subhead">Against the number</h3>
+    <div class="section-note">
+        Completed games under each team's current coach, from the consensus line
+        at the time. A record of what happened, not a forecast.
+    </div>
+    <div class="ats-pair">
+        {% for side, record in [(game.away_team, ats.away), (game.home_team, ats.home)] %}
+        {% if record %}
+        <article class="ats-card{{ ' is-provisional' if record.provisional }}">
+            <h4>{{ side }}</h4>
+            <div class="ats-meta">{{ record.coach }} &middot; {{ record.span }}</div>
+            <div class="ats-line">
+                <span>Spread</span>
+                <b>{{ record.ats_record }}</b>
+                <i>{{ record.cover_rate | cell('f1') }}%</i>
+            </div>
+            <div class="ats-line">
+                <span>Total</span>
+                <b>{{ record.total_record }}</b>
+                <i>{{ record.over_rate | cell('f1') }}% over</i>
+            </div>
+            {% if record.provisional %}
+            <div class="ats-meta">Only {{ record.games }} games; too few to read as a tendency.</div>
+            {% endif %}
+        </article>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <h3 class="subhead">Book by book</h3>
     <div class="section-note">
         Each book with its movement since opening. A slate view has room for one

@@ -177,6 +177,14 @@ def steps(season: int, *, history_from: int | None = None,
             ["sports_aggregator.cfb.history_cli", "--year", str(historical_year)],
             ("history",), requires_env=("CFBD_API_KEY",),
         ))
+        # Without this a fresh install has lines for the current season only,
+        # and the against-the-number records beside them have nothing to count.
+        plan.append(Step(
+            f"lines-history-{historical_year}",
+            f"Closing betting lines for {historical_year}",
+            ["sports_aggregator.cfb.cli", "sync-lines", "--year", str(historical_year)],
+            ("history",), requires_env=("CFBD_API_KEY",),
+        ))
         plan.append(Step(
             f"box-history-{historical_year}",
             f"Cached team and player box scores for {historical_year}",

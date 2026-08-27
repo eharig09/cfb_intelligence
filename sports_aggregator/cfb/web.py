@@ -12,6 +12,7 @@ from flask import (Blueprint, Response, abort, current_app, jsonify,
 from sports_aggregator.catalog import get_league
 from sports_aggregator.social.roles import role_label
 from sports_aggregator.cfb.insights import games_to_watch
+from sports_aggregator.cfb.ats import matchup_ats
 from sports_aggregator.cfb.draft import position_targets, prospect_board
 from sports_aggregator.cfb.prospects import (
     board_with_profile, consensus_board, reconcile)
@@ -705,6 +706,7 @@ def game_preview(game_id: int):
         history=history,
         history_games_table=views.historical_games_table(
             history["recent"], caption=f"Recent meetings — {game['away_team']} perspective"),
+        ats=matchup_ats(repository, game),
         prior_player_games=prior_player_games,
         prior_player_games_table=views.opponent_performance_table(prior_player_games),
     )

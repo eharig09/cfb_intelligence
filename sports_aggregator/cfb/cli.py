@@ -95,9 +95,22 @@ def main(argv: list[str] | None = None, *, client: Any = None) -> int:
         return 0
     if args.command == "sync-lines":
         from sports_aggregator.cfb.lines import store_lines
-        count = store_lines(repository, args.year,
-                            client.betting_lines(args.year, args.force))
-        print(f"game_lines: {count} provider quotes for {args.year}")
+        first = args.from_year or args.year
+        last = args.to_year or args.year
+        if first > last:
+            parser.error("--from-year must not be after --to-year")
+        total = 0
+        for year in range(first, last + 1):
+            # A finished season's quotes never move again, so they are worth
+            # caching for as long as the box scores beside them.
+            settled = year < datetime.now().year
+            count = store_lines(repository, year, client.betting_lines(
+                year, args.force,
+                cache_ttl_seconds=FINISHED_WEEK_TTL if settled else 1800))
+            print(f"game_lines: {count} provider quotes for {year}")
+            total += count
+        if first != last:
+            print(f"sync-lines {first}-{last} complete; {total} quotes")
         return 0
     if args.command == "coverage":
         print(json.dumps(repository.stat_coverage(), indent=2, default=str))
