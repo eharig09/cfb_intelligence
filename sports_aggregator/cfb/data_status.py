@@ -33,6 +33,19 @@ _STEP_LABELS = {
     "podcasts": "Podcasts",
 }
 
+_TABLE_LABELS = {
+    "teams": "Teams",
+    "players": "Rosters",
+    "games": "Games & schedules",
+    "game_lines": "Betting lines",
+    "records": "Team records",
+    "coaches": "Coaches",
+    "rankings": "Rankings",
+    "team_stats": "Team statistics",
+    "advanced_stats": "Advanced statistics",
+    "core_ratings": "CORE ratings",
+}
+
 
 def _instance_dir() -> Path:
     return Path(current_app.config["CFB_DATABASE_PATH"]).parent
@@ -116,6 +129,54 @@ def _safe_step(row: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _safe_change_ledger(instance: Path) -> dict[str, Any] | None:
+    rows = _read_history(instance / "refresh_change_history.jsonl", limit=1)
+    if not rows:
+        return None
+    raw = rows[0]
+    tables: list[dict[str, Any]] = []
+    for item in raw.get("changes") or []:
+        if not isinstance(item, dict):
+            continue
+        samples: list[dict[str, Any]] = []
+        for sample in (item.get("samples") or [])[:8]:
+            if not isinstance(sample, dict):
+                continue
+            fields = []
+            for field in (sample.get("fields") or [])[:4]:
+                if not isinstance(field, dict):
+                    continue
+                fields.append({
+                    "field": str(field.get("field") or "")[:60],
+                    "before": str(field.get("before") or "")[:80],
+                    "after": str(field.get("after") or "")[:80],
+                })
+            samples.append({
+                "kind": str(sample.get("kind") or "changed")[:20],
+                "key": str(sample.get("key") or "")[:180],
+                "fields": fields,
+            })
+        table = str(item.get("table") or "unknown")
+        tables.append({
+            "table": table,
+            "label": _TABLE_LABELS.get(table, table.replace("_", " ").title()),
+            "added": int(item.get("added") or 0),
+            "changed": int(item.get("changed") or 0),
+            "removed": int(item.get("removed") or 0),
+            "samples": samples,
+        })
+    totals = raw.get("totals") or {}
+    return {
+        "finished_label": _display_time(raw.get("finished_at")),
+        "relative_label": _relative_time(raw.get("finished_at")),
+        "profile": str(raw.get("profile") or "unknown"),
+        "added": int(totals.get("added") or 0),
+        "changed": int(totals.get("changed") or 0),
+        "removed": int(totals.get("removed") or 0),
+        "tables": tables,
+    }
+
+
 def _status_model() -> dict[str, Any]:
     instance = _instance_dir()
     progress = _read_json(instance / "refresh_progress.json")
@@ -158,6 +219,7 @@ def _status_model() -> dict[str, Any]:
         "latest_relative_label": _relative_time(latest_finished),
         "sections": sections,
         "recent_runs": recent_runs,
+        "change_ledger": _safe_change_ledger(instance),
     }
 
 
