@@ -16,66 +16,28 @@ from dotenv import load_dotenv
 
 from sports_aggregator.bootstrap import _env_satisfied, steps
 
-try:  # POSIX only. Absent on Windows, where the memory reporting below is a
-    # no-op rather than an import error that takes the whole module with it.
+try:
     import resource
-except ImportError:  # pragma: no cover - platform dependent
+except ImportError:  # pragma: no cover
     resource = None  # type: ignore[assignment]
 
 
+# Normal refreshes deliberately exclude the expensive Google News crawl. It has
+# its own bounded `news` profile below.
 LIGHT_REFRESH_STEPS = [
-    "cfbd-sync",
-    "articles",
-    "weather",
-    "bluesky",
-    "reddit",
-    "youtube",
-    "podcasts",
-    "local-articles",
+    "cfbd-sync", "articles", "weather", "bluesky", "reddit", "youtube", "podcasts",
 ]
-
-#: Steps for a game-day pass: what changes while games are being played.
-#:
-#: The full refresh takes about eight minutes and the schedule ran it four
-#: times a day, so a score posted at 3:30pm first appeared at 6pm and a night
-#: game's final was not on the site until the following morning. Nothing else
-#: in the refresh moves during a Saturday afternoon -- rosters, recruiting,
-#: returning production and the article wire are all unchanged between
-#: kickoffs -- so a game-day pass syncs the games and the market and stops.
-SCORES_REFRESH_STEPS = [
-    "cfbd-sync",
-    "cfbd-box-scores",
-    "cfbd-lines",
-]
-
-#: The only CFBD dataset a game-day pass reads through `cfbd-sync`.
-#:
-#: `cfbd-sync` normally walks eleven datasets including a per-team roster
-#: crawl. Scores live in one of them.
+SCORES_REFRESH_STEPS = ["cfbd-sync", "cfbd-lines"]
+RESULTS_REFRESH_STEPS = ["cfbd-sync", "cfbd-box-scores", "cfbd-lines"]
 SCORES_DATASETS = ["games"]
-
-#: Every profile the scheduler accepts.
-REFRESH_PROFILES = frozenset({"light", "heavy", "scores"})
-
-#: How long a killed run's progress is worth resuming from.
-#:
-#: Each step is already its own process and commits before the next one
-#: starts, so the work a killed run did is on disk. What was missing is any
-#: memory of it: the next run began at step one and spent its budget redoing
-#: what was already done, which on a 512 MB instance is how a refresh can fail
-#: repeatedly without ever reaching the end. Beyond this window the data is
-#: stale enough to be worth fetching again.
+REFRESH_PROFILES = frozenset({"light", "heavy", "scores", "results", "news"})
 RESUME_WINDOW_HOURS = 12.0
-
-#: Address-space ceiling for each refresh subprocess, in MB.
-#:
-#: The refresh runs as a child of the web service, so both share the
-#: instance's memory. Without a ceiling a single step that allocates too much
-#: takes the whole container down with it: the web worker dies, the lock is
-#: never released, and the platform restarts the instance. With one, the step
-#: raises MemoryError, is recorded as a failed step, and every other step still
-#: runs. Set CFB_REFRESH_CHILD_MB to 0 to disable.
 DEFAULT_CHILD_MEMORY_MB = 320
+
+CFBD_DATASET_STEPS = [
+    "teams", "players", "games", "betting_lines", "media", "records", "coaches",
+    "rankings", "team_stats", "advanced_stats", "core_ratings",
+]
 
 
 def _child_memory_mb() -> int:
@@ -89,49 +51,22 @@ def _child_memory_mb() -> int:
 
 
 def _memory_limiter():
-    """A preexec hook capping the child's address space, or None.
-
-    POSIX only, and applied in the child between fork and exec so the parent's
-    own limits are untouched.
-    """
     megabytes = _child_memory_mb()
     if resource is None or not megabytes or sys.platform == "win32":
         return None
 
-    def apply() -> None:  # pragma: no cover - runs only in the forked child
+    def apply() -> None:  # pragma: no cover - child only
         limit = megabytes * 1024 * 1024
         try:
-            soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+            _, hard = resource.getrlimit(resource.RLIMIT_AS)
             ceiling = limit if hard in (resource.RLIM_INFINITY, -1) else min(limit, hard)
             resource.setrlimit(resource.RLIMIT_AS, (ceiling, hard))
         except (ValueError, OSError):
-            # A platform that refuses the limit still runs the step.
             pass
-
     return apply
 
 
-CFBD_DATASET_STEPS = [
-    "teams",
-    "players",
-    "games",
-    "betting_lines",
-    "media",
-    "records",
-    "coaches",
-    "rankings",
-    "team_stats",
-    "advanced_stats",
-    "core_ratings",
-]
-
-
 def _process_alive(pid: int) -> bool:
-    """Whether the process holding a lock still exists.
-
-    A false "alive" only costs a wait; a false "dead" would let two refreshes
-    run at once, so every uncertain case answers True.
-    """
     if pid <= 0:
         return True
     try:
@@ -139,10 +74,6 @@ def _process_alive(pid: int) -> bool:
     except ProcessLookupError:
         return False
     except (PermissionError, OSError):
-        # The process exists but belongs to someone else, or the platform
-        # cannot answer -- Windows raises a bare OSError for an absent pid
-        # rather than ProcessLookupError, so there the age check below is what
-        # reclaims a lock. Render is Linux, where the signal probe is exact.
         return True
     return True
 
@@ -155,19 +86,6 @@ def _lock_holder(path: Path) -> dict[str, Any]:
 
 
 def _acquire_lock(path: Path, started: datetime, stale_hours: float) -> bool:
-    """Take the refresh lock, reclaiming one whose owner is gone.
-
-    The lock records a pid but nothing ever read it back, and release happens
-    only on the success path. A refresh killed by the platform -- which is what
-    an out-of-memory restart does -- therefore left a lock that blocked every
-    subsequent run for the full stale window, silently, as
-    ``refresh_already_running``. One kill disabled refreshes for hours.
-
-    So the holder is checked for liveness first and the age check is only the
-    fallback for a pid that cannot be resolved. The running refresh also
-    touches this file between steps, so the age reflects last progress rather
-    than start time.
-    """
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         holder = _lock_holder(path)
@@ -188,27 +106,20 @@ def _acquire_lock(path: Path, started: datetime, stale_hours: float) -> bool:
     return True
 
 
-def _refresh_statistics(instance: Path) -> None:
-    """Run PRAGMA optimize against the database this refresh just wrote."""
-    try:
-        from sports_aggregator.cfb.repository import CFBRepository
-
-        database = (instance / "cfb.sqlite3")
-        configured = (os.getenv("CFB_DATABASE_PATH") or "").strip()
-        if configured:
-            database = Path(configured)
-        if database.exists():
-            CFBRepository(database).optimize()
-    except Exception:
-        # Never let a maintenance step fail an otherwise good refresh.
-        pass
-
-
 def _touch_lock(path: Path) -> None:
-    """Mark progress, so a stalled refresh ages out but a working one does not."""
     try:
         os.utime(path, None)
     except OSError:
+        pass
+
+
+def _refresh_statistics(instance: Path) -> None:
+    try:
+        from sports_aggregator.cfb.repository import CFBRepository
+        database = Path((os.getenv("CFB_DATABASE_PATH") or "").strip() or instance / "cfb.sqlite3")
+        if database.exists():
+            CFBRepository(database).optimize()
+    except Exception:
         pass
 
 
@@ -245,17 +156,13 @@ def _sqlite_values(database: Path, sql: str) -> list[str]:
 
 
 def _fbs_teams(root: Path) -> list[str]:
-    return _sqlite_values(
-        _database_path(root),
-        "SELECT school FROM teams WHERE lower(classification)='fbs' ORDER BY school",
-    )
+    return _sqlite_values(_database_path(root),
+        "SELECT school FROM teams WHERE lower(classification)='fbs' ORDER BY school")
 
 
 def _conferences(root: Path) -> list[str]:
-    return _sqlite_values(
-        _database_path(root),
-        "SELECT DISTINCT conference FROM teams WHERE conference IS NOT NULL ORDER BY conference",
-    )
+    return _sqlite_values(_database_path(root),
+        "SELECT DISTINCT conference FROM teams WHERE conference IS NOT NULL ORDER BY conference")
 
 
 def _progress_path(instance: Path) -> Path:
@@ -271,12 +178,6 @@ def _read_progress(instance: Path) -> dict[str, Any]:
 
 def _resumable_steps(instance: Path, season: int, profile: str, *,
                      window_hours: float, now: datetime) -> set[str]:
-    """Steps a recent unfinished run already completed.
-
-    A run that reached the end is not resumed from -- that would skip the whole
-    refresh. Neither is one for a different season or profile, or one old
-    enough that its data is stale again.
-    """
     if window_hours <= 0:
         return set()
     record = _read_progress(instance)
@@ -295,7 +196,6 @@ def _resumable_steps(instance: Path, season: int, profile: str, *,
 
 
 def _write_progress(instance: Path, record: dict[str, Any]) -> None:
-    """Flush to disk immediately: the reader is the next run after a kill."""
     path = _progress_path(instance)
     try:
         with path.open("w", encoding="utf-8") as handle:
@@ -303,8 +203,6 @@ def _write_progress(instance: Path, record: dict[str, Any]) -> None:
             handle.flush()
             os.fsync(handle.fileno())
     except OSError:
-        # Progress is an optimisation. Losing it costs a repeated step, not a
-        # refresh, so it must never be the thing that stops one.
         pass
 
 
@@ -312,304 +210,169 @@ def _run_command(command: list[str], *, timeout: int, log) -> tuple[str, str, fl
     started = datetime.now(timezone.utc)
     try:
         completed = subprocess.run(
-            [sys.executable, "-m", *command],
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=timeout,
-            preexec_fn=_memory_limiter(),
+            [sys.executable, "-m", *command], stdout=log, stderr=subprocess.STDOUT,
+            text=True, timeout=timeout, preexec_fn=_memory_limiter(),
         )
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
-        return (
-            "success" if completed.returncode == 0 else "failed",
-            f"exit code {completed.returncode}",
-            round(elapsed, 1),
-        )
+        return ("success" if completed.returncode == 0 else "failed",
+                f"exit code {completed.returncode}", round(elapsed, 1))
     except subprocess.TimeoutExpired:
         return "timeout", f"exceeded {timeout}s", float(timeout)
     except Exception as exc:
         return "failed", str(exc)[:240], 0.0
 
 
-def _run_scoped_commands(
-    label: str,
-    scopes: list[str],
-    command_for: Callable[[str], list[str]],
-    *,
-    timeout: int,
-    log,
-) -> list[str]:
+def _run_scoped_commands(label: str, scopes: list[str], command_for: Callable[[str], list[str]],
+                         *, timeout: int, log, heartbeat: Callable[[], None] | None = None) -> list[str]:
     failures: list[str] = []
     total = len(scopes)
     for index, scope in enumerate(scopes, start=1):
-        print(
-            f"        [{label}] {index}/{total} {scope} start "
-            f"parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()}",
-            file=log,
-            flush=True,
-        )
-        status, message, seconds = _run_command(
-            command_for(scope), timeout=timeout, log=log
-        )
-        print(
-            f"        [{label}] {index}/{total} {scope} {status} ({seconds}s) "
-            f"parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()} {message}",
-            file=log,
-            flush=True,
-        )
+        if heartbeat:
+            heartbeat()
+        print(f"        [{label}] {index}/{total} {scope} start parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()}", file=log, flush=True)
+        status, message, seconds = _run_command(command_for(scope), timeout=timeout, log=log)
+        print(f"        [{label}] {index}/{total} {scope} {status} ({seconds}s) parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()} {message}", file=log, flush=True)
         if status != "success":
             failures.append(scope)
     return failures
 
 
 def _run_cfbd_split(season: int, *, root: Path, timeout: int, log,
-                    datasets: list[str] | None = None) -> dict[str, Any]:
-    """Run CFBD datasets independently, with the roster split one team at a time."""
+                    datasets: list[str] | None = None,
+                    heartbeat: Callable[[], None] | None = None) -> dict[str, Any]:
     started = datetime.now(timezone.utc)
     failures: list[str] = []
-    planned = [name for name in (datasets or CFBD_DATASET_STEPS)
-               if name in CFBD_DATASET_STEPS]
-
+    planned = [name for name in (datasets or CFBD_DATASET_STEPS) if name in CFBD_DATASET_STEPS]
     for dataset in planned:
-        print(
-            f"    [cfbd] {dataset} start parent_rss_mb={_rss_mb()} "
-            f"child_peak_rss_mb={_children_rss_mb()}",
-            file=log,
-            flush=True,
-        )
-
+        if heartbeat:
+            heartbeat()
+        print(f"    [cfbd] {dataset} start parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()}", file=log, flush=True)
         if dataset == "players":
             teams = _fbs_teams(root)
-            if not teams:
-                status, message, seconds = _run_command(
-                    ["sports_aggregator.cfb.dataset_cli", "players", "--year", str(season)],
-                    timeout=timeout,
-                    log=log,
+            if teams:
+                scoped = _run_scoped_commands(
+                    "roster", teams,
+                    lambda team: ["sports_aggregator.cfb.dataset_cli", "players", "--year", str(season), "--team", team],
+                    timeout=timeout, log=log, heartbeat=heartbeat,
                 )
-                if status != "success":
-                    failures.append("players")
-            else:
-                scoped_failures = _run_scoped_commands(
-                    "roster",
-                    teams,
-                    lambda team: [
-                        "sports_aggregator.cfb.dataset_cli",
-                        "players",
-                        "--year",
-                        str(season),
-                        "--team",
-                        team,
-                    ],
-                    timeout=timeout,
-                    log=log,
-                )
-                status = "failed" if scoped_failures else "success"
-                message = (
-                    f"failed teams: {', '.join(scoped_failures[:8])}"
-                    if scoped_failures
-                    else f"{len(teams)} team rosters complete"
-                )
+                status = "failed" if scoped else "success"
+                message = f"failed teams: {', '.join(scoped[:8])}" if scoped else f"{len(teams)} team rosters complete"
                 seconds = 0.0
-                if scoped_failures:
-                    failures.append("players")
-        else:
-            status, message, seconds = _run_command(
-                ["sports_aggregator.cfb.dataset_cli", dataset, "--year", str(season)],
-                timeout=timeout,
-                log=log,
-            )
+            else:
+                status, message, seconds = _run_command(
+                    ["sports_aggregator.cfb.dataset_cli", "players", "--year", str(season)], timeout=timeout, log=log)
             if status != "success":
                 failures.append(dataset)
-
-        print(
-            f"    [cfbd] {dataset} {status} ({seconds}s) "
-            f"parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()} {message}",
-            file=log,
-            flush=True,
-        )
-
+        else:
+            status, message, seconds = _run_command(
+                ["sports_aggregator.cfb.dataset_cli", dataset, "--year", str(season)], timeout=timeout, log=log)
+            if status != "success":
+                failures.append(dataset)
+        print(f"    [cfbd] {dataset} {status} ({seconds}s) parent_rss_mb={_rss_mb()} child_peak_rss_mb={_children_rss_mb()} {message}", file=log, flush=True)
     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
     return {
-        "step": "cfbd-sync",
-        "status": "failed" if failures else "success",
-        "message": (
-            f"failed datasets: {', '.join(failures)}" if failures
-            else (f"{len(planned)} datasets complete; roster team-scoped"
-                  if planned == CFBD_DATASET_STEPS
-                  else f"scoped to {', '.join(planned)}")
-        ),
-        "seconds": round(elapsed, 1),
-        "optional": False,
-        "parent_rss_mb": _rss_mb(),
-        "child_peak_rss_mb": _children_rss_mb(),
+        "step": "cfbd-sync", "status": "failed" if failures else "success",
+        "message": f"failed datasets: {', '.join(failures)}" if failures else f"scoped datasets complete: {', '.join(planned)}",
+        "seconds": round(elapsed, 1), "optional": False,
+        "parent_rss_mb": _rss_mb(), "child_peak_rss_mb": _children_rss_mb(),
     }
 
 
-def _run_player_stats_split(
-    season: int, *, root: Path, timeout: int, log, optional: bool
-) -> dict[str, Any]:
-    """Run current player production one conference per Python interpreter."""
+def _run_player_stats_split(season: int, *, root: Path, timeout: int, log,
+                            optional: bool, heartbeat: Callable[[], None] | None = None) -> dict[str, Any]:
     started = datetime.now(timezone.utc)
     conferences = _conferences(root)
-    if not conferences:
-        status, message, seconds = _run_command(
-            ["sports_aggregator.cfb.cli", "sync-player-stats", "--year", str(season)],
-            timeout=timeout,
-            log=log,
-        )
-        failures = [] if status == "success" else ["all"]
-    else:
+    if conferences:
         failures = _run_scoped_commands(
-            "player-stats",
-            conferences,
-            lambda conference: [
-                "sports_aggregator.cfb.cli",
-                "sync-player-stats",
-                "--year",
-                str(season),
-                "--conference",
-                conference,
-            ],
-            timeout=timeout,
-            log=log,
+            "player-stats", conferences,
+            lambda conference: ["sports_aggregator.cfb.cli", "sync-player-stats", "--year", str(season), "--conference", conference],
+            timeout=timeout, log=log, heartbeat=heartbeat,
         )
         status = "failed" if failures else "success"
-        message = (
-            f"failed conferences: {', '.join(failures[:8])}"
-            if failures
-            else f"{len(conferences)} conferences complete"
-        )
+        message = f"failed conferences: {', '.join(failures[:8])}" if failures else f"{len(conferences)} conferences complete"
         seconds = round((datetime.now(timezone.utc) - started).total_seconds(), 1)
-
-    return {
-        "step": "cfbd-current-player-stats",
-        "status": status,
-        "message": message,
-        "seconds": seconds,
-        "optional": optional,
-        "parent_rss_mb": _rss_mb(),
-        "child_peak_rss_mb": _children_rss_mb(),
-    }
+    else:
+        status, message, seconds = _run_command(
+            ["sports_aggregator.cfb.cli", "sync-player-stats", "--year", str(season)], timeout=timeout, log=log)
+    return {"step": "cfbd-current-player-stats", "status": status, "message": message,
+            "seconds": seconds, "optional": optional, "parent_rss_mb": _rss_mb(),
+            "child_peak_rss_mb": _children_rss_mb()}
 
 
-def _run_low_memory_phase(
-    phase: str,
-    season: int,
-    *,
-    root: Path,
-    only: list[str] | None = None,
-    datasets: list[str] | None = None,
-    timeout: int = 1800,
-    log,
-    heartbeat: Callable[[], None] | None = None,
-    completed: set[str] | None = None,
-    on_step: Callable[[dict[str, Any]], None] | None = None,
-) -> list[dict[str, Any]]:
+def _run_news_shard(season: int, *, timeout: int, log) -> dict[str, Any]:
+    status, message, seconds = _run_command(
+        ["sports_aggregator.social.local_reporting_shard", "--season", str(season)],
+        timeout=timeout, log=log,
+    )
+    return {"step": "local-news-shard", "status": status, "message": message,
+            "seconds": seconds, "optional": True, "parent_rss_mb": _rss_mb(),
+            "child_peak_rss_mb": _children_rss_mb()}
+
+
+def _run_low_memory_phase(phase: str, season: int, *, root: Path,
+                          only: list[str] | None = None, datasets: list[str] | None = None,
+                          timeout: int = 1800, log,
+                          heartbeat: Callable[[], None] | None = None,
+                          completed: set[str] | None = None,
+                          on_step: Callable[[dict[str, Any]], None] | None = None) -> list[dict[str, Any]]:
     plan = [step for step in steps(season) if phase in step.phases]
     if only:
         wanted = set(only)
         plan = [step for step in plan if step.name in wanted]
-
     results: list[dict[str, Any]] = []
     for step in plan:
         if completed and step.name in completed:
-            # Its own process already ran and committed; a previous attempt
-            # died later in the plan.
-            result = {
-                "step": step.name, "status": "skipped",
-                "message": "already completed by an earlier attempt",
-                "seconds": 0.0, "optional": step.optional,
-                "parent_rss_mb": _rss_mb(),
-                "child_peak_rss_mb": _children_rss_mb(),
-            }
+            result = {"step": step.name, "status": "skipped", "message": "already completed by an earlier attempt",
+                      "seconds": 0.0, "optional": step.optional, "parent_rss_mb": _rss_mb(),
+                      "child_peak_rss_mb": _children_rss_mb()}
             print(f"[--] {step.name}: resumed, already done", file=log, flush=True)
             results.append(result)
-            if on_step is not None:
-                on_step(result)
+            if on_step: on_step(result)
             continue
-        # Progress, so a refresh that is working keeps its lock and one that
-        # has stalled or been killed ages out quickly.
-        if heartbeat is not None:
-            heartbeat()
-        before_rss = _rss_mb()
-        print(
-            f"[ ] {step.name}: {step.description} parent_rss_mb={before_rss}",
-            file=log,
-            flush=True,
-        )
-
+        if heartbeat: heartbeat()
+        print(f"[ ] {step.name}: {step.description} parent_rss_mb={_rss_mb()}", file=log, flush=True)
         if not _env_satisfied(step):
             requirements = list(step.requires_all_env)
             if step.requires_env:
                 requirements.append("one of " + ", ".join(step.requires_env))
-            result = {
-                "step": step.name,
-                "status": "skipped",
-                "message": f"needs {', '.join(requirements)}",
-                "seconds": 0.0,
-                "optional": step.optional,
-                "parent_rss_mb": before_rss,
-                "child_peak_rss_mb": _children_rss_mb(),
-            }
+            result = {"step": step.name, "status": "skipped", "message": f"needs {', '.join(requirements)}",
+                      "seconds": 0.0, "optional": step.optional, "parent_rss_mb": _rss_mb(),
+                      "child_peak_rss_mb": _children_rss_mb()}
         elif step.name == "cfbd-sync":
             result = _run_cfbd_split(season, root=root, timeout=timeout, log=log,
-                                     datasets=datasets)
+                                     datasets=datasets, heartbeat=heartbeat)
         elif step.name == "cfbd-current-player-stats":
-            result = _run_player_stats_split(
-                season, root=root, timeout=timeout, log=log, optional=step.optional
-            )
+            result = _run_player_stats_split(season, root=root, timeout=timeout, log=log,
+                                             optional=step.optional, heartbeat=heartbeat)
         else:
-            status, message, seconds = _run_command(
-                step.command, timeout=int(step.timeout_seconds or timeout), log=log)
-            result = {
-                "step": step.name,
-                "status": status,
-                "message": message,
-                "seconds": seconds,
-                "optional": step.optional,
-                "parent_rss_mb": _rss_mb(),
-                "child_peak_rss_mb": _children_rss_mb(),
-            }
-
+            status, message, seconds = _run_command(step.command, timeout=int(step.timeout_seconds or timeout), log=log)
+            result = {"step": step.name, "status": status, "message": message, "seconds": seconds,
+                      "optional": step.optional, "parent_rss_mb": _rss_mb(), "child_peak_rss_mb": _children_rss_mb()}
         marker = {"success": "[ok]", "skipped": "[--]"}.get(result["status"], "[!!]")
-        print(
-            f"{marker} {result['status']} ({result['seconds']}s) "
-            f"parent_rss_mb={result['parent_rss_mb']} "
-            f"child_peak_rss_mb={result['child_peak_rss_mb']} {result['message']}",
-            file=log,
-            flush=True,
-        )
+        print(f"{marker} {result['status']} ({result['seconds']}s) parent_rss_mb={result['parent_rss_mb']} child_peak_rss_mb={result['child_peak_rss_mb']} {result['message']}", file=log, flush=True)
         results.append(result)
-        if on_step is not None:
-            on_step(result)
+        if on_step: on_step(result)
     return results
 
 
-def run_scheduled_refresh(
-    season: int,
-    *,
-    profile: str = "heavy",
-    repo_root: str | Path | None = None,
-    stale_lock_hours: float = 1,
-    resume_hours: float = RESUME_WINDOW_HOURS,
-    only: list[str] | None = None,
-    phase_runner: Callable[..., list[dict[str, Any]]] | None = None,
-) -> dict[str, Any]:
+def run_scheduled_refresh(season: int, *, profile: str = "heavy",
+                          repo_root: str | Path | None = None,
+                          stale_lock_hours: float = 1,
+                          resume_hours: float = RESUME_WINDOW_HOURS,
+                          only: list[str] | None = None,
+                          phase_runner: Callable[..., list[dict[str, Any]]] | None = None) -> dict[str, Any]:
     normalized_profile = profile.strip().casefold()
     if normalized_profile not in REFRESH_PROFILES:
         raise ValueError("profile must be one of " + ", ".join(sorted(REFRESH_PROFILES)))
-
     root = Path(repo_root) if repo_root else Path(__file__).resolve().parents[1]
     state_override = (os.getenv("CFB_REFRESH_STATE_PATH") or "").strip()
     database_override = (os.getenv("CFB_DATABASE_PATH") or "").strip()
     if state_override:
         instance = Path(state_override)
-        if not instance.is_absolute():
-            instance = root / instance
+        if not instance.is_absolute(): instance = root / instance
     elif database_override:
         database = Path(database_override)
-        if not database.is_absolute():
-            database = root / database
+        if not database.is_absolute(): database = root / database
         instance = database.parent
     else:
         instance = root / "instance"
@@ -623,102 +386,68 @@ def run_scheduled_refresh(
 
     stamp = started.strftime("%Y%m%dT%H%M%SZ")
     log_path = logs / f"refresh-{stamp}.log"
-    only = only or {"light": LIGHT_REFRESH_STEPS,
-                    "scores": SCORES_REFRESH_STEPS}.get(normalized_profile)
-    datasets = SCORES_DATASETS if normalized_profile == "scores" else None
+    if only is None:
+        if normalized_profile == "light":
+            only = LIGHT_REFRESH_STEPS
+        elif normalized_profile == "scores":
+            only = SCORES_REFRESH_STEPS
+        elif normalized_profile == "results":
+            only = RESULTS_REFRESH_STEPS
+        elif normalized_profile == "heavy":
+            # Heavy keeps every refresh step except the Google News crawl,
+            # which now has its own bounded profile.
+            only = [step.name for step in steps(season)
+                    if "refresh" in step.phases and step.name != "local-articles"]
+    datasets = SCORES_DATASETS if normalized_profile in {"scores", "results"} else None
 
-    # What a previous attempt already finished. Each step is its own process
-    # and commits before the next begins, so that work is on disk; without
-    # this the next run spends its budget doing it again.
     completed = _resumable_steps(instance, season, normalized_profile,
                                  window_hours=resume_hours, now=started)
-    progress = {
-        "season": season, "profile": normalized_profile,
-        "started_at": started.isoformat(), "completed": False,
-        "resumed_from": sorted(completed),
-        "steps": {name: {"status": "success", "resumed": True}
-                  for name in sorted(completed)},
-    }
+    progress = {"season": season, "profile": normalized_profile, "started_at": started.isoformat(),
+                "completed": False, "resumed_from": sorted(completed),
+                "steps": {name: {"status": "success", "resumed": True} for name in sorted(completed)}}
     _write_progress(instance, progress)
 
     def record_step(result: dict[str, Any]) -> None:
         progress["steps"][str(result.get("step"))] = {
-            "status": str(result.get("status")),
-            "at": datetime.now(timezone.utc).isoformat(),
-        }
+            "status": str(result.get("status")), "at": datetime.now(timezone.utc).isoformat()}
         _write_progress(instance, progress)
 
     try:
         with log_path.open("w", encoding="utf-8") as log:
-            print(
-                f"scheduled refresh: profile={normalized_profile} season={season} "
-                f"pid={os.getpid()} parent_rss_mb={_rss_mb()}",
-                file=log,
-                flush=True,
-            )
-            # flush() only reaches the operating system. When the platform kills
-            # the container for memory, anything still in the page cache is lost
-            # with it -- which is why the run that took down the instance left a
-            # log file containing nothing at all. Forcing this first line to
-            # disk guarantees a breadcrumb naming the run that died.
+            print(f"scheduled refresh: profile={normalized_profile} season={season} pid={os.getpid()} parent_rss_mb={_rss_mb()}", file=log, flush=True)
             os.fsync(log.fileno())
-            if phase_runner is None:
+            if normalized_profile == "news" and phase_runner is None:
+                result = _run_news_shard(season, timeout=600, log=log)
+                results = [result]
+                record_step(result)
+            elif phase_runner is None:
                 results = _run_low_memory_phase(
-                    "refresh", season, root=root, only=only, datasets=datasets,
-                    log=log, heartbeat=lambda: _touch_lock(lock),
-                    completed=completed, on_step=record_step,
-                )
+                    "refresh", season, root=root, only=only, datasets=datasets, log=log,
+                    heartbeat=lambda: _touch_lock(lock), completed=completed, on_step=record_step)
             else:
-                results = phase_runner("refresh", season, only=only,
-                                       datasets=datasets)
+                results = phase_runner("refresh", season, only=only, datasets=datasets)
 
-        # Tables grow all season; stale statistics send the planner back to
-        # scanning. Cheap enough to run every time.
         _refresh_statistics(instance)
-
         finished = datetime.now(timezone.utc)
-        required_failures = [
-            row for row in results
-            if row.get("status") not in {"success", "skipped"}
-            and not row.get("optional", False)
-        ]
-        degraded_steps = [
-            {
-                "step": str(row.get("step", "unknown")),
-                "status": str(row.get("status", "failed")),
-                "message": str(row.get("message", ""))[:240],
-            }
-            for row in results
-            if row.get("status") not in {"success", "skipped"}
-            and row.get("optional", False)
-        ]
+        required_failures = [row for row in results if row.get("status") not in {"success", "skipped"} and not row.get("optional", False)]
+        degraded_steps = [{"step": str(row.get("step", "unknown")), "status": str(row.get("status", "failed")),
+                           "message": str(row.get("message", ""))[:240]}
+                          for row in results if row.get("status") not in {"success", "skipped"} and row.get("optional", False)]
         exit_code = 1 if required_failures else 0
         status = "failed" if required_failures else "degraded" if degraded_steps else "success"
-
         report = {
-            "status": status,
-            "profile": normalized_profile,
-            "season": season,
-            "started_at": started.isoformat(),
-            "finished_at": finished.isoformat(),
-            "seconds": round((finished - started).total_seconds(), 1),
-            "exit_code": exit_code,
-            "log": str(log_path),
-            "step_count": len(results),
-            "degraded_steps": degraded_steps,
-            "degraded_count": len(degraded_steps),
-            "required_failure_count": len(required_failures),
-            "parent_peak_rss_mb": _rss_mb(),
-            "child_peak_rss_mb": _children_rss_mb(),
+            "status": status, "profile": normalized_profile, "season": season,
+            "started_at": started.isoformat(), "finished_at": finished.isoformat(),
+            "seconds": round((finished - started).total_seconds(), 1), "exit_code": exit_code,
+            "log": str(log_path), "step_count": len(results), "degraded_steps": degraded_steps,
+            "degraded_count": len(degraded_steps), "required_failure_count": len(required_failures),
+            "parent_peak_rss_mb": _rss_mb(), "child_peak_rss_mb": _children_rss_mb(),
             "resumed_steps": sorted(completed),
         }
-        # Reaching here means the plan was walked end to end. The next run
-        # starts from the top rather than skipping everything.
         progress["completed"] = True
         progress["finished_at"] = finished.isoformat()
         _write_progress(instance, progress)
-        history = instance / "scheduled_refresh_history.jsonl"
-        with history.open("a", encoding="utf-8") as handle:
+        with (instance / "scheduled_refresh_history.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(report, separators=(",", ":")) + "\n")
         return report
     finally:
@@ -730,36 +459,20 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(root / ".env")
     parser = argparse.ArgumentParser(description="Run one lock-safe scheduled refresh")
     parser.add_argument("--season", type=int, default=datetime.now().year)
-    parser.add_argument("--profile", choices=tuple(sorted(REFRESH_PROFILES)),
-                        default="heavy")
-    # Matches run_scheduled_refresh: liveness and the per-step heartbeat do
-    # the real work, so this only has to outlast a single stalled step.
+    parser.add_argument("--profile", choices=tuple(sorted(REFRESH_PROFILES)), default="heavy")
     parser.add_argument("--stale-lock-hours", type=float, default=1)
-    parser.add_argument(
-        "--resume-hours", type=float, default=RESUME_WINDOW_HOURS,
-        help="Skip steps a run in the last N hours already finished. 0 disables.")
-    parser.add_argument(
-        "--only", nargs="+", metavar="STEP",
-        help="Run only these steps, by name. Use --list-steps to see them.")
-    parser.add_argument(
-        "--list-steps", action="store_true",
-        help="Print the refresh steps in order and exit.")
+    parser.add_argument("--resume-hours", type=float, default=RESUME_WINDOW_HOURS)
+    parser.add_argument("--only", nargs="+", metavar="STEP")
+    parser.add_argument("--list-steps", action="store_true")
     args = parser.parse_args(argv)
     if args.list_steps:
         for step in steps(args.season):
-            if "refresh" not in step.phases:
-                continue
-            mark = "optional" if step.optional else "required"
-            print(f"{step.name:28} {mark:9} {step.description}")
+            if "refresh" in step.phases:
+                print(f"{step.name:28} {'optional' if step.optional else 'required':9} {step.description}")
         return 0
-    report = run_scheduled_refresh(
-        args.season,
-        profile=args.profile,
-        resume_hours=args.resume_hours,
-        only=args.only,
-        repo_root=root,
-        stale_lock_hours=args.stale_lock_hours,
-    )
+    report = run_scheduled_refresh(args.season, profile=args.profile,
+                                   resume_hours=args.resume_hours, only=args.only,
+                                   repo_root=root, stale_lock_hours=args.stale_lock_hours)
     print(json.dumps(report, sort_keys=True))
     if report["status"] == "skipped":
         return 0
