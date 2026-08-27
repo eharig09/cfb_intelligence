@@ -42,11 +42,10 @@ def profile_for(repository, *, now: datetime | None = None,
                 timezone_name: str | None = None) -> dict[str, Any]:
     """Return one bounded profile, or None when this cron tick needs no work.
 
-    During a live slate the quarter-hour ticks are intentionally tiny: games
-    and betting lines only. At the top of each hour the result profile also
-    refreshes recent box scores. Scheduled heavy/light/news jobs only fire on
-    minute zero, so an every-15-minute cron cannot accidentally run the same
-    scheduled job four times in one hour.
+    Live slates retain tiny quarter-hour score pulses. Outside games, scheduled
+    work is split across several ``light`` ticks; tracked_refresh resolves each
+    light tick to one small segment based on the local hour. Local reporting
+    remains a separate sharded ``news`` profile.
     """
     zone = ZoneInfo(timezone_name or os.getenv("CFB_REFRESH_TIMEZONE",
                                                "America/New_York"))
@@ -66,16 +65,16 @@ def profile_for(repository, *, now: datetime | None = None,
         return {"profile": None, "reason": "between_scheduled_ticks", "games": 0,
                 "local_time": moment.isoformat()}
 
-    # Keep the expensive full pass overnight by default. Evening refreshes are
-    # intentionally light so refresh work does not compete with active users.
-    heavy = _hours("CFB_REFRESH_HEAVY_HOURS", "23")
-    light = _hours("CFB_REFRESH_HOURS", "6,12,18,23")
-    news = _hours("CFB_REFRESH_NEWS_HOURS", "8,10,14,16,20,22")
+    # Heavy is retained only for backward-compatible explicit/manual requests;
+    # production scheduling leaves this set empty.
+    heavy = _hours("CFB_REFRESH_HEAVY_HOURS", "")
+    light = _hours("CFB_REFRESH_HOURS", "6,10,12,16,18,22,23")
+    news = _hours("CFB_REFRESH_NEWS_HOURS", "8,14,20")
     if moment.hour in heavy:
         return {"profile": "heavy", "reason": "scheduled_hour", "games": 0,
                 "local_time": moment.isoformat()}
     if moment.hour in light:
-        return {"profile": "light", "reason": "scheduled_hour", "games": 0,
+        return {"profile": "light", "reason": "scheduled_segment", "games": 0,
                 "local_time": moment.isoformat()}
     if moment.hour in news:
         return {"profile": "news", "reason": "scheduled_news_shard", "games": 0,
