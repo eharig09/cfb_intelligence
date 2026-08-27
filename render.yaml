@@ -16,8 +16,11 @@ services:
         value: "1"
       - key: MALLOC_ARENA_MAX
         value: "2"
+      # Keep enough headroom for Gunicorn + the refresh parent inside the
+      # 512 MB Render service. A child that needs more should fail/degrade
+      # rather than taking down the entire web instance.
       - key: CFB_REFRESH_CHILD_MB
-        value: "320"
+        value: "220"
       - key: CFB_PAGE_CACHE_SECONDS
         value: "900"
       - key: CFB_PAGE_CACHE_DIR
@@ -28,8 +31,10 @@ services:
         value: America/New_York
       - key: CFB_REFRESH_HOURS
         value: 6,12,18,23
+      # Run the expensive full pass once overnight. The 6 PM tick remains a
+      # light refresh so game-day traffic and refresh work do not collide.
       - key: CFB_REFRESH_HEAVY_HOURS
-        value: 6,23
+        value: "23"
       # Local reporting is deliberately decoupled from light/heavy refreshes.
       # Each news run processes one persisted shard and exits.
       - key: CFB_REFRESH_NEWS_HOURS
