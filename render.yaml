@@ -4,11 +4,10 @@ services:
     runtime: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    # Two threads, not four. Pages here are large -- a team page renders over
-    # 500 KB and holds the packets behind it while it does -- so peak memory
-    # scales with concurrent renders, and the refresh subprocess has to fit
-    # alongside them in the same 512 MB.
-    startCommand: gunicorn --workers 1 --threads 2 --timeout 120 --max-requests 500 --max-requests-jitter 50 run:app
+    # These pages are CPU-bound, so a second thread adds concurrent memory
+    # pressure without useful throughput. Disk-backed page caching makes repeat
+    # requests cheap while leaving maximum headroom for refresh subprocesses.
+    startCommand: gunicorn --workers 1 --threads 1 --timeout 120 --max-requests 500 --max-requests-jitter 50 run:app
     healthCheckPath: /api/v1/cfb/status
     envVars:
       - key: REGISTER_LEGACY_DASHBOARDS
@@ -17,25 +16,26 @@ services:
         value: "1"
       - key: MALLOC_ARENA_MAX
         value: "2"
-      # Address-space ceiling for each refresh subprocess. A step that exceeds
-      # it fails on its own instead of taking the instance down.
       - key: CFB_REFRESH_CHILD_MB
         value: "320"
-      # Rendered pages are cached against the database's modification time, so
-      # a refresh invalidates them without needing to signal the web worker.
-      # This is a backstop lifetime; set to 0 to disable page caching.
       - key: CFB_PAGE_CACHE_SECONDS
         value: "900"
-      # The refresh schedule lives here, not in the cron service. The cron
-      # container has no disk -- the database mounts to this service alone --
-      # so it cannot see whether a game is being played, and that is the thing
-      # the schedule now turns on.
+      - key: CFB_PAGE_CACHE_DIR
+        value: /var/data/page_cache
+      - key: CFB_PAGE_CACHE_THRESHOLD
+        value: "150"
       - key: CFB_REFRESH_TIMEZONE
         value: America/New_York
       - key: CFB_REFRESH_HOURS
         value: 6,12,18,23
       - key: CFB_REFRESH_HEAVY_HOURS
         value: 6,23
+      # Local reporting is deliberately decoupled from light/heavy refreshes.
+      # Each news run processes one persisted shard and exits.
+      - key: CFB_REFRESH_NEWS_HOURS
+        value: 8,10,14,16,20,22
+      - key: CFB_LOCAL_NEWS_SHARD_SIZE
+        value: "50"
       - key: CFB_DATABASE_PATH
         value: /var/data/cfb.sqlite3
       - key: CFBD_RAW_CACHE_PATH
@@ -54,10 +54,8 @@ services:
   - type: cron
     name: cfb-refresh-trigger
     runtime: python
-    # Every quarter hour. Most firings ask the web service what this moment
-    # calls for, are told "nothing", and exit in about a second. The ones
-    # during a game slate get a five-second pass that syncs the scores and the
-    # market, which is what a score appearing when it happens costs.
+    # Auto decides on the web service: 15-minute score pulses while games are
+    # active, hourly result/box-score passes, and one-shot scheduled jobs.
     schedule: "*/15 * * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: python -m sports_aggregator.render_trigger
@@ -66,7 +64,5 @@ services:
         sync: false
       - key: CFB_REFRESH_TOKEN
         sync: false
-      # Only for the timestamp in this job's own log; the decision is made by
-      # the web service, which reads its own copy of this setting.
       - key: CFB_REFRESH_TIMEZONE
         value: America/New_York
