@@ -12,6 +12,7 @@
     .history-rivalry strong { display:block; font:800 .95rem var(--display-font); }
     .history-rivalry strong::before { content:'★ '; color:var(--rust); }
     .history-rivalry span { display:block; color:var(--muted); font-size:.68rem; margin-top:3px; }
+    .history-rivalry a { color:inherit; }
 </style>
 {% endblock %}
 {% block body_attrs %} style="--team-light:{{ identity.accent }};--team-dark:{{ identity.accent_dark }};--conference-light:{{ identity.conference_color }};--conference-dark:{{ identity.conference_color_dark }}"{% endblock %}
@@ -26,8 +27,7 @@
 <div class="eyebrow">Program identity</div>
 <h1>{{ team.school }} historical production</h1>
 <p class="meta">
-    Team results, efficiency, position production, and coaching succession from synchronized CFBD seasons.
-    PFF grades appear only where a matching local season and position group exists.
+    Team results, efficiency, position production, coaching succession, and slow-changing program context.
 </p>
 <p>
     <a class="conference-tag" href="{{ url_for('cfb.team_history', team_id=team.team_id, season=season) }}">
@@ -38,24 +38,22 @@
 <section class="section">
     <h2>Program context</h2>
     <div class="section-note">
-        Stored-history facts come from completed games in the local database. Named rivalry labels are
-        seeded from Wikipedia's FBS rivalry list; this does not claim the local game backfill is a complete NCAA record book.
+        The record below covers the completed games stored locally, not an asserted NCAA all-time total.
+        Rivalry names/trophies come from Wikipedia context; series records use only games in this database.
     </div>
     <div class="facts">
-        <div class="fact"><b>{{ program.first_season or '—' }}</b><span>First stored season</span></div>
-        <div class="fact"><b>{{ program.last_season or '—' }}</b><span>Latest stored season</span></div>
-        <div class="fact"><b>{{ program.record or '—' }}</b><span>Stored W-L-T</span></div>
-        <div class="fact"><b>{{ program.games or '—' }}</b><span>Stored games</span></div>
+        <div class="fact"><b>{{ program.record or '—' }}</b><span>Stored record</span></div>
+        <div class="fact"><b>{% if program.first_season and program.last_season %}{{ program.first_season }}&ndash;{{ program.last_season }}{% else %}—{% endif %}</b><span>Stored coverage</span></div>
         <div class="fact"><b>{{ program.venue or '—' }}</b><span>Stadium</span></div>
-        <div class="fact"><b>{{ program.rivalry_count or 0 }}</b><span>Named rivalries</span></div>
     </div>
     {% if program.rivalries %}
     <div class="history-rivalries">
         {% for rivalry in program.rivalries %}
         <article class="history-rivalry">
-            <strong>{{ rivalry.name }}</strong>
-            <span>{{ rivalry.teams[0] }} vs {{ rivalry.teams[1] }}{% if rivalry.first_year %} · since {{ rivalry.first_year }}{% endif %}</span>
+            <strong>{% if rivalry.wiki_url %}<a href="{{ rivalry.wiki_url }}" target="_blank" rel="noopener">{{ rivalry.name }}</a>{% else %}{{ rivalry.name }}{% endif %}</strong>
+            <span>vs {{ rivalry.opponent or 'rival' }} · stored series {{ rivalry.series_record or '—' }}{% if rivalry.series_games %} ({{ rivalry.series_games }} games){% endif %}</span>
             {% if rivalry.trophy %}<span>{{ rivalry.trophy }}</span>{% endif %}
+            {% if rivalry.first_year %}<span>Rivalry context dates to {{ rivalry.first_year }} · <a href="{{ rivalry.source_url }}" target="_blank" rel="noopener">Wikipedia source</a></span>{% endif %}
         </article>
         {% endfor %}
     </div>
