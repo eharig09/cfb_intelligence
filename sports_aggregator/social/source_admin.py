@@ -299,7 +299,7 @@ def add_or_update_source(unified_registry, legacy_registry, payload: dict[str, A
             analysis_score=defaults["analytics_score"],
             breaking_news_score=defaults["breaking_score"],
             prospect_score=1, g5_score=1, priority=priority, active=True,
-        )),))
+        ),))
         resolution = BlueskyIdentityClient().resolve(handle)
         legacy_registry.store_resolution(resolution)
         resolution_status = resolution.status
