@@ -32,7 +32,10 @@ MAX_RETRIES = 4
 WIKI_SCHOOL_ALIASES = {
     "App State": "Appalachian State",
     "Florida International": "FIU",
+    "Hawai'i": "Hawaii",
+    "Massachusetts": "UMass",
     "Miami (OH)": "Miami",
+    "San José State": "San Jose State",
     "UL Monroe": "Louisiana–Monroe",
     "UConn": "UConn",
 }
@@ -148,7 +151,6 @@ def _batch_pages(client: requests.Session, requested: list[tuple[str, dict[str, 
     )
     query = payload.get("query") or {}
 
-    # MediaWiki may normalize punctuation/capitalization or follow a redirect.
     alias_to_original = {title: title for title in originals}
     for item in query.get("normalized") or []:
         source = str(item.get("from") or "")
@@ -207,7 +209,6 @@ def _search_title(client: requests.Session, team: dict[str, Any], season: int,
 
 def _single_title_page(client: requests.Session, title: str, timeout: float) -> dict[str, Any] | None:
     found, _ = _batch_pages(client, [(title, {"team_id": -1, "school": "", "mascot": ""})], timeout)
-    # The synthetic team id is used only to reuse the batched query path.
     return found.get(-1)
 
 
@@ -263,8 +264,6 @@ def sync_season_wikipedia(repository, season: int, *, timeout: float = 20.0,
     failures: list[str] = []
     unresolved: list[dict[str, Any]] = []
 
-    # Primary path: 25 team pages per request. A 136-team season is ~6 calls,
-    # versus 136+ calls in the original implementation.
     requested = [(_candidate_title(team, int(season)), team) for team in teams]
     for batch in _chunks(requested, BATCH_SIZE):
         try:
@@ -278,10 +277,8 @@ def sync_season_wikipedia(repository, season: int, *, timeout: float = 20.0,
             if result:
                 stored += _store_result(repository, int(season), team, result)
         unresolved.extend(missing)
-        # Be courteous even though batching already cuts request volume sharply.
         time.sleep(0.2)
 
-    # Only unusual title mismatches use search. Throttle these individually.
     missing_names: list[str] = []
     for team in unresolved:
         try:
