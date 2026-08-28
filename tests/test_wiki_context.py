@@ -1,4 +1,10 @@
-from sports_aggregator.cfb.wiki_context import _first, _first_season, _infobox_fields
+from sports_aggregator.cfb.wiki_context import (
+    _first,
+    _first_season,
+    _infobox_fields,
+    _is_season_article,
+    _title_score,
+)
 
 
 def test_college_football_infobox_identity_fields():
@@ -23,3 +29,13 @@ def test_missing_infobox_is_safe():
     fields = _infobox_fields("No football infobox here")
     assert fields == {}
     assert _first_season(fields) is None
+
+
+def test_season_articles_are_rejected():
+    assert _is_season_article("2026 Central Michigan Chippewas football team")
+    assert not _is_season_article("Central Michigan Chippewas football")
+    assert _title_score(
+        "Central Michigan Chippewas football", "Central Michigan", "Chippewas"
+    ) > _title_score(
+        "2026 Central Michigan Chippewas football team", "Central Michigan", "Chippewas"
+    )
