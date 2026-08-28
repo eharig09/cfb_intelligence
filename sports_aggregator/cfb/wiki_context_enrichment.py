@@ -19,7 +19,6 @@ PARSER_VERSION = 2
 
 
 def _plain_text(wikitext: str) -> str:
-    """Reduce wikitext enough for conservative sentence-level regex fallbacks."""
     text = re.sub(r"<!--.*?-->", " ", wikitext, flags=re.S)
     text = re.sub(r"<ref\b[^>]*>.*?</ref>|<ref\b[^>]*/>", " ", text, flags=re.S | re.I)
     text = re.sub(r"\[\[(?:[^\]|]+\|)?([^\]]+)\]\]", r"\1", text)
@@ -81,12 +80,6 @@ def _clean_cell_text(value: str | None) -> str | None:
 
 
 def _rendered_infobox_fields(html_text: str) -> dict[str, str]:
-    """Read reader-facing labels from the rendered Wikipedia infobox.
-
-    Rendered labels are substantially more stable than the underlying template
-    parameter names. Claimed and unclaimed national-title rows remain separate
-    so unclaimed titles can never leak into the headline championship field.
-    """
     soup = BeautifulSoup(html_text or "", "html.parser")
     box = soup.select_one("table.infobox")
     if box is None:
@@ -111,10 +104,9 @@ def _rendered_history_fields(fields: dict[str, str]) -> dict[str, Any]:
         match = re.search(r"\b(18\d{2}|19\d{2}|20\d{2})\b", first_value)
         first_year = int(match.group(1)) if match else None
 
-    # Prefer an explicitly claimed row. A generic national-championship row is
-    # acceptable only when Wikipedia did not separately label it unclaimed.
     claimed = fields.get("claimed national titles") or fields.get("claimed national championships")
-    if claimed is None and not any("unclaimed national" in key for key in fields):
+    has_unclaimed = any("unclaimed national" in key for key in fields)
+    if claimed is None and not has_unclaimed:
         claimed = fields.get("national titles") or fields.get("national championships")
 
     return {
@@ -128,6 +120,7 @@ def _rendered_history_fields(fields: dict[str, str]) -> dict[str, Any]:
             fields.get("unclaimed national titles") or
             fields.get("unclaimed national championships")
         ),
+        "has_unclaimed_national_row": has_unclaimed,
     }
 
 
@@ -140,13 +133,11 @@ def _compact_conference_titles(value: Any) -> str | None:
     if years:
         unique_years = sorted(set(years))
         return f"{len(unique_years)} ({unique_years[-1]})"
-    # Some pages publish only a count rather than the title years.
     count = re.search(r"\b(\d{1,3})\b", text)
     return count.group(1) if count else text
 
 
 def install_wiki_context_enrichment() -> None:
-    """Patch the existing integration without changing its storage contract."""
     from sports_aggregator.cfb import conference_extras, wiki_context
 
     current_fetch = wiki_context._fetch_wikipedia
@@ -160,9 +151,6 @@ def install_wiki_context_enrichment() -> None:
         if page_title:
             session = requests.Session()
             session.headers.update({"User-Agent": wiki_context.USER_AGENT})
-
-            # Rendered infobox fallback: this handles template variants such as
-            # Oregon and Indiana without hard-coding school-specific fields.
             rendered = session.get(wiki_context.WIKI_API, params={
                 "action": "parse", "page": page_title,
                 "prop": "text", "format": "json", "formatversion": 2,
@@ -175,21 +163,29 @@ def install_wiki_context_enrichment() -> None:
                 if payload.get(key) in (None, "") and rendered_fields.get(key) not in (None, ""):
                     payload[key] = rendered_fields[key]
 
-            # National championships are intentionally stricter: the rendered
-            # claimed row replaces a generic source value whenever it exists,
-            # and an explicitly unclaimed row is stored only as contextual
-            # metadata, never as a headline title.
             if rendered_fields.get("national_championships") not in (None, ""):
                 payload["national_championships"] = rendered_fields["national_championships"]
+            elif rendered_fields.get("has_unclaimed_national_row"):
+                # If Wikipedia explicitly distinguishes an unclaimed-title row
+                # and provides no claimed-title row, the headline total is zero.
+                # Do not preserve a generic value from the older parser.
+                payload["national_championships"] = None
+
             if rendered_fields.get("unclaimed_national_championships") not in (None, ""):
                 payload["unclaimed_national_championships"] = rendered_fields[
                     "unclaimed_national_championships"
                 ]
 
             missing = [
-                key for key in ("first_season", "national_championships", "conference_championships")
+                key for key in ("first_season", "conference_championships")
                 if payload.get(key) in (None, "")
             ]
+            # National-title prose is used only when the rendered infobox does
+            # not explicitly distinguish unclaimed titles.
+            if (payload.get("national_championships") in (None, "") and
+                    not rendered_fields.get("has_unclaimed_national_row")):
+                missing.append("national_championships")
+
             if missing:
                 response = session.get(wiki_context.WIKI_API, params={
                     "action": "parse", "page": page_title,
@@ -212,24 +208,17 @@ def install_wiki_context_enrichment() -> None:
         result = current_team_context(repository, team, refresh=refresh)
         stored_payload = result.get("payload") or {}
         parser_version = stored_payload.get("wiki_parser_version")
-        # Force one post-deploy refresh for every previously cached team so
-        # partial rows (e.g. first season present but titles blank) are repaired.
         if not refresh and result.get("fetch_ok") and parser_version != PARSER_VERSION:
             result = current_team_context(repository, team, refresh=True)
 
         result["conference_championships_compact"] = _compact_conference_titles(
             result.get("conference_championships")
         )
-        try:
-            payload = result.get("payload") or {}
-            result["unclaimed_national_championships"] = payload.get(
-                "unclaimed_national_championships"
-            )
-        except AttributeError:
-            pass
+        payload = result.get("payload") or {}
+        result["unclaimed_national_championships"] = payload.get(
+            "unclaimed_national_championships"
+        )
         return result
 
     wiki_context.team_wiki_context = enriched_team_context
-    # conference_extras imported the function directly, so replace that bound
-    # reference too; team_schedule_elo resolves this module global at call time.
     conference_extras.team_wiki_context = enriched_team_context
