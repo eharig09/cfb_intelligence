@@ -130,22 +130,58 @@ def _first_season(fields: dict[str, str]) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _is_season_article(title: str | None) -> bool:
+    """True for annual team pages such as '2026 ... football team'."""
+    value = str(title or "").strip()
+    return bool(
+        re.match(r"^(?:18|19|20)\d{2}\b", value)
+        or re.search(r"\b(?:18|19|20)\d{2}\s+.*\bfootball\s+team\b", value, flags=re.I)
+    )
+
+
+def _title_score(title: str, school: str, mascot: str | None) -> int:
+    if not title or _is_season_article(title) or "football" not in title.casefold():
+        return -10_000
+    normalized = re.sub(r"\s+", " ", title.casefold()).strip()
+    school_norm = re.sub(r"\s+", " ", school.casefold()).strip()
+    mascot_norm = re.sub(r"\s+", " ", str(mascot or "").casefold()).strip()
+    score = 0
+    if normalized == f"{school_norm} football":
+        score += 1000
+    if mascot_norm and normalized == f"{school_norm} {mascot_norm} football":
+        score += 1200
+    if normalized.endswith(" football"):
+        score += 250
+    if " football team" in normalized:
+        score -= 300
+    if school_norm in normalized:
+        score += 150
+    if mascot_norm and mascot_norm in normalized:
+        score += 100
+    return score
+
+
 def _article_search(session: requests.Session, school: str, mascot: str | None) -> str | None:
+    """Resolve the evergreen program article, never an individual-season page."""
     queries = []
     if mascot:
         queries.append(f'"{school} {mascot} football"')
     queries.extend((f'"{school} football"', f'{school} football'))
+    candidates: dict[str, int] = {}
     for query in queries:
         response = session.get(WIKI_API, params={
             "action": "query", "list": "search", "srsearch": query,
-            "srnamespace": 0, "srlimit": 5, "format": "json", "formatversion": 2,
+            "srnamespace": 0, "srlimit": 10, "format": "json", "formatversion": 2,
         }, timeout=4)
         response.raise_for_status()
         for row in response.json().get("query", {}).get("search", []):
             title = str(row.get("title") or "")
-            if "football" in title.casefold():
-                return title
-    return None
+            score = _title_score(title, school, mascot)
+            if score > -10_000:
+                candidates[title] = max(score, candidates.get(title, -10_000))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda title: (candidates[title], -len(title)))
 
 
 def _fetch_wikipedia(school: str, mascot: str | None) -> dict[str, Any]:
@@ -153,7 +189,7 @@ def _fetch_wikipedia(school: str, mascot: str | None) -> dict[str, Any]:
     session.headers.update({"User-Agent": USER_AGENT})
     title = _article_search(session, school, mascot)
     if not title:
-        raise LookupError(f"No Wikipedia football article found for {school}")
+        raise LookupError(f"No evergreen Wikipedia football article found for {school}")
 
     query = session.get(WIKI_API, params={
         "action": "query", "prop": "extracts|info", "titles": title,
@@ -163,9 +199,12 @@ def _fetch_wikipedia(school: str, mascot: str | None) -> dict[str, Any]:
     query.raise_for_status()
     pages = query.json().get("query", {}).get("pages", [])
     page = pages[0] if pages else {}
+    resolved_title = str(page.get("title") or title)
+    if _is_season_article(resolved_title):
+        raise LookupError(f"Wikipedia resolved {school} to a season page: {resolved_title}")
 
     parsed = session.get(WIKI_API, params={
-        "action": "parse", "page": page.get("title") or title,
+        "action": "parse", "page": resolved_title,
         "prop": "wikitext", "format": "json", "formatversion": 2,
     }, timeout=4)
     parsed.raise_for_status()
@@ -173,7 +212,7 @@ def _fetch_wikipedia(school: str, mascot: str | None) -> dict[str, Any]:
     fields = _infobox_fields(wikitext)
 
     return {
-        "page_title": page.get("title") or title,
+        "page_title": resolved_title,
         "page_url": page.get("fullurl"),
         "first_season": _first_season(fields),
         "national_championships": _first(fields, "natltitles", "nationaltitles", "nationalchampionships"),
@@ -231,8 +270,12 @@ def team_wiki_context(repository, team: dict[str, Any], *, refresh: bool = False
     cached = _read_cache(repository, team_id)
     fetched_at = _parse_dt((cached or {}).get("fetched_at"))
     ok = bool((cached or {}).get("fetch_ok"))
+    cached_is_season_page = _is_season_article((cached or {}).get("page_title"))
     fresh_for = timedelta(days=CACHE_DAYS) if ok else timedelta(hours=FAILURE_RETRY_HOURS)
-    needs_refresh = refresh or cached is None or fetched_at is None or _now() - fetched_at > fresh_for
+    needs_refresh = (
+        refresh or cached is None or fetched_at is None or cached_is_season_page
+        or _now() - fetched_at > fresh_for
+    )
 
     if needs_refresh:
         try:
@@ -240,7 +283,7 @@ def team_wiki_context(repository, team: dict[str, Any], *, refresh: bool = False
             _write_cache(repository, team_id, school, payload, True)
             cached = _read_cache(repository, team_id)
         except Exception as exc:
-            if cached and cached.get("fetch_ok"):
+            if cached and cached.get("fetch_ok") and not cached_is_season_page:
                 preserved = dict(cached)
                 preserved["error"] = str(exc)
                 _write_cache(repository, team_id, school, preserved, True)
