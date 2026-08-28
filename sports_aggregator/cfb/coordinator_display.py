@@ -3,7 +3,7 @@
 The existing templates are large and actively evolving. Rather than duplicating
 or replacing them, this module wraps Flask's Jinja loader and inserts two small,
 stable panel calls at known template anchors. All displayed values come from the
-stored coordinator_seasons table; no network request occurs during page render.
+stored coordinator and game tables; no network request occurs during page render.
 """
 
 from __future__ import annotations
@@ -99,6 +99,15 @@ def _text(value: Any, fallback: str = "—") -> str:
     return escape(str(value))
 
 
+def _number(value: Any, fallback: str = "—") -> str:
+    if value is None or value == "":
+        return fallback
+    try:
+        return f"{float(value):.1f}"
+    except (TypeError, ValueError):
+        return _text(value, fallback)
+
+
 def _side_label(item: dict[str, Any] | None) -> str:
     if not item:
         return "No current data"
@@ -127,6 +136,20 @@ def _coverage_label(history: dict[str, Any]) -> str:
     return f"{start}–{end} · {count} seasons"
 
 
+def _performance_cells(item: dict[str, Any], scope: str = "career") -> tuple[str, str, str]:
+    performance = item.get("career_performance" if scope == "career" else "program_performance") or {}
+    points = _number(performance.get("points_per_game"))
+    yards = _number(performance.get("yards_per_game"))
+    games = int(performance.get("games") or 0)
+    yard_games = int(performance.get("yard_games") or 0)
+    coverage = f"{games} games"
+    if yard_games != games and yard_games:
+        coverage += f" · yards {yard_games}"
+    elif not yard_games:
+        coverage += " · yards unavailable"
+    return points, yards, coverage
+
+
 def _team_panel(repository, team_id: int, season: int) -> Markup:
     context = coordinator_context(repository, int(team_id), int(season))
     history = _history(repository, int(team_id), int(season))
@@ -138,6 +161,7 @@ def _team_panel(repository, team_id: int, season: int) -> Markup:
     change_text = "—" if changes is None else str(int(changes))
 
     rows = []
+    performance_rows = []
     for label, item in (("Offense", offense), ("Defense", defense)):
         if item:
             previous = item.get("previous_coordinator") or "—"
@@ -150,6 +174,17 @@ def _team_panel(repository, team_id: int, season: int) -> Markup:
                 f"<span class='sub'>{_text(source)}</span></td><td>{_text(tenure)}</td>"
                 f"<td>{_text(_side_label(item))}</td><td>{_text(previous)}</td>"
                 f"<td>{_previous_stop(item)}</td></tr>"
+            )
+            career_ppg, career_ypg, career_coverage = _performance_cells(item, "career")
+            program_ppg, program_ypg, program_coverage = _performance_cells(item, "program")
+            side_note = "scored" if item.get("side") == "offense" else "allowed"
+            performance_rows.append(
+                f"<tr><th>{_text(item.get('role'))}</th><td><strong>{_text(item.get('coach_name'))}</strong>"
+                f"<span class='sub'>{side_note}</span></td>"
+                f"<td><strong>{career_ppg}</strong><span class='sub'>{career_coverage}</span></td>"
+                f"<td><strong>{career_ypg}</strong></td>"
+                f"<td><strong>{program_ppg}</strong><span class='sub'>{program_coverage}</span></td>"
+                f"<td><strong>{program_ypg}</strong></td></tr>"
             )
         else:
             rows.append(
@@ -167,7 +202,7 @@ def _team_panel(repository, team_id: int, season: int) -> Markup:
 
     note = (
         "Tenure and change labels use consecutive stored seasons only. "
-        "If the immediately preceding season has not been backfilled, status stays unknown."
+        "Career performance is game-weighted across seasons stored with that coach in the same coordinator role."
     )
     html = f"""
 <section class="section coordinator-panel" data-mobile-tab-panel="overview">
@@ -182,6 +217,14 @@ def _team_panel(repository, team_id: int, season: int) -> Markup:
     <table class="data dense">
       <thead><tr><th>Unit</th><th>Coordinator</th><th>Tenure</th><th>{season} status</th><th>Previous coordinator</th><th>Previous stop</th></tr></thead>
       <tbody>{''.join(rows)}</tbody>
+    </table>
+  </div>
+  <h3 class="subhead">Coordinator career performance</h3>
+  <div class="section-note">For OCs, PPG/YPG are offense produced. For DCs, they are points/yards allowed. Current-program columns isolate only this school.</div>
+  <div class="table-scroll">
+    <table class="data dense">
+      <thead><tr><th>Role</th><th>Coordinator</th><th>Career PPG</th><th>Career YPG</th><th>At school PPG</th><th>At school YPG</th></tr></thead>
+      <tbody>{''.join(performance_rows) if performance_rows else '<tr><td colspan="6" class="is-empty">No coordinator performance history stored.</td></tr>'}</tbody>
     </table>
   </div>
   <h3 class="subhead">Recent coordinator history</h3>
@@ -205,13 +248,16 @@ def _matchup_team_card(name: str, packet: dict[str, Any], history: dict[str, Any
     for label, item in (("OC", packet.get("offense")), ("DC", packet.get("defense"))):
         if item:
             tenure = int(item.get("tenure_years") or 1)
+            career_ppg, career_ypg, coverage = _performance_cells(item, "career")
             staff_rows.append(
-                f"<tr><th>{label}</th><td><strong>{_text(item.get('coach_name'))}</strong></td>"
+                f"<tr><th>{label}</th><td><strong>{_text(item.get('coach_name'))}</strong>"
+                f"<span class='sub'>{_text(_side_label(item))}</span></td>"
                 f"<td>{tenure} yr{'s' if tenure != 1 else ''}</td>"
-                f"<td>{_text(_side_label(item))}</td></tr>"
+                f"<td><strong>{career_ppg}</strong><span class='sub'>{coverage}</span></td>"
+                f"<td><strong>{career_ypg}</strong></td></tr>"
             )
         else:
-            staff_rows.append(f"<tr><th>{label}</th><td colspan='3'>No {packet.get('season')} row</td></tr>")
+            staff_rows.append(f"<tr><th>{label}</th><td colspan='4'>No {packet.get('season')} row</td></tr>")
     return f"""
 <div class="ats-card coordinator-card">
   <h4>{_text(name)}</h4>
@@ -220,10 +266,10 @@ def _matchup_team_card(name: str, packet: dict[str, Any], history: dict[str, Any
     <span><b>{changes_text}</b> changes</span>
   </div>
   <table class="ats-grid">
-    <thead><tr><th></th><th>Coordinator</th><th>Tenure</th><th>Status</th></tr></thead>
+    <thead><tr><th></th><th>Coordinator</th><th>Tenure</th><th>Career PPG</th><th>Career YPG</th></tr></thead>
     <tbody>{''.join(staff_rows)}</tbody>
   </table>
-  <div class="content-meta">Stored history: {_text(_coverage_label(history))}</div>
+  <div class="content-meta">OC numbers = offense produced · DC numbers = defense allowed · stored history: {_text(_coverage_label(history))}</div>
 </div>
 """
 
@@ -248,7 +294,7 @@ def _matchup_panel(repository, away_team_id: int, home_team_id: int,
     html = f"""
 <section class="section coordinator-matchup" aria-label="Coaching continuity comparison">
   <h2>Coaching continuity</h2>
-  <div class="section-note">{escape(edge_text)} Tenure is based only on consecutive stored seasons.</div>
+  <div class="section-note">{escape(edge_text)} Career averages use only completed games in stored coordinator seasons.</div>
   <div class="ats-pair">
     {_matchup_team_card(away_name, packet['away'], away_history)}
     {_matchup_team_card(home_name, packet['home'], home_history)}
