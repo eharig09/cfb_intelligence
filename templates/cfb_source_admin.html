@@ -1,0 +1,137 @@
+{% extends "_layout.html" %}
+{% block title %}CFB Source Admin{% endblock %}
+
+{% block head %}
+<style>
+.source-admin{max-width:920px;margin:0 auto;padding:1.25rem 1rem 3rem}.source-admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}.source-admin-card{border:1px solid var(--line);background:var(--paper);padding:1rem;border-radius:10px}.source-admin label{display:flex;flex-direction:column;gap:.3rem;font-size:.78rem;color:var(--muted)}.source-admin input,.source-admin select{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:7px;padding:.58rem .65rem;font:inherit}.source-admin fieldset{border:1px solid var(--line);border-radius:9px;padding:.8rem;margin:.9rem 0}.source-admin legend{font-weight:800;padding:0 .35rem}.tag-grid{display:flex;gap:.6rem 1rem;flex-wrap:wrap}.tag-grid label{display:flex;flex-direction:row;align-items:center;color:var(--ink);font-size:.9rem}.source-admin-actions{display:flex;gap:.65rem;align-items:center;flex-wrap:wrap;margin-top:1rem}.source-admin button{border:1px solid var(--surface-strong);background:var(--surface-strong);color:var(--on-strong);border-radius:7px;padding:.6rem .85rem;font-weight:800;cursor:pointer}.source-admin-status{font-size:.9rem;color:var(--muted)}.source-admin-result{margin-top:1rem;border-left:4px solid var(--team);padding:.7rem .9rem;background:var(--surface)}.source-admin-help{font-size:.88rem;color:var(--muted);line-height:1.45}.source-admin-help code{color:var(--ink)}@media(max-width:700px){.source-admin-grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<a href="{{ url_for('cfb_data_status.data_status') }}">&larr; Data Status</a>
+<span class="tagline">Source Admin</span>
+{% endblock %}
+
+{% block content %}
+<div class="source-admin">
+  <div class="eyebrow">Source registry</div>
+  <h1>Add or update a source</h1>
+  <p class="source-admin-help">Seed a source into the unified registry without editing code. Reuse the same <strong>Source name</strong> when adding another platform for an existing outlet/show/person. New endpoints are stored as <code>seeded_unverified</code> so normal validation can still verify the identity.</p>
+
+  <form id="source-admin-form" class="source-admin-card">
+    <div class="source-admin-grid">
+      <label>Source name
+        <input name="name" required placeholder="e.g. Split Zone Duo">
+      </label>
+      <label>Organization (optional)
+        <input name="organization" placeholder="Publisher/network/person">
+      </label>
+      <label>Identity type
+        <select name="entity_type">
+          <option value="OUTLET">Outlet</option>
+          <option value="SHOW">Show / podcast</option>
+          <option value="PERSON">Person / reporter</option>
+          <option value="COMMUNITY">Community</option>
+          <option value="SOURCE">Other source</option>
+        </select>
+      </label>
+      <label>Platform
+        <select name="platform" id="source-platform">
+          <option value="website">Website</option>
+          <option value="rss">RSS / Atom feed</option>
+          <option value="youtube">YouTube channel</option>
+          <option value="podcast">Podcast feed</option>
+          <option value="bluesky">Bluesky account</option>
+        </select>
+      </label>
+      <label style="grid-column:1/-1">URL or handle
+        <input name="endpoint" id="source-endpoint" required placeholder="https://example.com or @reporter.bsky.social">
+      </label>
+      <label>Team(s), comma separated
+        <input name="teams" placeholder="Michigan, Eastern Michigan">
+      </label>
+      <label>Conference(s), comma separated
+        <input name="conferences" placeholder="Big Ten">
+      </label>
+      <label>Priority
+        <select name="priority">
+          <option value="5">5 — very high value</option>
+          <option value="4">4 — strong source</option>
+          <option value="3" selected>3 — useful secondary</option>
+          <option value="2">2 — lower priority</option>
+          <option value="1">1 — weak / experimental</option>
+        </select>
+      </label>
+      <label>Extra tags, comma separated
+        <input name="extra_tags" placeholder="injuries, practice, scheme, G6">
+      </label>
+    </div>
+
+    <fieldset>
+      <legend>Seed tags</legend>
+      <div class="tag-grid">
+        <label><input type="checkbox" name="seed_tag" value="intel"> intel</label>
+        <label><input type="checkbox" name="seed_tag" value="analysis"> analysis</label>
+        <label><input type="checkbox" name="seed_tag" value="betting"> betting</label>
+        <label><input type="checkbox" name="seed_tag" value="sentiment"> sentiment</label>
+      </div>
+    </fieldset>
+
+    <div class="source-admin-actions">
+      <button type="submit">Add / update source</button>
+      <span id="source-admin-status" class="source-admin-status"></span>
+    </div>
+  </form>
+  <div id="source-admin-result"></div>
+
+  <section class="section">
+    <h2>How platform entries behave</h2>
+    <div class="source-admin-help">
+      <p><strong>Website:</strong> records the publisher/site endpoint. If you know an actual RSS/Atom URL, add it separately as an RSS endpoint so ingestion has a machine-readable feed.</p>
+      <p><strong>YouTube / podcast:</strong> stores the exact channel/feed you supply for the existing media validation pipeline.</p>
+      <p><strong>Bluesky:</strong> accepts either a handle or profile URL and mirrors the seed into the legacy Bluesky registry that the current poller still reads.</p>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  "use strict";
+  var form=document.getElementById("source-admin-form");
+  var status=document.getElementById("source-admin-status");
+  var result=document.getElementById("source-admin-result");
+  if(!form)return;
+  function payload(){
+    var data=new FormData(form), tags=data.getAll("seed_tag");
+    var extra=String(data.get("extra_tags")||"").split(",").map(function(x){return x.trim();}).filter(Boolean);
+    return {name:data.get("name"),organization:data.get("organization"),entity_type:data.get("entity_type"),platform:data.get("platform"),endpoint:data.get("endpoint"),teams:data.get("teams"),conferences:data.get("conferences"),priority:Number(data.get("priority")||3),tags:tags.concat(extra)};
+  }
+  async function login(){
+    var pin=window.prompt("Admin PIN");
+    if(!pin)return false;
+    var response=await fetch("/internal/cfb-admin-login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:pin})});
+    return response.ok;
+  }
+  async function submit(retried){
+    status.textContent="Saving…"; result.innerHTML="";
+    var response=await fetch("/internal/cfb-source-seed",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload())});
+    if(response.status===401 && !retried){
+      if(await login()) return submit(true);
+      status.textContent="PIN required."; return;
+    }
+    var body={}; try{body=await response.json();}catch(e){}
+    if(!response.ok){status.textContent=(body.description||body.error||("Request failed ("+response.status+")"));return;}
+    status.textContent="Saved.";
+    result.className="source-admin-result";
+    result.innerHTML="<strong>"+String(body.name||"")+"</strong> · "+String(body.platform||"")+" · priority "+String(body.priority||"")+"<br><span class='meta'>"+String(body.endpoint||"")+" · "+String((body.tags||[]).join(", ")||"no seed tags")+" · "+String(body.verification_status||"")+"</span>";
+  }
+  form.addEventListener("submit",function(event){event.preventDefault();submit(false);});
+  document.getElementById("source-platform").addEventListener("change",function(){
+    var p=this.value, input=document.getElementById("source-endpoint");
+    input.placeholder=p==="bluesky"?"@reporter.bsky.social or profile URL":p==="podcast"?"https://.../feed.xml":p==="youtube"?"https://youtube.com/@channel":"https://...";
+  });
+}());
+</script>
+{% endblock %}
