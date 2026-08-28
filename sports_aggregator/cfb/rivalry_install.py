@@ -55,7 +55,7 @@ def _rivalry_label(rivalry: dict[str, Any] | None) -> str | None:
 
 
 def _install_view_annotations() -> None:
-    """Add rivalry labels to the shared schedule tables without new columns."""
+    """Add rivalry/TBD display context to shared schedule tables."""
     from sports_aggregator.cfb import views
 
     original_schedule = views.schedule_table
@@ -65,6 +65,11 @@ def _install_view_annotations() -> None:
             games = list(schedule)
             table = original_schedule(games, *args, **kwargs)
             for game, row in zip(games, table.rows):
+                # CFBD uses a midnight timestamp as a placeholder when kickoff
+                # time has not been announced. Preserve real midnight/noon
+                # timestamps, but do not present a TBD placeholder as 12:00 AM.
+                if game.get("start_time_tbd"):
+                    row["date_sub"] = "TBD"
                 label = _rivalry_label(game.get("rivalry"))
                 if label:
                     row["opponent_sub"] = label
@@ -81,6 +86,8 @@ def _install_view_annotations() -> None:
             items = list(games)
             table = original_games(items, *args, **kwargs)
             for game, row in zip(items, table.rows):
+                if game.get("start_time_tbd"):
+                    row["date_sub"] = "TBD"
                 label = _rivalry_label(game.get("rivalry"))
                 if label:
                     # One label is enough; putting it beneath both teams makes
