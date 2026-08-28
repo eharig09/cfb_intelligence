@@ -9,10 +9,11 @@
 {% endblock %}
 
 {% block content %}
+{% set team_context = team_elo_summary(team.team_id, season) %}
 <div class="eyebrow">Program identity</div>
 <h1>{{ team.school }} historical production</h1>
 <p class="meta">
-    Team results, efficiency, and position production from synchronized CFBD seasons.
+    Team results, efficiency, position production, and coaching succession from synchronized CFBD seasons.
     PFF grades appear only where a matching local season and position group exists.
 </p>
 <p>
@@ -20,6 +21,15 @@
         Full historical game log &rarr;
     </a>
 </p>
+
+<section class="section">
+    <h2>Coach lineage</h2>
+    <div class="section-note">
+        Program succession from stored head-coach seasons. Consecutive seasons under the same coach
+        are combined into one tenure; a coach who leaves and later returns appears as a separate stint.
+    </div>
+    {{ data_table(team_context.coach_lineage) }}
+</section>
 
 <section class="section">
     <h2>{{ latest_production_season or 'Latest' }} position identity</h2>
