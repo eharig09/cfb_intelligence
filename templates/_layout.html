@@ -66,8 +66,64 @@
 </header>
 <main>
 {% block content %}{% endblock %}
+{% if request.endpoint == 'cfb_data_status.data_status' %}
+<section style="max-width:1180px;margin:2rem auto 0;padding:0 1rem 2.5rem">
+    <div style="border:1px solid var(--line);background:var(--paper);padding:1rem">
+        <div class="eyebrow">Private moderation</div>
+        <h2 style="margin:.25rem 0 .4rem">Zap exact bad link</h2>
+        <p class="section-note" style="margin-top:0">Paste the exact external URL shown on the site. The matching content item is removed immediately and the exact URL is blocked from future ingestion.</p>
+        <form id="cfb-zap-form" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+            <input id="cfb-zap-url" type="url" required placeholder="https://example.com/bad-story" aria-label="Exact bad content URL"
+                   style="flex:1 1 28rem;min-width:16rem;background:var(--paper);color:var(--ink);border:1px solid var(--line-strong);padding:.6rem .7rem">
+            <button type="submit" style="border:1px solid var(--red);background:transparent;color:var(--red);padding:.6rem .8rem;font-weight:800;cursor:pointer">Zap exact link</button>
+            <span id="cfb-zap-status" class="section-note" aria-live="polite"></span>
+        </form>
+    </div>
+</section>
+{% endif %}
 </main>
 {% block scripts %}{% endblock %}
+{% if request.endpoint == 'cfb_data_status.data_status' %}
+<script>
+(function () {
+    var form = document.getElementById('cfb-zap-form');
+    if (!form) return;
+    var input = document.getElementById('cfb-zap-url');
+    var status = document.getElementById('cfb-zap-status');
+    function token() {
+        var saved = sessionStorage.getItem('cfbRefreshToken') || sessionStorage.getItem('cfb-refresh-token');
+        if (saved) return saved;
+        var value = window.prompt('CFB refresh token');
+        if (value) {
+            sessionStorage.setItem('cfbRefreshToken', value);
+            sessionStorage.setItem('cfb-refresh-token', value);
+        }
+        return value || '';
+    }
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var url = (input.value || '').trim();
+        var auth = token();
+        if (!url || !auth) return;
+        status.textContent = 'Removing…';
+        fetch('/internal/cfb-content-zap', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + auth},
+            body: JSON.stringify({url: url})
+        }).then(function (response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        }).then(function (result) {
+            status.textContent = 'Removed ' + result.removed_content + ' item(s); exact URL blocked.';
+            input.value = '';
+            window.setTimeout(function () { window.location.reload(); }, 700);
+        }).catch(function (error) {
+            status.textContent = 'Zap failed: ' + error.message;
+        });
+    });
+})();
+</script>
+{% endif %}
 <script src="{{ url_for('static', filename='cfb_tables.js', v='20260825-dark') }}" defer></script>
 </body>
 </html>

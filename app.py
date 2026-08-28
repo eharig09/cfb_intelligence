@@ -15,6 +15,12 @@ from sports_aggregator.cfb.refresh_window import profile_for
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.web import cfb_pages
 from sports_aggregator.cfb.data_status import data_status_pages
+from sports_aggregator.cfb.conference_features import (
+    conference_schedule_elo,
+    decorate_conference_leaders,
+    install_market_freshness_note,
+    zap_content_url,
+)
 from sports_aggregator.catalog import list_leagues
 from sports_aggregator.service import build_default_service
 from sports_aggregator.social.registry import SourceRegistry
@@ -99,6 +105,10 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.extensions["content_repository"] = app.config.get("CONTENT_REPOSITORY") or ContentRepository(source_database_path)
     app.extensions["story_repository"] = app.config.get("STORY_REPOSITORY") or StoryRepository(source_database_path)
 
+    # cfb.web already holds the shared views module. Patch the market table once
+    # at app creation so every game preview gets the same compact quote-age note.
+    install_market_freshness_note()
+
     def require_refresh_auth() -> None:
         expected = str(app.config.get("CFB_REFRESH_TOKEN") or "").strip()
         authorization = request.headers.get("Authorization", "")
@@ -135,6 +145,21 @@ def create_app(test_config: dict | None = None) -> Flask:
         return jsonify({"status": "accepted", "season": season, "profile": profile,
                         **({"reason": decision["reason"], "games": decision["games"]} if decision else {})}), 202
 
+    @app.post("/internal/cfb-content-zap")
+    def cfb_content_zap():
+        """Block and remove one exact content URL from all rendered CFB surfaces."""
+        require_refresh_auth()
+        payload = request.get_json(silent=True) or request.form
+        target = str(payload.get("url") or "").strip()
+        try:
+            result = zap_content_url(app.extensions["content_repository"], target)
+        except ValueError as exc:
+            abort(400, description=str(exc))
+        # Story/team/conference pages are cached on disk; clear them so a zapped
+        # link disappears immediately instead of lingering until cache expiry.
+        cache.clear()
+        return jsonify({"status": "zapped", **result})
+
     @app.get("/internal/cfb-refresh-status")
     def cfb_refresh_status():
         """Return persisted scheduler state and the tail of the newest refresh log."""
@@ -169,6 +194,16 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.jinja_env.filters["height"] = height_label
     app.jinja_env.filters["role"] = role_label
     app.jinja_env.filters["logo_pair"] = _logo_pair
+
+    # Conference-only helpers stay callable from the conference template so the
+    # existing route packet can remain small and cached exactly as before.
+    app.jinja_env.globals["conference_elo_summary"] = lambda conference, season: conference_schedule_elo(
+        app.extensions["cfb_repository"], conference, season
+    )
+    app.jinja_env.globals["conference_leader_status"] = lambda groups, leaders, conference, season: decorate_conference_leaders(
+        app.extensions["cfb_repository"], groups, leaders, conference, season
+    )
+
     app.register_blueprint(league_pages)
     app.register_blueprint(cfb_pages)
     app.register_blueprint(data_status_pages)
