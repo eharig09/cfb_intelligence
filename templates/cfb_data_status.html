@@ -70,10 +70,10 @@
     {% if status.audit.available %}
       <div class="audit-tools">
         <input class="audit-search" id="audit-search" type="search" placeholder="Filter by team, source, platform, title, method…">
-        <span class="audit-feedback-status" id="audit-feedback-status">Showing {{ status.audit.items|length }} recent team links</span>
+        <span class="audit-feedback-status" id="audit-feedback-status">Showing {{ status.audit['items']|length }} recent team links</span>
       </div>
       <div id="audit-items">
-      {% for item in status.audit.items %}
+      {% for item in status.audit['items'] %}
         <article class="audit-item" data-search="{{ (item.team ~ ' ' ~ item.source ~ ' ' ~ item.platform ~ ' ' ~ item.title ~ ' ' ~ item.method)|lower }}">
           <div class="audit-item-top">
             <div>
