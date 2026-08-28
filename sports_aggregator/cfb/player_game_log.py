@@ -35,6 +35,8 @@ FALLBACK_STATS = (
     ("puntReturns", "YDS", "PR yds"),
 )
 
+YARDAGE_CONTEXT = {"passing", "rushing", "receiving"}
+
 
 def _placeholders(values: list[str]) -> str:
     return ",".join("?" for _ in values)
@@ -152,6 +154,52 @@ def _game_rank(connection, game_id: int, category: str, stat_type: str, value: f
     return int(better) + 1
 
 
+def _defense_allowed_before(connection, seasons: set[int], category: str,
+                            stat_type: str) -> dict[tuple[int, str], float | None]:
+    """Opponent defense's average yards allowed entering each game.
+
+    This uses only games before the target game in the same season. For passing,
+    rushing and receiving YDS, player box rows are summed to a team-game total,
+    then attributed to the opposing defense. No season-end hindsight leaks into
+    the number shown beside a historical performance.
+    """
+    if category not in YARDAGE_CONTEXT or stat_type != "YDS":
+        return {}
+
+    context: dict[tuple[int, str], float | None] = {}
+    for season in sorted(seasons):
+        rows = connection.execute(
+            """SELECT g.game_id,g.start_date,g.home_team,g.away_team,gp.team,
+                      SUM(gp.numeric_value) AS yards
+               FROM games g
+               JOIN game_player_box_stats gp USING(game_id)
+               WHERE g.season=? AND gp.category=? AND gp.stat_type=?
+                 AND gp.numeric_value IS NOT NULL
+               GROUP BY g.game_id,g.start_date,g.home_team,g.away_team,gp.team
+               ORDER BY g.start_date,g.game_id""",
+            (season, category, stat_type),
+        ).fetchall()
+        running: dict[str, list[float]] = {}
+        for raw in rows:
+            item = dict(raw)
+            offense = str(item.get("team") or "")
+            if offense == item.get("home_team"):
+                defense = str(item.get("away_team") or "")
+            elif offense == item.get("away_team"):
+                defense = str(item.get("home_team") or "")
+            else:
+                continue
+            prior = running.setdefault(defense, [0.0, 0.0])
+            context[(int(item["game_id"]), defense)] = (
+                prior[0] / prior[1] if prior[1] else None
+            )
+            yards = item.get("yards")
+            if yards is not None:
+                prior[0] += float(yards)
+                prior[1] += 1.0
+    return context
+
+
 def _date_label(value: str | None) -> str:
     if not value:
         return "—"
@@ -181,10 +229,21 @@ def player_game_log_table(repository, player: dict[str, Any], season: int) -> Ta
                    JOIN games g USING(game_id)
                    WHERE gp.player_id IN ({placeholders})
                      AND gp.category=? AND gp.stat_type=?
-                   ORDER BY g.start_date DESC""",
+                   ORDER BY g.start_date DESC,g.game_id DESC""",
                 [*player_ids, category, stat_type],
             ).fetchall()
 
+        chronological: list[int] = []
+        chronological_seen: set[int] = set()
+        for raw in sorted(rows, key=lambda item: (item["start_date"], item["game_id"])):
+            game_id = int(raw["game_id"])
+            if game_id not in chronological_seen:
+                chronological_seen.add(game_id)
+                chronological.append(game_id)
+        career_game_number = {game_id: index + 1 for index, game_id in enumerate(chronological)}
+
+        seasons = {int(row["season"]) for row in rows}
+        defense_allowed = _defense_allowed_before(connection, seasons, category, stat_type)
         elo_by_season: dict[int, dict[int, dict[str, Any]]] = {}
         rank_cache: dict[tuple[str, int, str | None], tuple[int | None, float | None]] = {}
         output: list[dict[str, Any]] = []
@@ -225,11 +284,14 @@ def player_game_log_table(repository, player: dict[str, Any], season: int) -> Ta
             opponent_rating = current_for_season if current_for_season is not None else pregame_elo
 
             output.append({
+                "career_game": career_game_number.get(game_id),
                 "season": row_season,
                 "week": item["week"],
                 "date": _date_label(item["start_date"]),
+                "date_sort": item["start_date"],
                 "opponent": opponent,
                 "opponent_elo": opponent_rating,
+                "defense_avg_allowed": defense_allowed.get((game_id, str(opponent))),
                 "result": result,
                 "primary_stat": display_value,
                 "game_rank": game_rank,
@@ -240,17 +302,29 @@ def player_game_log_table(repository, player: dict[str, Any], season: int) -> Ta
     identity_note = ""
     if len(player_ids) > 1:
         identity_note = f" · reconciled {len(player_ids)} historical player IDs"
+    defense_note = ""
+    if category in YARDAGE_CONTEXT and stat_type == "YDS":
+        defense_note = (
+            f" · Def avg allowed is the opponent's per-game {stat_label.lower()} allowed "
+            "before that game"
+        )
     note = (
-        f"Career primary context: {stat_label.lower()} · opponent Elo uses the stored season rating "
-        f"when available, with pregame Elo as fallback{identity_note}"
+        f"Career primary context: {stat_label.lower()} · # counts games oldest to newest · "
+        "opponent Elo uses the stored season rating when available, with pregame Elo as fallback"
+        f"{defense_note}{identity_note}"
     )
     return Table(
         columns=[
+            Column("career_game", "#", format="int", align="right",
+                   title="Career game number, oldest game = 1"),
             Column("season", "Season", format="int", align="right"),
             Column("week", "Wk", format="int", align="right"),
-            Column("date", "Date"),
+            Column("date", "Date", sort="text",
+                   title="Game date; sorting uses the full stored timestamp"),
             Column("opponent", "Opponent"),
             Column("opponent_elo", "Opp Elo", format="int", align="right"),
+            Column("defense_avg_allowed", "Def avg allowed", format="f1", align="right",
+                   title=f"Opponent defense's average {stat_label.lower()} allowed per game before this matchup"),
             Column("result", "Result"),
             Column("primary_stat", stat_label, format="num", align="right", emphasis=True),
             Column("game_rank", "Game rank", format="rank", align="right",
