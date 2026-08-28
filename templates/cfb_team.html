@@ -19,7 +19,19 @@
     .schedule-switch { display:flex; gap:5px; flex-wrap:wrap; margin:10px 0; }
     .schedule-switch a { border:1px solid var(--line); padding:6px 10px; text-decoration:none; font-size:.72rem; font-weight:800; }
     .schedule-switch a.active { background:var(--surface-strong); border-color:var(--surface-strong); color:var(--on-strong); }
-    .coach-facts { margin-top: 10px; }
+    .coach-facts, .history-facts { margin-top: 10px; }
+    .rivalry-strip {
+        display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:10px 0 2px;
+        font-size:.69rem; color:var(--muted);
+    }
+    .rivalry-strip > strong { color:var(--ink); text-transform:uppercase; letter-spacing:.06em; font-size:.62rem; }
+    .rivalry-chip {
+        display:inline-flex; align-items:center; gap:4px; padding:4px 7px;
+        border:1px solid var(--line); background:var(--paper); border-radius:999px;
+        color:var(--ink); font-weight:800;
+    }
+    .rivalry-chip::before { content:'★'; color:var(--rust); }
+    table.data td.rivalry .sub { color:var(--rust); font-weight:800; }
     @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
     @media (max-width: 559px) {
         .hero { gap: 9px; padding-left: 10px; border-left-width: 5px; align-items: flex-start; }
@@ -39,6 +51,7 @@
 
 {% block content %}
 {% set team_context = team_elo_summary(team.team_id, season) %}
+{% set program = team_context.program or {} %}
 <section class="hero">
     <div>
         <div class="eyebrow"><a href="{{ url_for('cfb.today') }}">{{ season }} team intelligence</a></div>
@@ -76,6 +89,23 @@
     <div class="fact"><b>{{ team_context.coach.team_conf_record if team_context.coach else '—' }}</b><span>At {{ team.school }} conf</span></div>
 </div>
 
+<div class="facts history-facts">
+    <div class="fact"><b>{{ program.first_season or '—' }}</b><span>First stored season</span></div>
+    <div class="fact"><b>{{ program.record or '—' }}</b><span>Stored W-L-T</span></div>
+    <div class="fact"><b>{{ program.games or '—' }}</b><span>Stored games</span></div>
+    <div class="fact"><b>{{ program.venue or '—' }}</b><span>Stadium</span></div>
+    <div class="fact"><b>{{ program.rivalry_count or 0 }}</b><span>Named rivalries</span></div>
+</div>
+{% if program.rivalries %}
+<div class="rivalry-strip" aria-label="Named rivalries">
+    <strong>Rivalries</strong>
+    {% for rivalry in program.rivalries[:8] %}
+    <span class="rivalry-chip" title="{% if rivalry.trophy %}Trophy: {{ rivalry.trophy }} · {% endif %}Source: {{ rivalry.source }}">{{ rivalry.name }}</span>
+    {% endfor %}
+    {% if program.rivalries|length > 8 %}<span>+{{ program.rivalries|length - 8 }} more</span>{% endif %}
+</div>
+{% endif %}
+
 <nav class="mobile-page-tabs" data-mobile-page-tabs role="tablist" aria-label="Team page sections">
     <button type="button" role="tab" data-mobile-tab="overview" aria-selected="true">Overview</button>
     <button type="button" role="tab" data-mobile-tab="roster" aria-selected="false">Roster</button>
@@ -112,12 +142,12 @@
             <nav class="metric-switch" aria-label="Team statistics controls">
                 <span class="metric-switch-label">Season</span>
                 {% for year in stats_year_options %}
-                <a class="{{ 'active' if year == stats_year }}"
+                <a class="{{ 'active' if year == stats_year else '' }}"
                    href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=schedule_year, stats_year=year, stats_mode=stats_mode) }}#tab-stats">{{ year }}</a>
                 {% endfor %}
                 <span class="metric-switch-label">View</span>
                 {% for mode, label in [('per_game', 'Per game'), ('total', 'Totals')] %}
-                <a class="{{ 'active' if mode == stats_mode }}"
+                <a class="{{ 'active' if mode == stats_mode else '' }}"
                    href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=schedule_year, stats_year=stats_year, stats_mode=mode) }}#tab-stats">{{ label }}</a>
                 {% endfor %}
             </nav>
