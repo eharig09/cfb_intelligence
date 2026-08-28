@@ -1,9 +1,10 @@
 """Broaden slow-changing program-history coverage from Wikipedia.
 
-The base Wikipedia integration prefers structured infobox fields. Some program
-articles omit one or more of those parameters even though the article text
-states the same fact plainly. This module adds conservative text fallbacks and
-forces a retry when a cached row has none of the three headline history fields.
+The base Wikipedia integration prefers structured infobox fields. Program pages
+vary enough that some omit or reshape those parameters even though the rendered
+infobox exposes the facts consistently. This enrichment layer adds a rendered-
+infobox fallback, keeps claimed and unclaimed national titles distinct, and
+provides a compact conference-title label for the team hero.
 """
 
 from __future__ import annotations
@@ -12,6 +13,9 @@ import re
 from typing import Any
 
 import requests
+from bs4 import BeautifulSoup
+
+PARSER_VERSION = 2
 
 
 def _plain_text(wikitext: str) -> str:
@@ -68,54 +72,164 @@ def _fallback_fields(wikitext: str) -> dict[str, Any]:
     }
 
 
+def _clean_cell_text(value: str | None) -> str | None:
+    if not value:
+        return None
+    text = re.sub(r"\[[^\]]*\]", "", value)
+    text = re.sub(r"\s+", " ", text).strip(" ;,")
+    return text or None
+
+
+def _rendered_infobox_fields(html_text: str) -> dict[str, str]:
+    """Read reader-facing labels from the rendered Wikipedia infobox.
+
+    Rendered labels are substantially more stable than the underlying template
+    parameter names. Claimed and unclaimed national-title rows remain separate
+    so unclaimed titles can never leak into the headline championship field.
+    """
+    soup = BeautifulSoup(html_text or "", "html.parser")
+    box = soup.select_one("table.infobox")
+    if box is None:
+        return {}
+    fields: dict[str, str] = {}
+    for row in box.select("tr"):
+        header = row.find("th")
+        cell = row.find("td")
+        if header is None or cell is None:
+            continue
+        label = re.sub(r"[^a-z0-9]+", " ", header.get_text(" ", strip=True).casefold()).strip()
+        value = _clean_cell_text(cell.get_text(" ", strip=True))
+        if value:
+            fields[label] = value
+    return fields
+
+
+def _rendered_history_fields(fields: dict[str, str]) -> dict[str, Any]:
+    first_value = fields.get("first season") or fields.get("first year")
+    first_year = None
+    if first_value:
+        match = re.search(r"\b(18\d{2}|19\d{2}|20\d{2})\b", first_value)
+        first_year = int(match.group(1)) if match else None
+
+    # Prefer an explicitly claimed row. A generic national-championship row is
+    # acceptable only when Wikipedia did not separately label it unclaimed.
+    claimed = fields.get("claimed national titles") or fields.get("claimed national championships")
+    if claimed is None and not any("unclaimed national" in key for key in fields):
+        claimed = fields.get("national titles") or fields.get("national championships")
+
+    return {
+        "first_season": first_year,
+        "national_championships": claimed,
+        "conference_championships": (
+            fields.get("conference titles") or fields.get("conference championships")
+        ),
+        "mascot": fields.get("mascot"),
+        "unclaimed_national_championships": (
+            fields.get("unclaimed national titles") or
+            fields.get("unclaimed national championships")
+        ),
+    }
+
+
+def _compact_conference_titles(value: Any) -> str | None:
+    """Render a long conference-title list as ``count (most recent)``."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    years = [int(year) for year in re.findall(r"\b(?:18|19|20)\d{2}\b", text)]
+    if years:
+        unique_years = sorted(set(years))
+        return f"{len(unique_years)} ({unique_years[-1]})"
+    # Some pages publish only a count rather than the title years.
+    count = re.search(r"\b(\d{1,3})\b", text)
+    return count.group(1) if count else text
+
+
 def install_wiki_context_enrichment() -> None:
     """Patch the existing integration without changing its storage contract."""
     from sports_aggregator.cfb import conference_extras, wiki_context
 
     current_fetch = wiki_context._fetch_wikipedia
     current_team_context = wiki_context.team_wiki_context
-    if getattr(current_fetch, "_program_history_enriched", False):
+    if getattr(current_fetch, "_program_history_enriched_v2", False):
         return
 
     def enriched_fetch(school: str, mascot: str | None) -> dict[str, Any]:
         payload = current_fetch(school, mascot)
-        missing = [
-            key for key in ("first_season", "national_championships", "conference_championships")
-            if payload.get(key) in (None, "")
-        ]
-        if not missing or not payload.get("page_title"):
-            return payload
+        page_title = payload.get("page_title")
+        if page_title:
+            session = requests.Session()
+            session.headers.update({"User-Agent": wiki_context.USER_AGENT})
 
-        session = requests.Session()
-        session.headers.update({"User-Agent": wiki_context.USER_AGENT})
-        response = session.get(wiki_context.WIKI_API, params={
-            "action": "parse", "page": payload["page_title"],
-            "prop": "wikitext", "format": "json", "formatversion": 2,
-        }, timeout=4)
-        response.raise_for_status()
-        wikitext = response.json().get("parse", {}).get("wikitext", "") or ""
-        fallback = _fallback_fields(wikitext)
-        for key in missing:
-            if fallback.get(key) not in (None, ""):
-                payload[key] = fallback[key]
-        payload["fallback_fields"] = {
-            key: payload.get(key) for key in missing if fallback.get(key) not in (None, "")
-        }
+            # Rendered infobox fallback: this handles template variants such as
+            # Oregon and Indiana without hard-coding school-specific fields.
+            rendered = session.get(wiki_context.WIKI_API, params={
+                "action": "parse", "page": page_title,
+                "prop": "text", "format": "json", "formatversion": 2,
+            }, timeout=4)
+            rendered.raise_for_status()
+            rendered_html = rendered.json().get("parse", {}).get("text", "") or ""
+            rendered_fields = _rendered_history_fields(_rendered_infobox_fields(rendered_html))
+
+            for key in ("first_season", "conference_championships", "mascot"):
+                if payload.get(key) in (None, "") and rendered_fields.get(key) not in (None, ""):
+                    payload[key] = rendered_fields[key]
+
+            # National championships are intentionally stricter: the rendered
+            # claimed row replaces a generic source value whenever it exists,
+            # and an explicitly unclaimed row is stored only as contextual
+            # metadata, never as a headline title.
+            if rendered_fields.get("national_championships") not in (None, ""):
+                payload["national_championships"] = rendered_fields["national_championships"]
+            if rendered_fields.get("unclaimed_national_championships") not in (None, ""):
+                payload["unclaimed_national_championships"] = rendered_fields[
+                    "unclaimed_national_championships"
+                ]
+
+            missing = [
+                key for key in ("first_season", "national_championships", "conference_championships")
+                if payload.get(key) in (None, "")
+            ]
+            if missing:
+                response = session.get(wiki_context.WIKI_API, params={
+                    "action": "parse", "page": page_title,
+                    "prop": "wikitext", "format": "json", "formatversion": 2,
+                }, timeout=4)
+                response.raise_for_status()
+                wikitext = response.json().get("parse", {}).get("wikitext", "") or ""
+                fallback = _fallback_fields(wikitext)
+                for key in missing:
+                    if fallback.get(key) not in (None, ""):
+                        payload[key] = fallback[key]
+
+        payload["wiki_parser_version"] = PARSER_VERSION
         return payload
 
-    enriched_fetch._program_history_enriched = True
+    enriched_fetch._program_history_enriched_v2 = True
     wiki_context._fetch_wikipedia = enriched_fetch
 
     def enriched_team_context(repository, team: dict[str, Any], *, refresh: bool = False):
         result = current_team_context(repository, team, refresh=refresh)
-        headline = (
-            result.get("first_season"),
-            result.get("national_championships"),
-            result.get("conference_championships"),
-        )
-        if not refresh and result.get("fetch_ok") and all(value in (None, "") for value in headline):
+        stored_payload = result.get("payload") or {}
+        parser_version = stored_payload.get("wiki_parser_version")
+        # Force one post-deploy refresh for every previously cached team so
+        # partial rows (e.g. first season present but titles blank) are repaired.
+        if not refresh and result.get("fetch_ok") and parser_version != PARSER_VERSION:
             result = current_team_context(repository, team, refresh=True)
+
+        result["conference_championships_compact"] = _compact_conference_titles(
+            result.get("conference_championships")
+        )
+        try:
+            payload = result.get("payload") or {}
+            result["unclaimed_national_championships"] = payload.get(
+                "unclaimed_national_championships"
+            )
+        except AttributeError:
+            pass
         return result
 
     wiki_context.team_wiki_context = enriched_team_context
+    # conference_extras imported the function directly, so replace that bound
+    # reference too; team_schedule_elo resolves this module global at call time.
     conference_extras.team_wiki_context = enriched_team_context
