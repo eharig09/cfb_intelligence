@@ -75,14 +75,7 @@ def _label(value: str) -> str:
 
 
 def _rendered_infobox(html_text: str) -> dict[str, str]:
-    """Flatten the rendered infobox while retaining championship section context.
-
-    Many program pages render championship blocks as a heading row followed by
-    short child labels, e.g. ``National championships`` -> ``Claimed`` and
-    ``Conference championships`` -> ``SEC``. Treating those child labels as
-    global fields loses the meaning and was why Florida/Oregon/Indiana could
-    show blanks even though Wikipedia visibly had the data.
-    """
+    """Flatten the rendered infobox while retaining championship section context."""
     soup = BeautifulSoup(html_text or "", "html.parser")
     box = soup.select_one("table.infobox")
     if box is None:
@@ -91,14 +84,17 @@ def _rendered_infobox(html_text: str) -> dict[str, str]:
     section: str | None = None
     conference_values: list[str] = []
 
-    for row in box.find_all("tr", recursive=False):
+    # MediaWiki commonly wraps table rows in tbody. Walk all rows whose closest
+    # table ancestor is the program infobox, excluding rows from nested tables.
+    for row in box.find_all("tr"):
+        if row.find_parent("table") is not box:
+            continue
         header, cell = row.find("th", recursive=False), row.find("td", recursive=False)
         if header is None:
             continue
 
         header_text = _label(header.get_text(" ", strip=True))
         if cell is None:
-            # Section headings such as National championships / Conference championships.
             section = header_text or None
             continue
 
@@ -113,13 +109,7 @@ def _rendered_infobox(html_text: str) -> dict[str, str]:
             elif header_text == "unclaimed":
                 result["unclaimed national titles"] = value
         elif section in {"conference championships", "conference titles"}:
-            # The child header is usually a conference name (SEC, Pac-12, Big Ten...).
             conference_values.append(value)
-        elif section and header_text in {
-            "national finalist", "division championships", "heisman winners",
-            "rivalries", "website", "fight song", "mascot", "marching band",
-        }:
-            section = None
 
     if conference_values:
         result["conference championships"] = " ; ".join(conference_values)
@@ -150,7 +140,6 @@ def _rendered_history(fields: dict[str, str]) -> dict[str, Any]:
 
 
 def _compact_titles(value: Any) -> str | None:
-    """Turn a long title-year list into ``count (most recent year)``."""
     text = str(value or "").strip()
     if not text:
         return None
@@ -188,13 +177,8 @@ def install_wiki_context_enrichment() -> None:
 
             for key in ("first_season", "conference_championships", "mascot"):
                 if rendered_fields.get(key) not in (None, ""):
-                    # Rendered values are preferred because they preserve nested
-                    # championship sections that raw template parsing can miss.
                     payload[key] = rendered_fields[key]
 
-            # Headline national titles are claimed/recognized only. When the
-            # rendered infobox explicitly has an unclaimed row but no claimed
-            # row, clear any generic value produced by the older parser.
             if rendered_fields.get("national_championships") not in (None, ""):
                 payload["national_championships"] = rendered_fields["national_championships"]
             elif rendered_fields.get("has_unclaimed"):
@@ -218,8 +202,6 @@ def install_wiki_context_enrichment() -> None:
                     if fallback.get(key) not in (None, ""):
                         payload[key] = fallback[key]
 
-            # Keep the evergreen article summary as a final conservative count
-            # fallback. This covers pages whose infobox omits title rows entirely.
             summary = str(payload.get("summary") or "")
             if payload.get("conference_championships") in (None, ""):
                 payload["conference_championships"] = _championship_count(summary, "conference")
