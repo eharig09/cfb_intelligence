@@ -6,6 +6,13 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb.rivalry_install import install_rivalry_annotations
+
+
+# Install first so the Week 0 wrapper below composes over the rivalry-decorated
+# upcoming-game method rather than replacing it. Both layers only mutate
+# detached row dictionaries; SQLite remains canonical CFBD data.
+install_rivalry_annotations()
 
 
 def _rank_points(rank: int | None) -> float:
