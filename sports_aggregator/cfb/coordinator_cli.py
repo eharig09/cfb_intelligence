@@ -3,6 +3,7 @@
 Usage:
     python -m sports_aggregator.cfb.coordinator_cli --year 2026
     python -m sports_aggregator.cfb.coordinator_cli --from-year 2016 --to-year 2026
+    python -m sports_aggregator.cfb.coordinator_cli --year 2026 --source punt-rally
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import os
 from dotenv import load_dotenv
 
 from sports_aggregator.cfb.coordinators import sync_season
+from sports_aggregator.cfb.coordinator_wikipedia import sync_season_wikipedia
 from sports_aggregator.cfb.repository import CFBRepository
 
 
@@ -25,7 +27,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--to-year", type=int, default=None)
     parser.add_argument("--database", default=None, help="Override CFB_DATABASE_PATH")
     parser.add_argument("--timeout", type=float, default=20.0)
+    parser.add_argument(
+        "--source",
+        choices=("wikipedia", "punt-rally", "auto"),
+        default="wikipedia",
+        help="Coordinator source. Wikipedia is cloud-host friendly; auto tries Punt & Rally first.",
+    )
     return parser
+
+
+def _sync(repository, year: int, source: str, timeout: float) -> dict:
+    if source == "wikipedia":
+        return sync_season_wikipedia(repository, year, timeout=timeout)
+    if source == "punt-rally":
+        return sync_season(repository, year, timeout=timeout)
+    try:
+        return sync_season(repository, year, timeout=timeout)
+    except Exception as exc:
+        print(f"{year}: Punt & Rally unavailable ({exc}); falling back to Wikipedia")
+        return sync_season_wikipedia(repository, year, timeout=timeout)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -42,15 +62,21 @@ def main(argv: list[str] | None = None) -> int:
     reports = []
     for year in range(first, last + 1):
         try:
-            report = sync_season(repository, year, timeout=args.timeout)
+            report = _sync(repository, year, args.source, args.timeout)
             reports.append(report)
             unresolved = report.get("unresolved") or []
+            missing = report.get("missing") or []
+            source = report.get("source") or args.source
             print(
-                f"{year}: stored={report['stored']} "
-                f"unresolved={len(unresolved)}"
+                f"{year}: source={source} stored={report['stored']} "
+                f"missing={len(missing)} unresolved={len(unresolved)}"
             )
+            if missing:
+                print("  missing: " + ", ".join(missing))
             if unresolved:
                 print("  unresolved: " + ", ".join(unresolved))
+            for failure in report.get("failures") or []:
+                print("  team failure: " + failure)
         except Exception as exc:
             failures.append(str(year))
             print(f"{year}: failed ({exc})")
@@ -58,9 +84,11 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps({
         "from_year": first,
         "to_year": last,
+        "source": args.source,
         "seasons": len(reports),
         "failures": failures,
         "stored": sum(int(report.get("stored") or 0) for report in reports),
+        "missing": sum(len(report.get("missing") or []) for report in reports),
     }, indent=2))
     return 1 if failures else 0
 
