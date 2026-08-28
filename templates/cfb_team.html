@@ -72,8 +72,8 @@
     <div class="fact"><b>{{ team_context.coach.name if team_context.coach else '—' }}</b><span>Head coach</span></div>
     <div class="fact"><b>{% if team_context.coach %}{{ team_context.coach.tenure_years }} yr{% if team_context.coach.tenure_years != 1 %}s{% endif %}{% else %}—{% endif %}</b><span>Current tenure</span></div>
     <div class="fact"><b>{{ team_context.coach.career_record if team_context.coach else '—' }}</b><span>Coach career</span></div>
-    <div class="fact"><b>{{ team_context.coach.team_record if team_context.coach else '—' }}</b><span>Coach at {{ team.school }}</span></div>
-    <div class="fact"><b>{{ team_context.current_record or '—' }} / {{ team_context.current_conf_record or '—' }}</b><span>{{ season }} overall / conf</span></div>
+    <div class="fact"><b>{{ team_context.coach.team_record if team_context.coach else '—' }}</b><span>At {{ team.school }} overall</span></div>
+    <div class="fact"><b>{{ team_context.coach.team_conf_record if team_context.coach else '—' }}</b><span>At {{ team.school }} conf</span></div>
 </div>
 
 <nav class="mobile-page-tabs" data-mobile-page-tabs role="tablist" aria-label="Team page sections">
