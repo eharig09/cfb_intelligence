@@ -150,7 +150,8 @@ def _incoming_transfer_rows(connection, conference: str, season: int,
 def conference_leader_packet(repository, conference: str, season: int) -> dict[str, Any]:
     """Full qualified conference leaderboards with transfer-only annotations."""
     leaders = repository.conference_player_leaders(conference, season, limit=250)
-    has_rows = any(group.get("players") for group in leaders.get("groups") or [])
+    leader_groups_raw = leaders.get("groups") or {}
+    has_rows = any(group.get("players") for group in leader_groups_raw.values())
     if not has_rows and season > 0:
         leaders = repository.conference_player_leaders(conference, season - 1, limit=250)
     source_season = int(leaders.get("season") or season)
