@@ -6,6 +6,7 @@ from contextlib import closing
 from typing import Any
 
 from sports_aggregator.cfb import views
+from sports_aggregator.cfb.coaching_context import coach_lineage_table, team_coaching_context
 from sports_aggregator.cfb.models import normalize_person_name
 from sports_aggregator.cfb.statlines import category_label, sort_stat
 
@@ -29,7 +30,7 @@ def _average(values: list[float]) -> float | None:
 
 
 def team_schedule_elo(repository, team_id: int, season: int) -> dict[str, Any]:
-    """Current-opponent Elo for one team's schedule.
+    """Current-opponent Elo plus current program/coach context for one team.
 
     Home/away values use remaining non-neutral games only. Conference and
     non-conference values use the full stored schedule.
@@ -55,6 +56,7 @@ def team_schedule_elo(repository, team_id: int, season: int) -> dict[str, Any]:
         if not game.get("completed") and not game.get("neutral_site"):
             (remaining_home if home else remaining_away).append(value)
 
+    coaching = team_coaching_context(repository, team_id, season)
     return {
         "remaining_home": _average(remaining_home),
         "remaining_home_games": len(remaining_home),
@@ -64,6 +66,11 @@ def team_schedule_elo(repository, team_id: int, season: int) -> dict[str, Any]:
         "conference_games": len(conference_values),
         "nonconference": _average(nonconference_values),
         "nonconference_games": len(nonconference_values),
+        "elo": coaching.get("elo"),
+        "coach": coaching.get("coach"),
+        "current_record": coaching.get("current_record"),
+        "current_conf_record": coaching.get("current_conf_record"),
+        "coach_lineage": coach_lineage_table(repository, team_id, season),
     }
 
 
