@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import closing
 from typing import Any
 
+from sports_aggregator.cfb.rivalries import rivalries_for_team
 from sports_aggregator.tables import Column, Table
 
 
@@ -15,8 +16,44 @@ def _record(wins: int | None, losses: int | None, ties: int | None = 0) -> str:
     return f"{wins}-{losses}" + (f"-{ties}" if ties else "")
 
 
+def _program_history(connection, team_id: int, team: dict[str, Any]) -> dict[str, Any]:
+    """Fast stored-history summary for the team-page header.
+
+    This intentionally says *stored* history. It derives directly from completed
+    game rows rather than pretending the local backfill is an NCAA all-time
+    record book. Wikipedia/NCAA first-season and championship facts can enrich
+    this packet later without changing the template contract.
+    """
+    row = connection.execute(
+        """SELECT MIN(season) first_season, MAX(season) last_season,
+                  COUNT(*) games,
+                  SUM(CASE
+                        WHEN home_team_id=? AND home_points>away_points THEN 1
+                        WHEN away_team_id=? AND away_points>home_points THEN 1
+                        ELSE 0 END) wins,
+                  SUM(CASE
+                        WHEN home_team_id=? AND home_points<away_points THEN 1
+                        WHEN away_team_id=? AND away_points<home_points THEN 1
+                        ELSE 0 END) losses,
+                  SUM(CASE WHEN home_points=away_points THEN 1 ELSE 0 END) ties
+           FROM games
+           WHERE completed=1 AND home_points IS NOT NULL AND away_points IS NOT NULL
+             AND (home_team_id=? OR away_team_id=?)""",
+        (team_id, team_id, team_id, team_id, team_id, team_id),
+    ).fetchone()
+    history = dict(row) if row is not None else {}
+    rivalries = rivalries_for_team(team.get("school"))
+    history.update({
+        "record": _record(history.get("wins"), history.get("losses"), history.get("ties")),
+        "venue": team.get("venue_name"),
+        "rivalry_count": len(rivalries),
+        "rivalries": rivalries,
+    })
+    return history
+
+
 def team_coaching_context(repository, team_id: int, season: int) -> dict[str, Any]:
-    """Current Elo plus all-time head-coach context for one team."""
+    """Current Elo plus all-time head-coach and stored program context."""
     repository.initialize()
     team = repository.get_team(int(team_id))
     if team is None:
@@ -95,6 +132,8 @@ def team_coaching_context(repository, team_id: int, season: int) -> dict[str, An
                 ),
             }
 
+        program = _program_history(connection, int(team_id), team)
+
     elo_rows = repository.team_elo(int(season))
     elo_row = elo_rows.get(int(team_id)) or {}
     elo = elo_row.get("elo")
@@ -121,6 +160,7 @@ def team_coaching_context(repository, team_id: int, season: int) -> dict[str, An
         "elo_value": elo_value,
         "elo_rank": elo_rank,
         "coach": coach,
+        "program": program,
     }
 
 
