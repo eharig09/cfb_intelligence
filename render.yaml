@@ -14,8 +14,6 @@ services:
         value: "1"
       - key: MALLOC_ARENA_MAX
         value: "2"
-      # Segments are intentionally small; keep a hard child ceiling so a bad
-      # source degrades one run instead of taking down the whole web service.
       - key: CFB_REFRESH_CHILD_MB
         value: "200"
       - key: CFB_PAGE_CACHE_SECONDS
@@ -26,9 +24,6 @@ services:
         value: "150"
       - key: CFB_REFRESH_TIMEZONE
         value: America/New_York
-
-      # Every scheduled "light" tick below is resolved by tracked_refresh into
-      # exactly one bounded segment. There is no scheduled all-in-one refresh.
       - key: CFB_REFRESH_HOURS
         value: 6,10,12,16,18,22,23
       - key: CFB_REFRESH_HEAVY_HOURS
@@ -43,8 +38,6 @@ services:
         value: "22"
       - key: CFB_REFRESH_MODEL_HOURS
         value: "23"
-
-      # Local reporting remains its own small shard at separate hours.
       - key: CFB_REFRESH_NEWS_HOURS
         value: 8,14,20
       - key: CFB_LOCAL_NEWS_SHARD_SIZE
@@ -59,6 +52,10 @@ services:
         value: /var/data/weather
       - key: CFB_REFRESH_TOKEN
         sync: false
+      # Human admin actions can use a short PIN instead of exposing the refresh
+      # token. Set this once in Render; the browser remembers it locally.
+      - key: CFB_ADMIN_PIN
+        sync: false
     disk:
       name: cfb-data
       mountPath: /var/data
@@ -67,8 +64,6 @@ services:
   - type: cron
     name: cfb-refresh-trigger
     runtime: python
-    # Auto checks every 15 minutes for game-day score pulses. Scheduled data
-    # segments only launch at minute zero of their assigned hours.
     schedule: "*/15 * * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: python -m sports_aggregator.render_trigger
