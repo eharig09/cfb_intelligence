@@ -19,8 +19,8 @@ import math
 from typing import Any, Iterable, Sequence
 
 
-#: Topic weight and half-life in days. Half-lives follow the decay windows in the
-#: aggregation spec: breaking news is stale in days, recruiting context is not.
+#: Topic weight and half-life in days. Topic-specific half-lives still distinguish
+#: fast-moving injury/news content from slower recruiting and draft analysis.
 TOPIC_PROFILE: dict[str, tuple[float, float]] = {
     "BREAKING_NEWS": (1.00, 1.5),
     "INJURY": (0.95, 3.0),
@@ -42,7 +42,6 @@ TOPIC_PROFILE: dict[str, tuple[float, float]] = {
     "NIL": (0.56, 10.0),
     "CONFERENCE": (0.54, 10.0),
     "MEDIA": (0.50, 10.0),
-    # Topics added once coverage auditing showed half of content unclassified.
     "DISCIPLINE": (0.86, 5.0),
     "SCHEDULE": (0.60, 14.0),
     "OFFSEASON": (0.58, 7.0),
@@ -53,11 +52,18 @@ TOPIC_PROFILE: dict[str, tuple[float, float]] = {
     "FACILITIES": (0.35, 21.0),
 }
 
-#: Fallback for content that matched no topic rule.
 DEFAULT_PROFILE = (0.45, 7.0)
 
-#: Which expertise dimension qualifies a source for a topic. A reporter who is
-#: excellent on breaking news is not automatically excellent on scheme.
+#: Recency deliberately has more leverage than a plain half-life curve. Raising
+#: the decay curve to this power means an item at its nominal half-life retains
+#: about 33% of its recency value rather than 50%, and older material falls away
+#: substantially faster. Very fresh content receives a modest same-day bump.
+RECENCY_STRENGTH = 1.6
+VERY_FRESH_HOURS = 6.0
+SAME_DAY_HOURS = 24.0
+VERY_FRESH_BOOST = 1.15
+SAME_DAY_BOOST = 1.08
+
 TOPIC_EXPERTISE: dict[str, str] = {
     "BREAKING_NEWS": "breaking_score",
     "INJURY": "team_access_score",
@@ -91,16 +97,9 @@ TOPIC_EXPERTISE: dict[str, str] = {
 
 DEFAULT_EXPERTISE = "reporting_score"
 
-#: How much weight a source role carries. Aggregation and community reaction are
-#: kept and shown, but they do not outrank the reporting they point at.
 ROLE_WEIGHT: dict[str, float] = {
     "ORIGINAL_REPORT": 1.00,
     "OFFICIAL_CONFIRMATION": 0.92,
-    # Reporting with no origin marker in the text. This is the most common
-    # verdict the classifier reaches, and it had no entry here: it fell through
-    # to the 0.5 default, so determining an item's role *lowered* its score
-    # below the REPORTING_UNDETERMINED placeholder it replaced. The two mean the
-    # same thing to a reader, so they weigh the same.
     "REPORTING": 0.85,
     "REPORTING_UNDETERMINED": 0.85,
     "CORROBORATION": 0.72,
@@ -112,7 +111,6 @@ ROLE_WEIGHT: dict[str, float] = {
     "UNCLASSIFIED": 0.50,
 }
 
-#: Reddit content types that describe the submission better than its role alone.
 CONTENT_TYPE_WEIGHT: dict[str, float] = {
     "GAME_THREAD": 0.30,
     "POSTGAME_THREAD": 0.35,
@@ -134,22 +132,33 @@ def topic_profile(topics: Iterable[str]) -> tuple[str | None, float, float]:
 
 def recency_factor(published_at: str | None, halflife_days: float,
                    now: datetime | None = None) -> float:
-    """Exponential decay on the topic half-life, floored so nothing hits zero."""
+    """Strong, explainable freshness curve with a same-day boost.
+
+    Undated content is deliberately penalized because it cannot be trusted to be
+    current. Dated content follows the topic half-life, but the curve is made
+    steeper globally so old stories lose ranking influence faster.
+    """
     if not published_at:
-        return 0.35
+        return 0.20
     try:
         published = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
     except ValueError:
-        return 0.35
+        return 0.20
     if published.tzinfo is None:
         published = published.replace(tzinfo=timezone.utc)
     reference = now or datetime.now(timezone.utc)
-    age_days = max(0.0, (reference - published).total_seconds() / 86400)
-    return max(0.05, math.pow(0.5, age_days / max(halflife_days, 0.25)))
+    age_hours = max(0.0, (reference - published).total_seconds() / 3600)
+    age_days = age_hours / 24.0
+    base = math.pow(0.5, age_days / max(halflife_days, 0.25))
+    decayed = math.pow(base, RECENCY_STRENGTH)
+    if age_hours <= VERY_FRESH_HOURS:
+        decayed *= VERY_FRESH_BOOST
+    elif age_hours <= SAME_DAY_HOURS:
+        decayed *= SAME_DAY_BOOST
+    return max(0.03, min(VERY_FRESH_BOOST, decayed))
 
 
 def expertise_factor(entity: dict[str, Any] | None, topic: str | None) -> tuple[float, str]:
-    """Score the source on the dimension the topic actually calls for."""
     if not entity:
         return 0.5, "unattributed source"
     column = TOPIC_EXPERTISE.get(topic or "", DEFAULT_EXPERTISE)
@@ -162,7 +171,6 @@ def expertise_factor(entity: dict[str, Any] | None, topic: str | None) -> tuple[
 
 def specificity_factor(team_confidence: float | None, player_confidence: float | None,
                        game_score: float | None) -> tuple[float, str]:
-    """Reward items resolved to a concrete team, player, or scheduled game."""
     if game_score and game_score >= 0.75:
         return 1.0, "linked to a scheduled game"
     if player_confidence and player_confidence >= 0.9:
@@ -175,18 +183,12 @@ def specificity_factor(team_confidence: float | None, player_confidence: float |
 
 
 def beat_bonus(entity_team_ids: Sequence[int], content_team_ids: Sequence[int]) -> tuple[float, str | None]:
-    """A source covering the team in question is better positioned to know."""
     if entity_team_ids and set(entity_team_ids) & set(content_team_ids):
         return 1.15, "source covers this team"
     return 1.0, None
 
 
 def score_item(item: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
-    """Score one content row and return the value with its factor breakdown.
-
-    ``item`` carries the content row, its resolved ``topics``, the source entity
-    expertise columns, and the best team/player/game confidences.
-    """
     topics = list(item.get("topics") or [])
     topic, importance, halflife = topic_profile(topics)
     entity = item.get("entity")
@@ -208,6 +210,7 @@ def score_item(item: dict[str, Any], *, now: datetime | None = None) -> dict[str
         f"{role.replace('_', ' ').lower()} role",
         f"topic {topic or 'unclassified'}",
         f"{_age_label(item.get('published_at'), now)}",
+        f"recency factor {recency:.2f}",
         specificity_note,
     ]
     if bonus_note:
@@ -233,7 +236,7 @@ def _age_label(published_at: str | None, now: datetime | None = None) -> str:
     if published.tzinfo is None:
         published = published.replace(tzinfo=timezone.utc)
     delta = (now or datetime.now(timezone.utc)) - published
-    hours = delta.total_seconds() / 3600
+    hours = max(0.0, delta.total_seconds() / 3600)
     if hours < 1:
         return "minutes old"
     if hours < 24:
