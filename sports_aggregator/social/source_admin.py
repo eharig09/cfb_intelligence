@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime, timezone
+import json
 import re
 from urllib.parse import urlparse
 from typing import Any
@@ -58,14 +59,18 @@ def _normalized_endpoint(platform: str, raw: str) -> tuple[str | None, str | Non
 
     if platform == "youtube":
         handle = None
-        path = parsed.path.strip("/")
-        if path.startswith("@"):
-            handle = path.split("/", 1)[0]
-        return handle, None, normalized_url, f"youtube:url:{normalized_url.casefold()}"
+        platform_id = None
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 2 and parts[0] == "channel" and parts[1].startswith("UC"):
+            platform_id = parts[1]
+        else:
+            handle = next((part for part in parts if part.startswith("@")), None)
+        stable = platform_id or handle or normalized_url
+        return handle, platform_id, normalized_url, f"youtube:seed:{str(stable).casefold()}"
     if platform == "podcast":
-        return None, None, normalized_url, f"podcast:feed:{normalized_url.casefold()}"
+        return None, normalized_url, normalized_url, f"podcast:feed:{normalized_url.casefold()}"
     if platform == "rss":
-        return None, None, normalized_url, f"rss:feed:{normalized_url.casefold()}"
+        return None, normalized_url, normalized_url, f"rss:feed:{normalized_url.casefold()}"
     return None, None, normalized_url, f"website:url:{normalized_url.casefold()}"
 
 
@@ -87,13 +92,78 @@ def _entity_defaults(tags: set[str]) -> dict[str, int]:
     }
 
 
+def _seed_media_candidate(db, *, name: str, entity_type: str, platform: str,
+                          url: str, teams: list[str], conferences: list[str],
+                          tags: set[str], priority: int, now: str) -> None:
+    """Put manual YouTube/podcast URLs into the existing validation queue."""
+    if platform not in {"youtube", "podcast"}:
+        return
+    wanted_class = "YOUTUBE_SHOW" if platform == "youtube" else "PODCAST"
+    row = db.execute(
+        "SELECT candidate_id,proposed_classes FROM source_candidates WHERE name=? AND discovery_method='manual_admin'",
+        (name,),
+    ).fetchone()
+    if row is None:
+        db.execute(
+            """INSERT INTO source_candidates(
+                 name,proposed_entity_type,proposed_classes,discovery_method,
+                 validation_status,validation_notes,last_checked_at)
+               VALUES(?,?,?,'manual_admin','SOURCE_CANDIDATE','Added through Source Admin',NULL)""",
+            (name, entity_type, wanted_class),
+        )
+        candidate_id = int(db.execute("SELECT last_insert_rowid()").fetchone()[0])
+        classes = {wanted_class}
+    else:
+        candidate_id = int(row["candidate_id"])
+        classes = {item.strip() for item in str(row["proposed_classes"] or "").split(",") if item.strip()}
+        classes.add(wanted_class)
+        db.execute(
+            """UPDATE source_candidates SET proposed_entity_type=?,proposed_classes=?,
+               validation_status='SOURCE_CANDIDATE',validation_notes='Updated through Source Admin',
+               last_checked_at=NULL WHERE candidate_id=?""",
+            (entity_type, ",".join(sorted(classes)), candidate_id),
+        )
+
+    profile = db.execute(
+        "SELECT * FROM media_source_profiles WHERE candidate_id=?", (candidate_id,)
+    ).fetchone()
+    platforms = set(json.loads(profile["platform_json"] or "[]")) if profile else set()
+    existing_tags = set(json.loads(profile["tags_json"] or "[]")) if profile else set()
+    platforms.add(platform)
+    all_tags = sorted(existing_tags | tags)
+    youtube_url = url if platform == "youtube" else (profile["youtube_url"] if profile else None)
+    podcast_url = url if platform == "podcast" else (profile["podcast_url"] if profile else None)
+    source_key = str(profile["source_key"] if profile else f"manual-{_slug(name)}")
+    team = teams[0] if teams else (profile["team"] if profile else None)
+    conference = conferences[0] if conferences else (profile["conference"] if profile else None)
+    coverage = str(profile["coverage"] if profile and profile["coverage"] else "manual_admin")
+    website = profile["website"] if profile else None
+    db.execute(
+        """INSERT INTO media_source_profiles(
+             candidate_id,source_key,team,conference,coverage,platform_json,tags_json,
+             priority,youtube_url,podcast_url,podcast_page_url,website,active_status,
+             last_verified_active,subscriber_count,episode_frequency,original_reporting,
+             program_access,reporting_evidence,content_focus,notes,catalog_status,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(candidate_id) DO UPDATE SET
+             team=excluded.team,conference=excluded.conference,coverage=excluded.coverage,
+             platform_json=excluded.platform_json,tags_json=excluded.tags_json,
+             priority=excluded.priority,youtube_url=excluded.youtube_url,
+             podcast_url=excluded.podcast_url,updated_at=excluded.updated_at""",
+        (candidate_id, source_key, team, conference, coverage,
+         json.dumps(sorted(platforms)), json.dumps(all_tags), priority,
+         youtube_url, podcast_url, None, website, "active", None, None, None,
+         int("intel" in tags), int(bool(teams)), "Manual Source Admin seed",
+         ", ".join(all_tags), "Added through Source Admin", "manual", now),
+    )
+
+
 def add_or_update_source(unified_registry, legacy_registry, payload: dict[str, Any]) -> dict[str, Any]:
     """Add one endpoint and additive seed metadata to the source graph.
 
     Exact case-insensitive source-name matches reuse the existing entity so a
     website, podcast, YouTube channel and Bluesky account can all belong to the
-    same source. New endpoints remain seeded/unverified until normal resolvers
-    validate them.
+    same source. Media URLs also enter the existing validation queue.
     """
     name = str(payload.get("name") or "").strip()
     if not name:
@@ -111,18 +181,20 @@ def add_or_update_source(unified_registry, legacy_registry, payload: dict[str, A
     handle, platform_id, url, endpoint_key = _normalized_endpoint(platform, endpoint_value)
     endpoint_type = {
         "website": "WEBSITE",
-        "rss": "FEED",
-        "youtube": "CHANNEL",
-        "podcast": "PODCAST_FEED",
+        "rss": "RSS_FEED",
+        "youtube": "YOUTUBE_CHANNEL",
+        "podcast": "PODCAST_RSS",
         "bluesky": "ACCOUNT",
     }[platform]
     classes = {
         "website": {"REPORTING"},
         "rss": {"REPORTING"},
         "youtube": {"MEDIA"},
-        "podcast": {"MEDIA"},
+        "podcast": {"MEDIA", "PODCAST"},
         "bluesky": {"SOCIAL"},
     }[platform]
+    if platform == "youtube":
+        classes.add("YOUTUBE_SHOW")
     if "intel" in seed_tags:
         classes.add("REPORTING")
     if "analysis" in seed_tags or "betting" in seed_tags:
@@ -151,10 +223,11 @@ def add_or_update_source(unified_registry, legacy_registry, payload: dict[str, A
             )
         else:
             defaults = _entity_defaults(seed_tags)
-            entity_key = f"manual:{_slug(name)}"
+            base_key = f"show:{_slug(name)}" if entity_type == "SHOW" else f"manual:{_slug(name)}"
+            entity_key = base_key
             suffix = 2
             while db.execute("SELECT 1 FROM source_entities WHERE entity_key=?", (entity_key,)).fetchone():
-                entity_key = f"manual:{_slug(name)}-{suffix}"; suffix += 1
+                entity_key = f"{base_key}-{suffix}"; suffix += 1
             db.execute(
                 """INSERT INTO source_entities(
                    entity_key,name,organization,entity_type,reliability_score,reporting_score,
@@ -180,18 +253,34 @@ def add_or_update_source(unified_registry, legacy_registry, payload: dict[str, A
             db.execute("INSERT OR REPLACE INTO source_entity_teams VALUES(?,?,1.0)", (entity_id, team))
         for conference in conferences:
             db.execute("INSERT OR REPLACE INTO source_entity_conferences VALUES(?,?,1.0)", (entity_id, conference))
+
+        # RSS/feed URLs are stable identities. YouTube channel IDs are stable
+        # when supplied as /channel/UC..., otherwise the handle still needs the
+        # normal media validation resolver before ingestion can use it.
+        verified_now = platform in {"website", "rss", "podcast"} or (
+            platform == "youtube" and bool(platform_id)
+        )
+        verification_status = "verified" if verified_now else "seeded_unverified"
         db.execute(
             """INSERT INTO source_endpoints(source_entity_id,endpoint_key,platform,endpoint_type,
-               handle,platform_id,url,active,verification_status,updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(endpoint_key) DO UPDATE SET
+               handle,platform_id,url,active,verification_status,verified_at,updated_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(endpoint_key) DO UPDATE SET
                source_entity_id=excluded.source_entity_id,handle=COALESCE(excluded.handle,source_endpoints.handle),
-               url=COALESCE(excluded.url,source_endpoints.url),active=1,updated_at=excluded.updated_at""",
+               platform_id=COALESCE(excluded.platform_id,source_endpoints.platform_id),
+               url=COALESCE(excluded.url,source_endpoints.url),active=1,
+               verification_status=excluded.verification_status,
+               verified_at=COALESCE(excluded.verified_at,source_endpoints.verified_at),
+               updated_at=excluded.updated_at""",
             (entity_id, endpoint_key, platform, endpoint_type, handle, platform_id, url, 1,
-             "seeded_unverified", now),
+             verification_status, now if verified_now else None, now),
         )
         endpoint_id = int(db.execute(
             "SELECT endpoint_id FROM source_endpoints WHERE endpoint_key=?", (endpoint_key,)
         ).fetchone()[0])
+        _seed_media_candidate(
+            db, name=name, entity_type=entity_type, platform=platform, url=url,
+            teams=teams, conferences=conferences, tags=seed_tags, priority=priority, now=now,
+        )
         db.commit()
 
     # Bluesky ingestion still consumes the original handle registry, so mirror a
@@ -222,5 +311,6 @@ def add_or_update_source(unified_registry, legacy_registry, payload: dict[str, A
         "teams": teams,
         "conferences": conferences,
         "priority": priority,
-        "verification_status": "seeded_unverified",
+        "verification_status": verification_status,
+        "validation_queued": platform in {"youtube", "podcast"},
     }
