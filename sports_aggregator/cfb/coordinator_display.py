@@ -30,7 +30,7 @@ TEAM_INSERT = (
 GAME_ANCHOR = '<div class="scoreboard">'
 GAME_INSERT = (
     '{{ coordinator_matchup_panel(game.away_team_id, game.home_team_id, '
-    'game.away_team, game.home_team, season) }}\n\n<div class="scoreboard">'
+    'game.away_team, game.home_team, game.season) }}\n\n<div class="scoreboard">'
 )
 
 
