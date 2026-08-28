@@ -2,8 +2,9 @@
 
 Wikipedia program pages use several infobox/template variants. The base
 integration prefers raw infobox parameters; this layer falls back to the
-rendered infobox labels, keeps claimed and unclaimed national titles separate,
-and normalizes conference-title display to ``count (most recent)``.
+rendered infobox labels, understands nested championship sections, keeps
+claimed and unclaimed national titles separate, and normalizes conference-title
+display to ``count (most recent)``.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-PARSER_VERSION = 3
+PARSER_VERSION = 4
 
 
 def _plain_text(wikitext: str) -> str:
@@ -43,7 +44,7 @@ def _championship_count(text: str, kind: str) -> str | None:
     noun = "national" if kind == "national" else "conference"
     for pattern in (
         rf"\bclaims?\s+(\d+)\s+(?:recognized\s+)?{noun}\s+championships?\b",
-        rf"\b(?:has|have)\s+won\s+(\d+)\s+{noun}\s+championships?\b",
+        rf"\b(?:has|have)\s+won\s+(\d+)\s+(?:officially\s+recognized\s+)?(?:[A-Z0-9-]+\s+)?{noun}\s+championships?\b",
         rf"\b(?:has|have)\s+earned\s+(\d+)\s+{noun}\s+championships?\b",
     ):
         match = re.search(pattern, text, flags=re.I)
@@ -69,20 +70,59 @@ def _clean_text(value: str | None) -> str | None:
     return text or None
 
 
+def _label(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+
+
 def _rendered_infobox(html_text: str) -> dict[str, str]:
+    """Flatten the rendered infobox while retaining championship section context.
+
+    Many program pages render championship blocks as a heading row followed by
+    short child labels, e.g. ``National championships`` -> ``Claimed`` and
+    ``Conference championships`` -> ``SEC``. Treating those child labels as
+    global fields loses the meaning and was why Florida/Oregon/Indiana could
+    show blanks even though Wikipedia visibly had the data.
+    """
     soup = BeautifulSoup(html_text or "", "html.parser")
     box = soup.select_one("table.infobox")
     if box is None:
         return {}
     result: dict[str, str] = {}
-    for row in box.select("tr"):
-        header, cell = row.find("th"), row.find("td")
-        if header is None or cell is None:
+    section: str | None = None
+    conference_values: list[str] = []
+
+    for row in box.find_all("tr", recursive=False):
+        header, cell = row.find("th", recursive=False), row.find("td", recursive=False)
+        if header is None:
             continue
-        label = re.sub(r"[^a-z0-9]+", " ", header.get_text(" ", strip=True).casefold()).strip()
+
+        header_text = _label(header.get_text(" ", strip=True))
+        if cell is None:
+            # Section headings such as National championships / Conference championships.
+            section = header_text or None
+            continue
+
         value = _clean_text(cell.get_text(" ", strip=True))
-        if label and value:
-            result[label] = value
+        if not header_text or not value:
+            continue
+
+        result[header_text] = value
+        if section in {"national championships", "national titles"}:
+            if header_text == "claimed":
+                result["claimed national titles"] = value
+            elif header_text == "unclaimed":
+                result["unclaimed national titles"] = value
+        elif section in {"conference championships", "conference titles"}:
+            # The child header is usually a conference name (SEC, Pac-12, Big Ten...).
+            conference_values.append(value)
+        elif section and header_text in {
+            "national finalist", "division championships", "heisman winners",
+            "rivalries", "website", "fight song", "mascot", "marching band",
+        }:
+            section = None
+
+    if conference_values:
+        result["conference championships"] = " ; ".join(conference_values)
     return result
 
 
@@ -94,7 +134,9 @@ def _rendered_history(fields: dict[str, str]) -> dict[str, Any]:
         first_year = int(match.group(1)) if match else None
 
     claimed = fields.get("claimed national titles") or fields.get("claimed national championships")
-    has_unclaimed = any("unclaimed national" in key for key in fields)
+    has_unclaimed = bool(
+        fields.get("unclaimed national titles") or fields.get("unclaimed national championships")
+    )
     if claimed is None and not has_unclaimed:
         claimed = fields.get("national titles") or fields.get("national championships")
 
@@ -124,7 +166,7 @@ def install_wiki_context_enrichment() -> None:
 
     base_fetch = wiki_context._fetch_wikipedia
     base_context = wiki_context.team_wiki_context
-    if getattr(base_fetch, "_program_history_v3", False):
+    if getattr(base_fetch, "_program_history_v4", False):
         return
 
     def enriched_fetch(school: str, mascot: str | None) -> dict[str, Any]:
@@ -145,7 +187,9 @@ def install_wiki_context_enrichment() -> None:
             )
 
             for key in ("first_season", "conference_championships", "mascot"):
-                if payload.get(key) in (None, "") and rendered_fields.get(key) not in (None, ""):
+                if rendered_fields.get(key) not in (None, ""):
+                    # Rendered values are preferred because they preserve nested
+                    # championship sections that raw template parsing can miss.
                     payload[key] = rendered_fields[key]
 
             # Headline national titles are claimed/recognized only. When the
@@ -168,16 +212,26 @@ def install_wiki_context_enrichment() -> None:
                     "format": "json", "formatversion": 2,
                 }, timeout=4)
                 raw.raise_for_status()
-                fallback = _fallback_fields(raw.json().get("parse", {}).get("wikitext", "") or "")
+                wikitext = raw.json().get("parse", {}).get("wikitext", "") or ""
+                fallback = _fallback_fields(wikitext)
                 for key in missing:
                     if fallback.get(key) not in (None, ""):
                         payload[key] = fallback[key]
+
+            # Keep the evergreen article summary as a final conservative count
+            # fallback. This covers pages whose infobox omits title rows entirely.
+            summary = str(payload.get("summary") or "")
+            if payload.get("conference_championships") in (None, ""):
+                payload["conference_championships"] = _championship_count(summary, "conference")
+            if (payload.get("national_championships") in (None, "") and
+                    not rendered_fields.get("has_unclaimed")):
+                payload["national_championships"] = _championship_count(summary, "national")
 
         payload["conference_championships_full"] = payload.get("conference_championships")
         payload["wiki_parser_version"] = PARSER_VERSION
         return payload
 
-    enriched_fetch._program_history_v3 = True
+    enriched_fetch._program_history_v4 = True
     wiki_context._fetch_wikipedia = enriched_fetch
 
     def enriched_context(repository, team: dict[str, Any], *, refresh: bool = False):
@@ -190,8 +244,6 @@ def install_wiki_context_enrichment() -> None:
 
         full_conf = stored.get("conference_championships_full") or result.get("conference_championships")
         result["conference_championships_full"] = full_conf
-        # Existing team template already reads conference_championships, so
-        # normalize that display value here without touching the large template.
         result["conference_championships"] = _compact_titles(full_conf)
         return result
 
