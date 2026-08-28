@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from contextlib import closing
 from typing import Any
+from urllib.parse import quote
 
+from sports_aggregator.cfb.models import normalize_alias
 from sports_aggregator.cfb.rivalries import rivalries_for_team
 from sports_aggregator.tables import Column, Table
 
@@ -14,6 +16,71 @@ def _record(wins: int | None, losses: int | None, ties: int | None = 0) -> str:
     losses = int(losses or 0)
     ties = int(ties or 0)
     return f"{wins}-{losses}" + (f"-{ties}" if ties else "")
+
+
+def _rivalry_wiki_url(rivalry: dict[str, Any]) -> str:
+    """Direct Wikipedia URL for the canonical two-program rivalry article.
+
+    Wikipedia commonly redirects pair-name rivalry URLs to the better-known
+    nickname article (Iron Bowl, The Game, Apple Cup, etc.), so this gives the
+    UI a durable direct wiki target without making a request while rendering.
+    """
+    teams = rivalry.get("teams") or ()
+    if len(teams) >= 2:
+        title = f"{teams[0]}–{teams[1]} football rivalry"
+    else:
+        title = str(rivalry.get("name") or "college football rivalry")
+    return "https://en.wikipedia.org/wiki/" + quote(title.replace(" ", "_"), safe="_-")
+
+
+def _resolve_team(connection, name: str | None) -> dict[str, Any] | None:
+    if not name:
+        return None
+    row = connection.execute(
+        "SELECT team_id,school FROM teams WHERE school=? LIMIT 1", (str(name),)
+    ).fetchone()
+    if row is None:
+        row = connection.execute(
+            """SELECT t.team_id,t.school
+               FROM team_aliases a JOIN teams t ON t.team_id=a.team_id
+               WHERE a.normalized_alias=? LIMIT 1""",
+            (normalize_alias(str(name)),),
+        ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def _series_record(connection, team_id: int, opponent_id: int) -> dict[str, Any]:
+    rows = connection.execute(
+        """SELECT home_team_id,away_team_id,home_points,away_points,season
+           FROM games
+           WHERE completed=1 AND home_points IS NOT NULL AND away_points IS NOT NULL
+             AND ((home_team_id=? AND away_team_id=?) OR
+                  (home_team_id=? AND away_team_id=?))
+           ORDER BY start_date""",
+        (team_id, opponent_id, opponent_id, team_id),
+    ).fetchall()
+    wins = losses = ties = 0
+    first = last = None
+    for raw in rows:
+        row = dict(raw)
+        home = int(row["home_team_id"]) == int(team_id)
+        team_points = row["home_points"] if home else row["away_points"]
+        opponent_points = row["away_points"] if home else row["home_points"]
+        if team_points > opponent_points:
+            wins += 1
+        elif team_points < opponent_points:
+            losses += 1
+        else:
+            ties += 1
+        year = int(row["season"])
+        first = year if first is None else min(first, year)
+        last = year if last is None else max(last, year)
+    return {
+        "series_record": _record(wins, losses, ties),
+        "series_games": len(rows),
+        "stored_first_meeting": first,
+        "stored_last_meeting": last,
+    }
 
 
 def _program_history(connection, team_id: int, team: dict[str, Any]) -> dict[str, Any]:
@@ -42,7 +109,27 @@ def _program_history(connection, team_id: int, team: dict[str, Any]) -> dict[str
         (team_id, team_id, team_id, team_id, team_id, team_id),
     ).fetchone()
     history = dict(row) if row is not None else {}
-    rivalries = rivalries_for_team(team.get("school"))
+    rivalries = []
+    school = str(team.get("school") or "")
+    for seeded in rivalries_for_team(school):
+        rivalry = dict(seeded)
+        teams = list(rivalry.get("teams") or ())
+        opponent_seed = next(
+            (name for name in teams if normalize_alias(name) != normalize_alias(school)),
+            None,
+        )
+        opponent = _resolve_team(connection, opponent_seed)
+        rivalry["opponent"] = (opponent or {}).get("school") or opponent_seed
+        rivalry["wiki_url"] = _rivalry_wiki_url(rivalry)
+        if opponent:
+            rivalry.update(_series_record(connection, int(team_id), int(opponent["team_id"])))
+        else:
+            rivalry.update({
+                "series_record": "—", "series_games": 0,
+                "stored_first_meeting": None, "stored_last_meeting": None,
+            })
+        rivalries.append(rivalry)
+
     history.update({
         "record": _record(history.get("wins"), history.get("losses"), history.get("ties")),
         "venue": team.get("venue_name"),
@@ -104,10 +191,6 @@ def team_coaching_context(repository, team_id: int, season: int) -> dict[str, An
                 (coach_id,),
             ).fetchone()
 
-            # Conference record at the current school should cover every season
-            # coached there, not merely the selected/current season. Team records
-            # are the authoritative conference W/L/T store, while coach_seasons
-            # identifies which program seasons belong to this coach.
             at_team_conf = connection.execute(
                 """SELECT COALESCE(SUM(conference_wins),0) wins,
                           COALESCE(SUM(conference_losses),0) losses,
@@ -140,10 +223,6 @@ def team_coaching_context(repository, team_id: int, season: int) -> dict[str, An
     elo_rank = None
     if elo is not None:
         rating = float(elo)
-        # Competition rank: tied ratings receive the same rank. The Elo store is
-        # the same population used everywhere else in the app, so this stays in
-        # sync with the displayed current ratings without maintaining a second
-        # ranking table.
         elo_rank = 1 + sum(
             1 for row in elo_rows.values()
             if row.get("elo") is not None and float(row["elo"]) > rating
@@ -181,8 +260,6 @@ def coach_lineage_table(repository, team_id: int, through_season: int | None = N
             params,
         ).fetchall()
 
-    # Collapse consecutive seasons by the same coach into one tenure. If a coach
-    # leaves and later returns, that becomes a separate lineage entry.
     tenures: list[dict[str, Any]] = []
     for raw in rows:
         row = dict(raw)
