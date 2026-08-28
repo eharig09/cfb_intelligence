@@ -4,64 +4,44 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}College Football{% endblock %}</title>
-
-    {#- Sharing and discovery metadata. Pages pass a `meta` packet built by
-        sports_aggregator.cfb.meta so the card, the canonical URL, and the
-        structured data are assembled from stored data in one place. Pages that
-        do not build one still get a description and a valid card. -#}
     {%- set share = meta | default(none) %}
     {%- set share_title = share.title if share else self.title() %}
-    {%- set share_description = share.description if share else
-        "College football intelligence: ranked matchups, team and player pages, and reporting attributed to its source." %}
+    {%- set share_description = share.description if share else "College football intelligence: ranked matchups, team and player pages, and reporting attributed to its source." %}
     {%- set canonical = (request.url_root.rstrip('/') + share.path) if share and share.path else request.base_url %}
     <meta name="description" content="{{ share_description }}">
     <link rel="canonical" href="{{ canonical }}">
-
     <meta property="og:type" content="{{ share.kind if share else 'website' }}">
     <meta property="og:site_name" content="Sports News Aggregator">
     <meta property="og:title" content="{{ share_title }}">
     <meta property="og:description" content="{{ share_description }}">
     <meta property="og:url" content="{{ canonical }}">
-    {%- if share and share.image %}
-    <meta property="og:image" content="{{ share.image }}">
+    {%- if share and share.image %}<meta property="og:image" content="{{ share.image }}">{% endif %}
     <meta name="twitter:card" content="summary">
-    {%- else %}
-    <meta name="twitter:card" content="summary">
-    {%- endif %}
     <meta name="twitter:title" content="{{ share_title }}">
     <meta name="twitter:description" content="{{ share_description }}">
-    {%- if share and share.structured_data %}
-    <script type="application/ld+json">{{ share.structured_data | tojson }}</script>
-    {%- endif %}
-
-    <link rel="alternate" type="application/rss+xml"
-          title="College Football reporting"
-          href="{{ url_for('cfb.national_feed') }}">
+    {%- if share and share.structured_data %}<script type="application/ld+json">{{ share.structured_data | tojson }}</script>{% endif %}
+    <link rel="alternate" type="application/rss+xml" title="College Football reporting" href="{{ url_for('cfb.national_feed') }}">
     {%- block feeds %}{% endblock %}
-
     <meta name="theme-color" content="#10151c">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icon.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='cfb.css', v='20260825-dark') }}">
+    <style>
+      .scroll-context{position:fixed;right:12px;bottom:12px;z-index:50;max-width:min(420px,calc(100vw - 24px));padding:.42rem .65rem;border:1px solid var(--line-strong);background:color-mix(in srgb,var(--surface-strong) 94%,transparent);color:var(--on-strong);box-shadow:var(--shadow-raised);font-size:.68rem;line-height:1.25;opacity:.9;pointer-events:none}
+      .scroll-context strong{font-weight:900}.scroll-context span{color:var(--on-strong-muted)}
+      .team-schedule-elo{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:10px 0 14px}.team-schedule-elo>div{border:1px solid var(--line);background:var(--paper);padding:9px 10px}.team-schedule-elo span{display:block;color:var(--muted);font-size:.58rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em}.team-schedule-elo b{display:block;margin-top:2px;font:800 1.05rem var(--display-font);font-variant-numeric:tabular-nums}.team-schedule-elo small{display:block;color:var(--muted);font-size:.58rem;margin-top:2px}
+      @media(max-width:700px){.team-schedule-elo{grid-template-columns:repeat(2,minmax(0,1fr))}.scroll-context{right:8px;bottom:8px;font-size:.62rem}}
+    </style>
     {% block head %}{% endblock %}
 </head>
 <body{% block body_attrs %}{% endblock %}>
 <header class="site-header">
     <div class="nav">
-        {% block breadcrumb %}
-        <a href="{{ url_for('index') }}">Sports News Aggregator</a>
-        <span class="tagline">Teams &rarr; Players &rarr; Games &rarr; Reporting</span>
-        {% endblock %}
-        <a href="{{ url_for('cfb_data_status.data_status') }}"
-           title="Open data refresh status"
-           style="margin-left:auto;white-space:nowrap;color:inherit;text-decoration:none;font-size:.74rem;opacity:.62;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:.28rem .52rem">
-          {% if data_freshness.running %}● Refreshing data
-          {% elif data_freshness.relative and data_freshness.relative != 'unknown' %}● Updated {{ data_freshness.relative }}
-          {% else %}● Data status{% endif %}
+        {% block breadcrumb %}<a href="{{ url_for('index') }}">Sports News Aggregator</a><span class="tagline">Teams &rarr; Players &rarr; Games &rarr; Reporting</span>{% endblock %}
+        <a href="{{ url_for('cfb_data_status.data_status') }}" title="Open data refresh status" style="margin-left:auto;white-space:nowrap;color:inherit;text-decoration:none;font-size:.74rem;opacity:.62;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:.28rem .52rem">
+          {% if data_freshness.running %}● Refreshing data{% elif data_freshness.relative and data_freshness.relative != 'unknown' %}● Updated {{ data_freshness.relative }}{% else %}● Data status{% endif %}
         </a>
-        <form class="header-search" action="/college-football/search/" method="get" role="search">
-            <input type="search" name="q" placeholder="Search" aria-label="Search teams, players, games">
-        </form>
+        <form class="header-search" action="/college-football/search/" method="get" role="search"><input type="search" name="q" placeholder="Search" aria-label="Search teams, players, games"></form>
     </div>
 </header>
 <main>
@@ -69,58 +49,75 @@
 {% if request.endpoint == 'cfb_data_status.data_status' %}
 <section style="max-width:1180px;margin:2rem auto 0;padding:0 1rem 2.5rem">
     <div style="border:1px solid var(--line);background:var(--paper);padding:1rem">
-        <div class="eyebrow">Private moderation</div>
-        <h2 style="margin:.25rem 0 .4rem">Zap exact bad link</h2>
+        <div class="eyebrow">Private moderation</div><h2 style="margin:.25rem 0 .4rem">Zap exact bad link</h2>
         <p class="section-note" style="margin-top:0">Paste the exact external URL shown on the site. The matching content item is removed immediately and the exact URL is blocked from future ingestion.</p>
         <form id="cfb-zap-form" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-            <input id="cfb-zap-url" type="url" required placeholder="https://example.com/bad-story" aria-label="Exact bad content URL"
-                   style="flex:1 1 28rem;min-width:16rem;background:var(--paper);color:var(--ink);border:1px solid var(--line-strong);padding:.6rem .7rem">
-            <button type="submit" style="border:1px solid var(--red);background:transparent;color:var(--red);padding:.6rem .8rem;font-weight:800;cursor:pointer">Zap exact link</button>
-            <span id="cfb-zap-status" class="section-note" aria-live="polite"></span>
+            <input id="cfb-zap-url" type="url" required placeholder="https://example.com/bad-story" aria-label="Exact bad content URL" style="flex:1 1 28rem;min-width:16rem;background:var(--paper);color:var(--ink);border:1px solid var(--line-strong);padding:.6rem .7rem">
+            <button type="submit" style="border:1px solid var(--red);background:transparent;color:var(--red);padding:.6rem .8rem;font-weight:800;cursor:pointer">Zap exact link</button><span id="cfb-zap-status" class="section-note" aria-live="polite"></span>
         </form>
     </div>
 </section>
 {% endif %}
 </main>
+<div class="scroll-context" id="scroll-context" hidden><strong id="scroll-context-page"></strong><span id="scroll-context-section"></span></div>
+{% if team is defined and schedule_year is defined and schedule_is_upcoming is defined and schedule_is_upcoming %}
+{% set team_elo = team_elo_summary(team.team_id, schedule_year) %}
+<div id="team-elo-data" hidden
+ data-home="{{ team_elo.remaining_home if team_elo.remaining_home is not none else '' }}" data-home-games="{{ team_elo.remaining_home_games }}"
+ data-away="{{ team_elo.remaining_away if team_elo.remaining_away is not none else '' }}" data-away-games="{{ team_elo.remaining_away_games }}"
+ data-conf="{{ team_elo.conference if team_elo.conference is not none else '' }}" data-conf-games="{{ team_elo.conference_games }}"
+ data-nonconf="{{ team_elo.nonconference if team_elo.nonconference is not none else '' }}" data-nonconf-games="{{ team_elo.nonconference_games }}"></div>
+{% endif %}
 {% block scripts %}{% endblock %}
+<script>
+(function(){
+  var nativePrompt=window.prompt.bind(window);
+  window.prompt=function(message,defaultValue){
+    if(/token/i.test(String(message||''))){
+      try{var saved=localStorage.getItem('cfbAdminPin');if(saved)return saved;}catch(e){}
+      var pin=nativePrompt('Admin PIN',defaultValue||'');
+      if(pin){try{localStorage.setItem('cfbAdminPin',pin);}catch(e){}}
+      return pin;
+    }
+    return nativePrompt(message,defaultValue);
+  };
+
+  var context=document.getElementById('scroll-context');
+  var page=document.getElementById('scroll-context-page');
+  var section=document.getElementById('scroll-context-section');
+  var headings=Array.prototype.slice.call(document.querySelectorAll('main .section > h2'));
+  if(context&&page){
+    var pageTitle=(document.querySelector('main h1')||{}).textContent||document.title.split('|')[0];
+    page.textContent=pageTitle.trim();context.hidden=false;
+    function update(){
+      var current='';
+      headings.forEach(function(h){if(h.getBoundingClientRect().top<=110)current=h.textContent.trim();});
+      section.textContent=current?' · '+current:'';
+    }
+    window.addEventListener('scroll',update,{passive:true});update();
+  }
+
+  var elo=document.getElementById('team-elo-data');
+  if(elo){
+    var sectionNode=Array.prototype.slice.call(document.querySelectorAll('main .section')).find(function(node){var h=node.querySelector(':scope > h2');return h&&/schedule/i.test(h.textContent);});
+    var table=sectionNode&&sectionNode.querySelector('.table-wrap');
+    if(table){
+      function card(label,value,count,tail){var display=value===''?'—':Number(value).toFixed(1);return '<div><span>'+label+'</span><b>'+display+'</b><small>'+count+' rated '+tail+'</small></div>';}
+      var grid=document.createElement('div');grid.className='team-schedule-elo';grid.setAttribute('aria-label','Team schedule current opponent Elo');
+      grid.innerHTML=card('Remaining home opp Elo',elo.dataset.home,elo.dataset.homeGames,'game(s)')+card('Remaining away opp Elo',elo.dataset.away,elo.dataset.awayGames,'game(s)')+card('Full conf. opp Elo',elo.dataset.conf,elo.dataset.confGames,'schedule slots')+card('Full non-conf. opp Elo',elo.dataset.nonconf,elo.dataset.nonconfGames,'schedule slots');
+      table.insertAdjacentElement('afterend',grid);
+      var note=document.createElement('div');note.className='section-note';note.textContent='Current opponent Elo. Home/away are remaining games; conference/non-conference use the full schedule.';grid.insertAdjacentElement('afterend',note);
+    }
+  }
+})();
+</script>
 {% if request.endpoint == 'cfb_data_status.data_status' %}
 <script>
-(function () {
-    var form = document.getElementById('cfb-zap-form');
-    if (!form) return;
-    var input = document.getElementById('cfb-zap-url');
-    var status = document.getElementById('cfb-zap-status');
-    function token() {
-        var saved = sessionStorage.getItem('cfbRefreshToken') || sessionStorage.getItem('cfb-refresh-token');
-        if (saved) return saved;
-        var value = window.prompt('CFB refresh token');
-        if (value) {
-            sessionStorage.setItem('cfbRefreshToken', value);
-            sessionStorage.setItem('cfb-refresh-token', value);
-        }
-        return value || '';
-    }
-    form.addEventListener('submit', function (event) {
-        event.preventDefault();
-        var url = (input.value || '').trim();
-        var auth = token();
-        if (!url || !auth) return;
-        status.textContent = 'Removing…';
-        fetch('/internal/cfb-content-zap', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + auth},
-            body: JSON.stringify({url: url})
-        }).then(function (response) {
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            return response.json();
-        }).then(function (result) {
-            status.textContent = 'Removed ' + result.removed_content + ' item(s); exact URL blocked.';
-            input.value = '';
-            window.setTimeout(function () { window.location.reload(); }, 700);
-        }).catch(function (error) {
-            status.textContent = 'Zap failed: ' + error.message;
-        });
-    });
+(function(){
+    var form=document.getElementById('cfb-zap-form');if(!form)return;
+    var input=document.getElementById('cfb-zap-url'),status=document.getElementById('cfb-zap-status');
+    function pin(){try{var saved=localStorage.getItem('cfbAdminPin');if(saved)return saved;}catch(e){}var value=window.prompt('Admin PIN');if(value){try{localStorage.setItem('cfbAdminPin',value);}catch(e){}}return value||'';}
+    form.addEventListener('submit',function(event){event.preventDefault();var url=(input.value||'').trim(),auth=pin();if(!url||!auth)return;status.textContent='Removing…';fetch('/internal/cfb-content-zap',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+auth},body:JSON.stringify({url:url})}).then(function(response){if(!response.ok){if(response.status===401){try{localStorage.removeItem('cfbAdminPin');}catch(e){}}throw new Error('HTTP '+response.status);}return response.json();}).then(function(result){status.textContent='Removed '+result.removed_content+' item(s); exact URL blocked.';input.value='';window.setTimeout(function(){window.location.reload();},700);}).catch(function(error){status.textContent='Zap failed: '+error.message;});});
 })();
 </script>
 {% endif %}

@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 import click
-from flask import Flask, abort, jsonify, render_template, request
+from flask import Flask, abort, jsonify, render_template, request, session
 from dotenv import load_dotenv
 
 from sports_aggregator.cfb.refresh_window import profile_for
@@ -17,9 +17,12 @@ from sports_aggregator.cfb.web import cfb_pages
 from sports_aggregator.cfb.data_status import data_status_pages
 from sports_aggregator.cfb.conference_features import (
     conference_schedule_elo,
-    decorate_conference_leaders,
     install_market_freshness_note,
     zap_content_url,
+)
+from sports_aggregator.cfb.conference_extras import (
+    conference_leader_packet,
+    team_schedule_elo,
 )
 from sports_aggregator.catalog import list_leagues
 from sports_aggregator.service import build_default_service
@@ -43,7 +46,6 @@ def _env_flag(name: str, default: bool) -> bool:
 
 
 def _legacy_dashboards_default() -> bool:
-    """Keep heavyweight baseball analytics out of constrained Render workers."""
     return not _env_flag("RENDER", False)
 
 
@@ -66,13 +68,10 @@ def _cache_dir(app: Flask) -> str:
 
 
 def create_app(test_config: dict | None = None) -> Flask:
-    """Application factory used by local, production, and test entry points."""
     app = Flask(__name__)
+    refresh_token = os.getenv("CFB_REFRESH_TOKEN", "")
 
     app.config.from_mapping(
-        # Rendered pages can be hundreds of KB. Keeping them in SimpleCache
-        # competes directly with refresh children for the 512 MB service RAM.
-        # FileSystemCache keeps that bulk on the persistent disk instead.
         CACHE_TYPE="FileSystemCache",
         CACHE_DIR=_cache_dir(app),
         CACHE_THRESHOLD=int(os.getenv("CFB_PAGE_CACHE_THRESHOLD", "150")),
@@ -81,7 +80,9 @@ def create_app(test_config: dict | None = None) -> Flask:
             "REGISTER_LEGACY_DASHBOARDS", _legacy_dashboards_default()),
         CFB_DEFAULT_SEASON=int(os.getenv("CFB_DEFAULT_SEASON", "0")) or None,
         CFB_DISPLAY_TIMEZONE=os.getenv("CFB_DISPLAY_TIMEZONE", "America/New_York"),
-        CFB_REFRESH_TOKEN=os.getenv("CFB_REFRESH_TOKEN", ""),
+        CFB_REFRESH_TOKEN=refresh_token,
+        CFB_ADMIN_PIN=os.getenv("CFB_ADMIN_PIN", "").strip(),
+        SECRET_KEY=os.getenv("FLASK_SECRET_KEY", "").strip() or refresh_token or secrets.token_hex(32),
         CFB_DATABASE_PATH=os.getenv(
             "CFB_DATABASE_PATH", os.path.join(app.instance_path, "cfb.sqlite3")
         ),
@@ -105,26 +106,49 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.extensions["content_repository"] = app.config.get("CONTENT_REPOSITORY") or ContentRepository(source_database_path)
     app.extensions["story_repository"] = app.config.get("STORY_REPOSITORY") or StoryRepository(source_database_path)
 
-    # cfb.web already holds the shared views module. Patch the market table once
-    # at app creation so every game preview gets the same compact quote-age note.
     install_market_freshness_note()
 
     def require_refresh_auth() -> None:
-        expected = str(app.config.get("CFB_REFRESH_TOKEN") or "").strip()
-        authorization = request.headers.get("Authorization", "")
-        provided = authorization.removeprefix("Bearer ").strip()
-        if not expected:
-            abort(503, description="CFB_REFRESH_TOKEN is not configured")
-        if not provided or not secrets.compare_digest(provided, expected):
-            abort(401)
+        if session.get("cfb_admin") is True:
+            return
+        refresh_expected = str(app.config.get("CFB_REFRESH_TOKEN") or "").strip()
+        pin_expected = str(app.config.get("CFB_ADMIN_PIN") or "").strip()
+        provided = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        valid_refresh = bool(refresh_expected and provided and secrets.compare_digest(provided, refresh_expected))
+        valid_pin = bool(pin_expected and provided and secrets.compare_digest(provided, pin_expected))
+        if valid_refresh or valid_pin:
+            if valid_pin:
+                session["cfb_admin"] = True
+                session.permanent = True
+            return
+        if not refresh_expected and not pin_expected:
+            abort(503, description="CFB_REFRESH_TOKEN or CFB_ADMIN_PIN is not configured")
+        abort(401)
 
     @app.route("/")
     def index():
         return render_template("index.html", leagues=list_leagues(), legacy_dashboards=app.config["REGISTER_LEGACY_DASHBOARDS"])
 
+    @app.post("/internal/cfb-admin-login")
+    def cfb_admin_login():
+        expected = str(app.config.get("CFB_ADMIN_PIN") or "").strip()
+        if not expected:
+            abort(503, description="CFB_ADMIN_PIN is not configured")
+        payload = request.get_json(silent=True) or request.form
+        provided = str(payload.get("pin") or "").strip()
+        if not provided or not secrets.compare_digest(provided, expected):
+            abort(401)
+        session["cfb_admin"] = True
+        session.permanent = True
+        return jsonify({"status": "ok"})
+
+    @app.post("/internal/cfb-admin-logout")
+    def cfb_admin_logout():
+        session.pop("cfb_admin", None)
+        return jsonify({"status": "ok"})
+
     @app.post("/internal/cfb-refresh")
     def start_cfb_refresh():
-        """Let a Render Cron Job trigger work inside the web service filesystem."""
         require_refresh_auth()
         profile = (request.args.get("profile") or "light").strip().casefold()
         season = app.config.get("CFB_DEFAULT_SEASON") or datetime.now().year
@@ -147,7 +171,6 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.post("/internal/cfb-content-zap")
     def cfb_content_zap():
-        """Block and remove one exact content URL from all rendered CFB surfaces."""
         require_refresh_auth()
         payload = request.get_json(silent=True) or request.form
         target = str(payload.get("url") or "").strip()
@@ -155,14 +178,11 @@ def create_app(test_config: dict | None = None) -> Flask:
             result = zap_content_url(app.extensions["content_repository"], target)
         except ValueError as exc:
             abort(400, description=str(exc))
-        # Story/team/conference pages are cached on disk; clear them so a zapped
-        # link disappears immediately instead of lingering until cache expiry.
         cache.clear()
         return jsonify({"status": "zapped", **result})
 
     @app.get("/internal/cfb-refresh-status")
     def cfb_refresh_status():
-        """Return persisted scheduler state and the tail of the newest refresh log."""
         require_refresh_auth()
         database = Path(app.config["CFB_DATABASE_PATH"])
         instance = database.parent
@@ -194,14 +214,14 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.jinja_env.filters["height"] = height_label
     app.jinja_env.filters["role"] = role_label
     app.jinja_env.filters["logo_pair"] = _logo_pair
-
-    # Conference-only helpers stay callable from the conference template so the
-    # existing route packet can remain small and cached exactly as before.
     app.jinja_env.globals["conference_elo_summary"] = lambda conference, season: conference_schedule_elo(
         app.extensions["cfb_repository"], conference, season
     )
-    app.jinja_env.globals["conference_leader_status"] = lambda groups, leaders, conference, season: decorate_conference_leaders(
-        app.extensions["cfb_repository"], groups, leaders, conference, season
+    app.jinja_env.globals["conference_leader_packet"] = lambda conference, season: conference_leader_packet(
+        app.extensions["cfb_repository"], conference, season
+    )
+    app.jinja_env.globals["team_elo_summary"] = lambda team_id, season: team_schedule_elo(
+        app.extensions["cfb_repository"], int(team_id), int(season)
     )
 
     app.register_blueprint(league_pages)
