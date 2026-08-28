@@ -36,17 +36,17 @@ FALLBACK_STATS = (
 )
 
 
-def _primary_stat(connection, player_id: str, season: int, position: str | None):
+def _primary_stat(connection, player_id: str, position: str | None):
+    """Pick the most useful stat that actually exists anywhere in this career."""
     pos = str(position or "").upper().strip()
     preferred = ("defensive", "TOT", "Tackles") if pos in DEFENSIVE_POSITIONS else PRIMARY_STATS.get(pos)
     candidates = ([preferred] if preferred else []) + [item for item in FALLBACK_STATS if item != preferred]
     for category, stat_type, label in candidates:
         exists = connection.execute(
-            """SELECT 1 FROM game_player_box_stats gp
-               JOIN games g USING(game_id)
-               WHERE gp.player_id=? AND g.season=? AND gp.category=? AND gp.stat_type=?
+            """SELECT 1 FROM game_player_box_stats
+               WHERE player_id=? AND category=? AND stat_type=?
                LIMIT 1""",
-            (player_id, season, category, stat_type),
+            (player_id, category, stat_type),
         ).fetchone()
         if exists:
             return category, stat_type, label
@@ -93,47 +93,64 @@ def _date_label(value: str | None) -> str:
 
 
 def player_game_log_table(repository, player: dict[str, Any], season: int) -> Table:
-    """Completed games with the player's primary stat and opponent quality context."""
+    """Career game log from stored per-game player box scores.
+
+    The selected/current page season is not used as a row filter. Veteran player
+    pages commonly point at the current roster season while their actual game
+    history lives in earlier seasons.
+    """
     player_id = str(player.get("player_id") or "")
-    team = str(player.get("team") or "")
     position = player.get("position")
     repository.initialize()
     with closing(repository._connect()) as connection:
-        category, stat_type, stat_label = _primary_stat(connection, player_id, season, position)
-        team_row = connection.execute(
-            "SELECT conference FROM teams WHERE school=? LIMIT 1", (team,)
-        ).fetchone()
-        conference = team_row[0] if team_row else None
-        conference_rank, season_value = _conference_rank(
-            connection, player_id, season, conference, category, stat_type
-        )
+        category, stat_type, stat_label = _primary_stat(connection, player_id, position)
         rows = connection.execute(
-            """SELECT gp.game_id,g.week,g.start_date,g.home_team_id,g.home_team,g.home_points,
-                      g.away_team_id,g.away_team,g.away_points,g.completed,g.conference_game,
-                      gp.team,gp.numeric_value,gp.stat_value
+            """SELECT gp.game_id,g.season,g.week,g.start_date,
+                      g.home_team_id,g.home_team,g.home_points,g.home_pregame_elo,
+                      g.away_team_id,g.away_team,g.away_points,g.away_pregame_elo,
+                      gp.team,gp.conference,gp.numeric_value,gp.stat_value
                FROM game_player_box_stats gp
                JOIN games g USING(game_id)
-               WHERE gp.player_id=? AND g.season=? AND gp.category=? AND gp.stat_type=?
+               WHERE gp.player_id=? AND gp.category=? AND gp.stat_type=?
                ORDER BY g.start_date DESC""",
-            (player_id, season, category, stat_type),
+            (player_id, category, stat_type),
         ).fetchall()
-        elo = repository.team_elo(season)
+
+        elo_by_season: dict[int, dict[int, dict[str, Any]]] = {}
+        rank_cache: dict[tuple[int, str | None], tuple[int | None, float | None]] = {}
         output: list[dict[str, Any]] = []
         for raw in rows:
             item = dict(raw)
+            row_season = int(item["season"])
             player_is_home = item["team"] == item["home_team"]
             opponent = item["away_team"] if player_is_home else item["home_team"]
             opponent_id = item["away_team_id"] if player_is_home else item["home_team_id"]
             player_points = item["home_points"] if player_is_home else item["away_points"]
             opp_points = item["away_points"] if player_is_home else item["home_points"]
+            pregame_elo = item["away_pregame_elo"] if player_is_home else item["home_pregame_elo"]
             result = "—"
             if player_points is not None and opp_points is not None:
                 result = ("W" if player_points > opp_points else "L" if player_points < opp_points else "T") + f" {player_points}-{opp_points}"
+
             numeric = item["numeric_value"]
             display_value = numeric if numeric is not None else item["stat_value"]
             game_rank = _game_rank(connection, item["game_id"], category, stat_type, float(numeric)) if numeric is not None else None
-            opponent_rating = (elo.get(opponent_id) or {}).get("elo")
+
+            conference = item.get("conference")
+            rank_key = (row_season, conference)
+            if rank_key not in rank_cache:
+                rank_cache[rank_key] = _conference_rank(
+                    connection, player_id, row_season, conference, category, stat_type
+                )
+            conference_rank, _season_value = rank_cache[rank_key]
+
+            if row_season not in elo_by_season:
+                elo_by_season[row_season] = repository.team_elo(row_season)
+            current_for_season = (elo_by_season[row_season].get(opponent_id) or {}).get("elo")
+            opponent_rating = current_for_season if current_for_season is not None else pregame_elo
+
             output.append({
+                "season": row_season,
                 "week": item["week"],
                 "date": _date_label(item["start_date"]),
                 "opponent": opponent,
@@ -145,13 +162,13 @@ def player_game_log_table(repository, player: dict[str, Any], season: int) -> Ta
                 "game_url": f"/college-football/games/{item['game_id']}/box-score/",
             })
 
-    note_bits = [f"Primary context: {stat_label.lower()}"]
-    if conference_rank is not None:
-        note_bits.append(f"season conference rank #{conference_rank}")
-    if season_value is not None:
-        note_bits.append(f"season total {season_value:g}")
+    note = (
+        f"Career primary context: {stat_label.lower()} · opponent Elo uses the stored season rating "
+        "when available, with pregame Elo as fallback"
+    )
     return Table(
         columns=[
+            Column("season", "Season", format="int", align="right"),
             Column("week", "Wk", format="int", align="right"),
             Column("date", "Date"),
             Column("opponent", "Opponent"),
@@ -161,12 +178,15 @@ def player_game_log_table(repository, player: dict[str, Any], season: int) -> Ta
             Column("game_rank", "Game rank", format="rank", align="right",
                    title="Rank in this game for the same stat category"),
             Column("conf_rank", "Conf rank", format="rank", align="right",
-                   title="Current season conference rank for the same stat"),
+                   title="Season conference rank for the same stat"),
         ],
         rows=[{**row, "opponent_url": row["game_url"], "result_url": row["game_url"]} for row in output],
-        caption=f"{season} game log",
-        note=" · ".join(note_bits),
+        caption="Career game log",
+        note=note,
         dense=True,
         sortable=True,
-        empty="No completed per-game production is stored for this player yet.",
+        empty=(
+            "No stored per-game player box scores are available for this career yet. "
+            "Season totals can still appear above because they come from a separate historical dataset."
+        ),
     )
