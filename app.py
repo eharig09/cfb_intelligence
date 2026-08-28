@@ -24,6 +24,7 @@ from sports_aggregator.cfb.conference_extras import (
     conference_leader_packet,
     team_schedule_elo,
 )
+from sports_aggregator.cfb.player_game_log import player_game_log_table
 from sports_aggregator.catalog import list_leagues
 from sports_aggregator.service import build_default_service
 from sports_aggregator.social.registry import SourceRegistry
@@ -222,6 +223,9 @@ def create_app(test_config: dict | None = None) -> Flask:
     )
     app.jinja_env.globals["team_elo_summary"] = lambda team_id, season: team_schedule_elo(
         app.extensions["cfb_repository"], int(team_id), int(season)
+    )
+    app.jinja_env.globals["player_game_log"] = lambda player, season: player_game_log_table(
+        app.extensions["cfb_repository"], player, int(season)
     )
 
     app.register_blueprint(league_pages)
