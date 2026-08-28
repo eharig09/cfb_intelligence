@@ -3,7 +3,8 @@
 The full registry is hundreds of Google News RSS searches. Running all of them
 inside a normal refresh makes throttling turn into a long-lived process and
 competes with the web service for memory. This command deliberately does only
-one persisted slice, commits what it gets, advances the cursor, and exits.
+one persisted slice, commits what it gets, advances the cursor, then immediately
+runs the downstream content stages required by team pages.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
+from sports_aggregator.bootstrap import run_phase
 from sports_aggregator.models import FeedConfig
 from sports_aggregator.providers.rss import RSSNewsProvider
 from sports_aggregator.social.content import ContentRepository
@@ -29,6 +31,8 @@ from sports_aggregator.social.local_sources import (
     _publisher_id,
     google_news_url,
 )
+
+POSTPROCESS_STEPS = ["retag", "cluster", "roles", "score"]
 
 
 def _state_path(repository: ContentRepository) -> Path:
@@ -109,9 +113,6 @@ def _manual_tasks(database_path: Path, limit: int) -> list[tuple[dict, dict, Fee
                     feed_url = item["url"]
                     endpoint_key = item["endpoint_key"]
                 else:
-                    # A manually supplied publisher URL is exact publisher
-                    # identity, but not necessarily a feed. Use the same safe
-                    # Google News domain fallback as the researched registry.
                     query = f'"{item["school"]} football" site:{domain}'
                     feed_url = google_news_url(query)
                     endpoint_key = f"rss:manual-google-news:{item['source_entity_id']}:{item['team_id']}"
@@ -155,8 +156,6 @@ def _tasks(limit: int, database_path: Path) -> list[tuple[dict, dict, FeedConfig
                     ),
                 ))
 
-    # Manual entries are additive. De-duplicate identical team/feed pairs so a
-    # source already present in the researched registry is not polled twice.
     seen = {(int(team["team_id"]), config.url) for team, _, config in tasks}
     for task in _manual_tasks(database_path, limit):
         team, _, config = task
@@ -189,8 +188,6 @@ def run_shard(season: int, *, shard_size: int, workers: int, limit: int) -> dict
         team, source, config = task
         return team, source, RSSNewsProvider(config).fetch()
 
-    # A small pool is intentional. Google News throttles datacenter bursts and
-    # this job values bounded resource use over wall-clock speed.
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         futures = {pool.submit(fetch, task): task for task in selected}
         for future in as_completed(futures):
@@ -216,9 +213,6 @@ def run_shard(season: int, *, shard_size: int, workers: int, limit: int) -> dict
                     "error": str(exc)[:240],
                 })
 
-    # Move forward even when a publisher is temporarily unavailable. It gets
-    # another chance on the next full cycle instead of blocking every later
-    # source behind it.
     next_index = 0 if end >= len(tasks) else end
     _write_cursor(state, next_index, len(tasks))
     repository.record_run(
@@ -245,6 +239,16 @@ def run_shard(season: int, *, shard_size: int, workers: int, limit: int) -> dict
     }
 
 
+def _postprocess(season: int) -> list[dict]:
+    """Run the same downstream stages as the normal content refresh.
+
+    These commands run sequentially in child processes through bootstrap, so a
+    local-news shard never leaves freshly stored items waiting for a later
+    content/social refresh before they can be tagged, clustered and scored.
+    """
+    return run_phase("refresh", season, only=POSTPROCESS_STEPS, timeout=600)
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(description="Ingest one local-reporting shard")
@@ -257,6 +261,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     report = run_shard(args.season, shard_size=args.shard_size,
                        workers=args.workers, limit=args.limit)
+
+    # Even a shard that stores zero new rows can have updated/deduplicated
+    # content from this pass, but avoid spending four subprocesses on an empty
+    # registry. Every successful real shard gets the full downstream chain.
+    postprocess: list[dict] = []
+    if report["status"] == "success":
+        postprocess = _postprocess(args.season)
+        report["postprocess"] = [
+            {"step": row.get("step"), "status": row.get("status"),
+             "message": row.get("message", "")} for row in postprocess
+        ]
+        failures = [row for row in postprocess if row.get("status") not in {"success", "skipped"}]
+        if failures:
+            report["status"] = "degraded"
+
     print(json.dumps(report, sort_keys=True))
     return 0 if report["status"] in {"success", "empty"} else 1
 
