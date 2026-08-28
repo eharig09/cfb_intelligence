@@ -36,17 +36,83 @@ FALLBACK_STATS = (
 )
 
 
-def _primary_stat(connection, player_id: str, position: str | None):
-    """Pick the most useful stat that actually exists anywhere in this career."""
+def _placeholders(values: list[str]) -> str:
+    return ",".join("?" for _ in values)
+
+
+def _career_identity(connection, player: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Resolve the IDs/teams that belong to one stored player career.
+
+    CFBD's roster, season-stat and game-player endpoints do not always preserve
+    one immutable player id across every historical feed. Start with the page's
+    canonical id, then admit alternate ids only when the same normalized/exact
+    name is attached to one of the player's known teams.
+    """
+    current_id = str(player.get("player_id") or "").strip()
+    name = str(player.get("name") or "").strip()
+    normalized = str(player.get("normalized_name") or "").strip()
+    position = str(player.get("position") or "").strip().upper()
+
+    teams = {
+        str(item.get("team") or "").strip()
+        for item in (player.get("stints") or [])
+        if str(item.get("team") or "").strip()
+    }
+    if player.get("team"):
+        teams.add(str(player["team"]).strip())
+    for movement in player.get("transfers") or []:
+        for key in ("origin", "destination"):
+            if movement.get(key):
+                teams.add(str(movement[key]).strip())
+
+    ids = {current_id} if current_id else set()
+    if normalized:
+        roster_rows = connection.execute(
+            """SELECT DISTINCT player_id,team,position FROM players
+               WHERE normalized_name=?""",
+            (normalized,),
+        ).fetchall()
+        for row in roster_rows:
+            row_team = str(row["team"] or "").strip()
+            row_pos = str(row["position"] or "").strip().upper()
+            if teams and row_team not in teams:
+                continue
+            if position and row_pos and row_pos != position:
+                continue
+            ids.add(str(row["player_id"]))
+            if row_team:
+                teams.add(row_team)
+
+    if name and teams:
+        team_values = sorted(teams)
+        placeholders = _placeholders(team_values)
+        params = [name.casefold(), *team_values]
+        for table in ("player_season_stats", "game_player_box_stats"):
+            rows = connection.execute(
+                f"SELECT DISTINCT player_id,team FROM {table} "
+                f"WHERE lower(player)=? AND team IN ({placeholders})",
+                params,
+            ).fetchall()
+            for row in rows:
+                ids.add(str(row["player_id"]))
+
+    return sorted(item for item in ids if item), sorted(teams)
+
+
+def _primary_stat(connection, player_ids: list[str], position: str | None):
+    """Pick the most useful stat that exists for any resolved career id."""
     pos = str(position or "").upper().strip()
     preferred = ("defensive", "TOT", "Tackles") if pos in DEFENSIVE_POSITIONS else PRIMARY_STATS.get(pos)
     candidates = ([preferred] if preferred else []) + [item for item in FALLBACK_STATS if item != preferred]
+    if not player_ids:
+        return preferred or ("defensive", "TOT", "Tackles")
+    placeholders = _placeholders(player_ids)
     for category, stat_type, label in candidates:
         exists = connection.execute(
-            """SELECT 1 FROM game_player_box_stats
-               WHERE player_id=? AND category=? AND stat_type=?
-               LIMIT 1""",
-            (player_id, category, stat_type),
+            f"""SELECT 1 FROM game_player_box_stats
+                WHERE player_id IN ({placeholders}) AND category=? AND stat_type=?
+                LIMIT 1""",
+            [*player_ids, category, stat_type],
         ).fetchone()
         if exists:
             return category, stat_type, label
@@ -93,34 +159,39 @@ def _date_label(value: str | None) -> str:
 
 
 def player_game_log_table(repository, player: dict[str, Any], season: int) -> Table:
-    """Career game log from stored per-game player box scores.
-
-    The selected/current page season is not used as a row filter. Veteran player
-    pages commonly point at the current roster season while their actual game
-    history lives in earlier seasons.
-    """
-    player_id = str(player.get("player_id") or "")
+    """Career game log from stored per-game player box scores."""
     position = player.get("position")
     repository.initialize()
     with closing(repository._connect()) as connection:
-        category, stat_type, stat_label = _primary_stat(connection, player_id, position)
-        rows = connection.execute(
-            """SELECT gp.game_id,g.season,g.week,g.start_date,
-                      g.home_team_id,g.home_team,g.home_points,g.home_pregame_elo,
-                      g.away_team_id,g.away_team,g.away_points,g.away_pregame_elo,
-                      gp.team,gp.conference,gp.numeric_value,gp.stat_value
-               FROM game_player_box_stats gp
-               JOIN games g USING(game_id)
-               WHERE gp.player_id=? AND gp.category=? AND gp.stat_type=?
-               ORDER BY g.start_date DESC""",
-            (player_id, category, stat_type),
-        ).fetchall()
+        player_ids, career_teams = _career_identity(connection, player)
+        category, stat_type, stat_label = _primary_stat(connection, player_ids, position)
+        rows = []
+        if player_ids:
+            placeholders = _placeholders(player_ids)
+            rows = connection.execute(
+                f"""SELECT gp.game_id,g.season,g.week,g.start_date,
+                          g.home_team_id,g.home_team,g.home_points,g.home_pregame_elo,
+                          g.away_team_id,g.away_team,g.away_points,g.away_pregame_elo,
+                          gp.player_id AS box_player_id,gp.team,gp.conference,
+                          gp.numeric_value,gp.stat_value
+                   FROM game_player_box_stats gp
+                   JOIN games g USING(game_id)
+                   WHERE gp.player_id IN ({placeholders})
+                     AND gp.category=? AND gp.stat_type=?
+                   ORDER BY g.start_date DESC""",
+                [*player_ids, category, stat_type],
+            ).fetchall()
 
         elo_by_season: dict[int, dict[int, dict[str, Any]]] = {}
-        rank_cache: dict[tuple[int, str | None], tuple[int | None, float | None]] = {}
+        rank_cache: dict[tuple[str, int, str | None], tuple[int | None, float | None]] = {}
         output: list[dict[str, Any]] = []
+        seen_games: set[int] = set()
         for raw in rows:
             item = dict(raw)
+            game_id = int(item["game_id"])
+            if game_id in seen_games:
+                continue
+            seen_games.add(game_id)
             row_season = int(item["season"])
             player_is_home = item["team"] == item["home_team"]
             opponent = item["away_team"] if player_is_home else item["home_team"]
@@ -134,13 +205,14 @@ def player_game_log_table(repository, player: dict[str, Any], season: int) -> Ta
 
             numeric = item["numeric_value"]
             display_value = numeric if numeric is not None else item["stat_value"]
-            game_rank = _game_rank(connection, item["game_id"], category, stat_type, float(numeric)) if numeric is not None else None
+            game_rank = _game_rank(connection, game_id, category, stat_type, float(numeric)) if numeric is not None else None
 
             conference = item.get("conference")
-            rank_key = (row_season, conference)
+            historical_id = str(item.get("box_player_id") or "")
+            rank_key = (historical_id, row_season, conference)
             if rank_key not in rank_cache:
                 rank_cache[rank_key] = _conference_rank(
-                    connection, player_id, row_season, conference, category, stat_type
+                    connection, historical_id, row_season, conference, category, stat_type
                 )
             conference_rank, _season_value = rank_cache[rank_key]
 
@@ -159,12 +231,15 @@ def player_game_log_table(repository, player: dict[str, Any], season: int) -> Ta
                 "primary_stat": display_value,
                 "game_rank": game_rank,
                 "conf_rank": conference_rank,
-                "game_url": f"/college-football/games/{item['game_id']}/box-score/",
+                "game_url": f"/college-football/games/{game_id}/box-score/",
             })
 
+    identity_note = ""
+    if len(player_ids) > 1:
+        identity_note = f" · reconciled {len(player_ids)} historical player IDs"
     note = (
         f"Career primary context: {stat_label.lower()} · opponent Elo uses the stored season rating "
-        "when available, with pregame Elo as fallback"
+        f"when available, with pregame Elo as fallback{identity_note}"
     )
     return Table(
         columns=[
@@ -186,7 +261,7 @@ def player_game_log_table(repository, player: dict[str, Any], season: int) -> Ta
         dense=True,
         sortable=True,
         empty=(
-            "No stored per-game player box scores are available for this career yet. "
+            "No per-game box-score identity could be matched to this stored career. "
             "Season totals can still appear above because they come from a separate historical dataset."
         ),
     )
