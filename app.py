@@ -26,6 +26,7 @@ from sports_aggregator.cfb.conference_extras import (
 )
 from sports_aggregator.cfb.model_market_display import install_model_comparison_display
 from sports_aggregator.cfb.wiki_context_enrichment import install_wiki_context_enrichment
+from sports_aggregator.cfb.coordinator_display import install_coordinator_display
 from sports_aggregator.cfb.player_game_log import player_game_log_table
 from sports_aggregator.catalog import list_leagues
 from sports_aggregator.service import build_default_service
@@ -113,6 +114,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     install_market_freshness_note()
     install_model_comparison_display()
     install_wiki_context_enrichment()
+    install_coordinator_display(app)
 
     def require_refresh_auth() -> None:
         if session.get("cfb_admin") is True:
