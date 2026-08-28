@@ -1,7 +1,7 @@
 {% extends "_layout.html" %}
 {% from "_tables.html" import data_table, story_list, tabbed_tables, tabs_script %}
 
-{% block title %}{{ team.school }} | {{ season }} Team Intelligence{% endblock %}
+{% block title %}{{ team.school }}{% if team.mascot %} {{ team.mascot }}{% endif %} | {{ season }} Team Intelligence{% endblock %}
 
 {% block head %}
 <style>
@@ -52,10 +52,10 @@
 <section class="hero">
     <div>
         <div class="eyebrow"><a href="{{ url_for('cfb.today') }}">{{ season }} team intelligence</a></div>
-        <h1>{% if rank %}<span style="color:var(--rust)">#{{ rank }}</span> {% endif %}{{ team.school }}</h1>
+        <h1>{% if rank %}<span style="color:var(--rust)">#{{ rank }}</span> {% endif %}{{ team.school }}{% if team.mascot %} {{ team.mascot }}{% endif %}</h1>
         <div class="meta">
             {% if team.conference %}<a class="conference-tag" href="{{ url_for('cfb.conference_preview', slug=team.conference | lower | replace(' ', '-'), season=season) }}">{{ team.conference }}</a>{% endif %}
-            {{ team.mascot or '' }} &middot; {{ team.venue_name or 'Venue TBD' }}
+            {{ team.venue_name or 'Venue TBD' }}
         </div>
         <div class="hero-context" aria-label="Current team context">
             <span class="item"><span class="label">Elo</span><strong>{{ team_context.elo or '—' }}</strong></span>
@@ -65,9 +65,7 @@
         </div>
         <div class="hero-context" aria-label="Program identity">
             <span class="item"><span class="label">First season</span><strong>{{ wiki.first_season or '—' }}</strong></span>
-            <span class="item"><span class="label">Conf titles</span><strong>{{ wiki.conference_championships or '—' }}</strong></span>
             <span class="item"><span class="label">National titles</span><strong>{{ wiki.national_championships or '—' }}</strong></span>
-            <span class="item"><span class="label">Mascot</span><strong>{{ wiki.mascot or team.mascot or '—' }}</strong></span>
         </div>
         <div class="meta" style="margin-top:8px">
             <a href="{{ url_for('cfb.team_history', team_id=team.team_id, season=season) }}">Historical game log</a>
