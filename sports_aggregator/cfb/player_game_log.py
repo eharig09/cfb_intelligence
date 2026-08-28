@@ -155,7 +155,7 @@ def player_game_log_table(repository, player: dict[str, Any], season: int) -> Ta
             Column("week", "Wk", format="int", align="right"),
             Column("date", "Date"),
             Column("opponent", "Opponent"),
-            Column("opponent_elo", "Opp Elo", format="f0", align="right"),
+            Column("opponent_elo", "Opp Elo", format="int", align="right"),
             Column("result", "Result"),
             Column("primary_stat", stat_label, format="num", align="right", emphasis=True),
             Column("game_rank", "Game rank", format="rank", align="right",
