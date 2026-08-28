@@ -65,7 +65,7 @@
         </div>
         <div class="hero-context" aria-label="Program identity">
             <span class="item"><span class="label">First season</span><strong>{{ wiki.first_season or '—' }}</strong></span>
-            <span class="item"><span class="label">Conf titles</span><strong>{{ wiki.conference_championships or '—' }}</strong></span>
+            <span class="item"><span class="label">Conf titles</span><strong>{{ wiki.conference_championships_compact or '—' }}</strong></span>
             <span class="item"><span class="label">National titles</span><strong>{{ wiki.national_championships or '—' }}</strong></span>
             <span class="item"><span class="label">Mascot</span><strong>{{ wiki.mascot or team.mascot or '—' }}</strong></span>
         </div>
@@ -218,63 +218,3 @@
                 sourced, while graduation and eligibility labels are inferred from comparing
                 the two rosters.
             </div>
-            <div class="split">
-                <div>{{ data_table(arrivals_table) }}</div>
-                <div>{{ data_table(departures_table) }}</div>
-            </div>
-        </section>
-
-    </div>
-
-    <aside>
-        <section class="section" data-mobile-tab-panel="news">
-            <h2>Team reporting</h2>
-            <div class="section-note">Stories that resolved to {{ team.school }} specifically.</div>
-            {{ story_list(stories, 'No story has resolved to this team yet.') }}
-        </section>
-
-        <section class="section" data-mobile-tab-panel="news">
-            <h2>Around the {{ team.conference or 'conference' }}</h2>
-            <div class="section-note">
-                Conference-wide reporting about other programmes. These are not about
-                {{ team.school }} and each shows the team it concerns.
-            </div>
-            {{ story_list(conference_stories, 'No other conference reporting is available.', context=true) }}
-        </section>
-
-        <section class="section" data-mobile-tab-panel="roster">
-            <h2>Key returning production</h2>
-            <div class="section-note">Graded 2025 players still on the {{ season }} roster.</div>
-            {{ data_table(unit_continuity_table) }}
-            {{ data_table(pff_players_table) }}
-        </section>
-
-        <section class="section" data-mobile-tab-panel="roster">
-            <h2>Key departures</h2>
-            <div class="section-note">Graded 2025 players who left, and where they went.</div>
-            {{ data_table(pff_departed_table) }}
-        </section>
-
-        <section class="section" data-mobile-tab-panel="roster">
-            <h2>{{ board_year | default(2027) }} draft watch</h2>
-            <div class="section-note">
-                Class-year eligibility estimate, ranked against players actually drafted
-                at each position.
-            </div>
-            {{ data_table(draft_table) }}
-        </section>
-
-        <section class="section" data-mobile-tab-panel="stats">
-            <h2>Position philosophy</h2>
-            <div class="section-note">
-                {{ position_philosophy_season or 'Latest stored' }} production identifies how
-                this roster distributed its work. Each row uses the statistic relevant to that
-                position; PFF is shown beside it as separate historical evidence.
-            </div>
-            {{ data_table(position_philosophy_table) }}
-        </section>
-    </aside>
-</div>
-{% endblock %}
-
-{% block scripts %}{{ tabs_script() }}{% endblock %}
