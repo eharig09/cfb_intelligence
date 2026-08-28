@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from sports_aggregator.cfb.repository import CFBRepository
+
 
 def _rank_points(rank: int | None) -> float:
     return max(0.0, (26 - rank) * 1.35) if rank else 0.0
@@ -14,7 +16,7 @@ def _week_one_start(season: int) -> date:
     """First Thursday of the conventional Week 1 Labor Day window.
 
     CFBD can label the late-August opening slate as Week 1 even when the public
-    schedule calls it Week 0.  The dashboard should follow the football-week
+    schedule calls it Week 0. The dashboard should follow the football-week
     convention without rewriting the canonical schedule stored in SQLite.
     """
     september_first = date(int(season), 9, 1)
@@ -40,6 +42,32 @@ def _display_week(game: dict[str, Any]) -> int | None:
     except (TypeError, ValueError):
         pass
     return raw_week
+
+
+def _normalize_display_weeks(games: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize football week labels on detached repository row dictionaries."""
+    for game in games:
+        game["week"] = _display_week(game)
+    return games
+
+
+# The Today route determines its nearest week immediately after calling
+# repository.upcoming_games(), before games_to_watch() gets a chance to
+# normalize copies. Normalize the detached row dictionaries at that boundary
+# so the week heading, weekly slice, and attention cards all use the same Week
+# 0 convention. The database itself remains untouched.
+_original_upcoming_games = CFBRepository.upcoming_games
+
+
+def _upcoming_games_with_display_week(
+    self: CFBRepository, season: int, limit: int = 16
+) -> list[dict[str, Any]]:
+    return _normalize_display_weeks(_original_upcoming_games(self, season, limit))
+
+
+if not getattr(CFBRepository.upcoming_games, "_week_zero_normalized", False):
+    _upcoming_games_with_display_week._week_zero_normalized = True
+    CFBRepository.upcoming_games = _upcoming_games_with_display_week
 
 
 def score_game_attention(game: dict[str, Any]) -> tuple[int, list[str]]:
@@ -78,9 +106,9 @@ def score_game_attention(game: dict[str, Any]) -> tuple[int, list[str]]:
 def games_to_watch(games: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
     """Rank games from the nearest football week, including Week 0.
 
-    The dashboard previously ranked the whole upcoming query at once.  During
+    The dashboard previously ranked the whole upcoming query at once. During
     Week 0 that let higher-profile Week 1 games crowd the opening slate out of
-    the cards.  Normalize display week on copies, select the nearest week, then
+    the cards. Normalize display week on copies, select the nearest week, then
     apply the existing attention score inside that slate.
     """
     normalized: list[dict[str, Any]] = []
