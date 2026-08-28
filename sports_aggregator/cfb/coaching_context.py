@@ -16,7 +16,7 @@ def _record(wins: int | None, losses: int | None, ties: int | None = 0) -> str:
 
 
 def team_coaching_context(repository, team_id: int, season: int) -> dict[str, Any]:
-    """Current Elo, head coach, tenure and useful record context for one team."""
+    """Current Elo plus all-time head-coach context for one team."""
     repository.initialize()
     team = repository.get_team(int(team_id))
     if team is None:
@@ -28,12 +28,6 @@ def team_coaching_context(repository, team_id: int, season: int) -> dict[str, An
                WHERE team_id=? AND season<=?
                ORDER BY season DESC, games DESC
                LIMIT 1""",
-            (int(team_id), int(season)),
-        ).fetchone()
-
-        record_row = connection.execute(
-            """SELECT wins,losses,ties,conference_wins,conference_losses,conference_ties
-               FROM team_records WHERE team_id=? AND season=? LIMIT 1""",
             (int(team_id), int(season)),
         ).fetchone()
 
@@ -73,6 +67,22 @@ def team_coaching_context(repository, team_id: int, season: int) -> dict[str, An
                 (coach_id,),
             ).fetchone()
 
+            # Conference record at the current school should cover every season
+            # coached there, not merely the selected/current season. Team records
+            # are the authoritative conference W/L/T store, while coach_seasons
+            # identifies which program seasons belong to this coach.
+            at_team_conf = connection.execute(
+                """SELECT COALESCE(SUM(conference_wins),0) wins,
+                          COALESCE(SUM(conference_losses),0) losses,
+                          COALESCE(SUM(conference_ties),0) ties
+                   FROM team_records
+                   WHERE team_id=? AND season IN (
+                       SELECT DISTINCT season FROM coach_seasons
+                       WHERE coach_id=? AND team_id=?
+                   )""",
+                (int(team_id), coach_id, int(team_id)),
+            ).fetchone()
+
             coach = {
                 "coach_id": coach_id,
                 "name": coach_name,
@@ -80,24 +90,18 @@ def team_coaching_context(repository, team_id: int, season: int) -> dict[str, An
                 "tenure_years": tenure_years,
                 "career_record": _record(career["wins"], career["losses"], career["ties"]),
                 "team_record": _record(at_team["wins"], at_team["losses"], at_team["ties"]),
+                "team_conf_record": _record(
+                    at_team_conf["wins"], at_team_conf["losses"], at_team_conf["ties"]
+                ),
             }
 
     elo_row = (repository.team_elo(int(season)).get(int(team_id)) or {})
     elo = elo_row.get("elo")
-    current_record = None
-    current_conf_record = None
-    if record_row is not None:
-        current_record = _record(record_row["wins"], record_row["losses"], record_row["ties"])
-        current_conf_record = _record(
-            record_row["conference_wins"], record_row["conference_losses"], record_row["conference_ties"]
-        )
 
     return {
         "team": team,
         "elo": round(float(elo)) if elo is not None else None,
         "coach": coach,
-        "current_record": current_record,
-        "current_conf_record": current_conf_record,
     }
 
 
