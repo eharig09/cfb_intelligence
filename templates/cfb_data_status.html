@@ -3,7 +3,7 @@
 
 {% block head %}
 <style>
-.data-status-wrap{max-width:1050px;margin:0 auto;padding:1.25rem 1rem 3rem}.data-status-hero{display:flex;justify-content:space-between;gap:1rem;align-items:flex-end;margin-bottom:1.25rem}.data-status-hero h1{margin:.15rem 0 .35rem}.data-status-muted{color:#9aa6b2}.data-status-pill{display:inline-flex;align-items:center;gap:.4rem;border:1px solid #2b3440;border-radius:999px;padding:.35rem .65rem;font-size:.85rem}.data-status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.8rem;margin:1rem 0 1.5rem}.data-status-card{border:1px solid #28313b;border-radius:10px;padding:.9rem;background:#121922}.data-status-card strong{display:block;margin-bottom:.3rem}.data-status-ok{color:#8ed39a}.data-status-warn{color:#e4c56a}.data-status-bad{color:#ef8b8b}.data-status-table{width:100%;border-collapse:collapse}.data-status-table th,.data-status-table td{text-align:left;padding:.65rem .5rem;border-bottom:1px solid #252e38;vertical-align:top}.data-status-table th{font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;color:#9aa6b2}.data-status-counts{font-size:.85rem;color:#b6c0ca}.data-status-section{margin-top:1.7rem}.data-status-note{font-size:.88rem;color:#8f9ba7;margin-top:1rem}.data-status-run{display:grid;grid-template-columns:minmax(90px,.7fr) minmax(150px,1.4fr) .8fr .8fr;gap:.7rem;padding:.65rem 0;border-bottom:1px solid #252e38;align-items:center}.data-change-card{border:1px solid #28313b;border-radius:10px;padding:.85rem 1rem;margin:.65rem 0;background:#121922}.data-change-summary{display:flex;gap:.8rem;flex-wrap:wrap;font-size:.9rem}.data-change-sample{margin:.55rem 0 0;padding-top:.55rem;border-top:1px solid #252e38;font-size:.84rem}.data-change-field{margin-left:1rem;color:#aeb8c2}@media(max-width:720px){.data-status-hero{display:block}.data-status-run{grid-template-columns:1fr 1fr}.data-status-table{font-size:.9rem}.data-status-table th:nth-child(4),.data-status-table td:nth-child(4){display:none}}
+.data-status-wrap{max-width:1180px;margin:0 auto;padding:1.25rem 1rem 3rem}.data-status-hero{display:flex;justify-content:space-between;gap:1rem;align-items:flex-end;margin-bottom:1.25rem}.data-status-hero h1{margin:.15rem 0 .35rem}.data-status-muted{color:#9aa6b2}.data-status-pill{display:inline-flex;align-items:center;gap:.4rem;border:1px solid #2b3440;border-radius:999px;padding:.35rem .65rem;font-size:.85rem}.data-status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.8rem;margin:1rem 0 1.5rem}.data-status-card{border:1px solid #28313b;border-radius:10px;padding:.9rem;background:#121922}.data-status-card strong{display:block;margin-bottom:.3rem}.data-status-ok{color:#8ed39a}.data-status-warn{color:#e4c56a}.data-status-bad{color:#ef8b8b}.data-status-table{width:100%;border-collapse:collapse}.data-status-table th,.data-status-table td{text-align:left;padding:.65rem .5rem;border-bottom:1px solid #252e38;vertical-align:top}.data-status-table th{font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;color:#9aa6b2}.data-status-counts{font-size:.85rem;color:#b6c0ca}.data-status-section{margin-top:1.9rem}.data-status-note{font-size:.88rem;color:#8f9ba7;margin-top:1rem}.data-status-run{display:grid;grid-template-columns:minmax(90px,.7fr) minmax(150px,1.4fr) .8fr .8fr;gap:.7rem;padding:.65rem 0;border-bottom:1px solid #252e38;align-items:center}.data-change-card{border:1px solid #28313b;border-radius:10px;padding:.85rem 1rem;margin:.65rem 0;background:#121922}.data-change-sample{margin:.55rem 0 0;padding-top:.55rem;border-top:1px solid #252e38;font-size:.84rem}.data-change-field{margin-left:1rem;color:#aeb8c2}.audit-tools{display:flex;gap:.65rem;align-items:center;flex-wrap:wrap;margin:.8rem 0}.audit-search{min-width:280px;max-width:520px;flex:1;background:#0e151d;color:inherit;border:1px solid #2b3440;border-radius:8px;padding:.55rem .7rem}.audit-item{border:1px solid #28313b;border-radius:10px;background:#121922;padding:.9rem 1rem;margin:.65rem 0}.audit-item-top{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}.audit-title{font-weight:700;line-height:1.3}.audit-title a{color:inherit}.audit-meta{display:flex;gap:.45rem .8rem;flex-wrap:wrap;margin:.45rem 0;color:#aeb8c2;font-size:.84rem}.audit-tag{display:inline-flex;border:1px solid #35404c;border-radius:999px;padding:.15rem .45rem;font-size:.78rem}.audit-evidence{font-size:.84rem;color:#9fb0bf;margin-top:.4rem}.audit-actions{margin-top:.65rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}.audit-btn{border:1px solid #5c3434;background:#1b1113;color:#efaaaa;border-radius:7px;padding:.35rem .55rem;cursor:pointer;font:inherit;font-size:.82rem}.audit-btn:hover{border-color:#9a5656}.audit-btn-undo{border-color:#3e5267;background:#111922;color:#b7cae0}.audit-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#7f8b96;font-size:.78rem}.audit-connection-grid{display:grid;grid-template-columns:minmax(180px,1.4fr) minmax(120px,.8fr) minmax(150px,1fr) 90px 100px minmax(150px,1fr);gap:.5rem;padding:.55rem 0;border-bottom:1px solid #252e38;align-items:center;font-size:.86rem}.audit-connection-head{color:#9aa6b2;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}.audit-empty{padding:.8rem 0;color:#9aa6b2}.audit-hidden{display:none}.audit-feedback-status{font-size:.82rem;color:#9aa6b2}.audit-flagged{border-left:3px solid #ef8b8b}.audit-explainer{border:1px solid #28313b;border-radius:10px;padding:.8rem 1rem;background:#101720;color:#aeb8c2;font-size:.9rem}.audit-explainer strong{color:inherit}.audit-subnav{display:flex;gap:.5rem;flex-wrap:wrap;margin:.8rem 0}.audit-subnav a{border:1px solid #2b3440;border-radius:999px;padding:.3rem .55rem;color:inherit;text-decoration:none;font-size:.82rem}@media(max-width:800px){.data-status-hero{display:block}.data-status-run{grid-template-columns:1fr 1fr}.data-status-table{font-size:.9rem}.data-status-table th:nth-child(4),.data-status-table td:nth-child(4){display:none}.audit-item-top{display:block}.audit-connection-grid{grid-template-columns:1fr 1fr}.audit-connection-head{display:none}}
 </style>
 {% endblock %}
 
@@ -17,7 +17,7 @@
   <div class="data-status-hero">
     <div>
       <div class="data-status-muted">Quiet system view</div>
-      <h1>Data Status</h1>
+      <h1>Data Status & Content Audit</h1>
       <div class="data-status-muted">Last completed refresh: {{ status.latest_finished_label }}{% if status.latest_relative_label != 'unknown' %} · {{ status.latest_relative_label }}{% endif %}</div>
     </div>
     <div class="data-status-pill">
@@ -29,6 +29,10 @@
     </div>
   </div>
 
+  <div class="audit-subnav">
+    <a href="#content-audit">Recent content</a><a href="#connections">Connections</a><a href="#flagged-links">Flagged links</a><a href="#refresh-history">Refresh history</a>
+  </div>
+
   <div class="data-status-grid">
     <div class="data-status-card"><strong>Latest profile</strong><span class="data-status-muted">{{ status.latest_profile|title }}</span></div>
     <div class="data-status-card"><strong>Latest result</strong><span class="data-status-muted">{{ status.latest_status|title }}</span></div>
@@ -37,11 +41,9 @@
 
   {% if status.change_ledger %}
   <section class="data-status-section">
-    <h2>What changed</h2>
+    <h2>What changed in the latest tracked run</h2>
     <p class="data-status-muted">Latest tracked {{ status.change_ledger.profile|title }} refresh · {{ status.change_ledger.finished_label }}{% if status.change_ledger.relative_label != 'unknown' %} · {{ status.change_ledger.relative_label }}{% endif %}</p>
-    {% if status.change_ledger.tracking_error %}
-      <p class="data-status-warn">Change tracking was incomplete for this run: {{ status.change_ledger.tracking_error }}</p>
-    {% endif %}
+    {% if status.change_ledger.tracking_error %}<p class="data-status-warn">Change tracking was incomplete for this run: {{ status.change_ledger.tracking_error }}</p>{% endif %}
     <div class="data-status-grid">
       <div class="data-status-card"><strong>Added</strong><span class="data-status-ok">{{ status.change_ledger.added }}</span></div>
       <div class="data-status-card"><strong>Changed</strong><span>{{ status.change_ledger.changed }}</span></div>
@@ -52,53 +54,100 @@
       <details class="data-change-card">
         <summary><strong>{{ table.label }}</strong> · {{ table.added }} added · {{ table.changed }} changed · {{ table.removed }} removed</summary>
         {% for sample in table.samples %}
-          <div class="data-change-sample">
-            <strong>{{ sample.kind|title }}</strong>{% if sample.key %} · {{ sample.key }}{% endif %}
-            {% for field in sample.fields %}
-              <div class="data-change-field">{{ field.field }}: {{ field.before }} → {{ field.after }}</div>
-            {% endfor %}
+          <div class="data-change-sample"><strong>{{ sample.kind|title }}</strong>{% if sample.key %} · {{ sample.key }}{% endif %}
+            {% for field in sample.fields %}<div class="data-change-field">{{ field.field }}: {{ field.before }} → {{ field.after }}</div>{% endfor %}
           </div>
         {% endfor %}
       </details>
       {% endfor %}
-    {% else %}
-      <p class="data-status-muted">No row-level changes were detected in the tracked datasets.</p>
-    {% endif %}
+    {% else %}<p class="data-status-muted">No row-level changes were detected in the tracked datasets.</p>{% endif %}
   </section>
   {% endif %}
 
-  <section class="data-status-section">
+  <section class="data-status-section" id="content-audit">
+    <h2>Recent content audit</h2>
+    <div class="audit-explainer"><strong>This is the actual site linkage.</strong> Each row is one stored content item attached to one team. Confidence and method come from the matcher. Use <em>Bad team link</em> when a story is regional noise or otherwise does not belong to that team; the association is removed and blocked from being recreated by later retagging.</div>
+    {% if status.audit.available %}
+      <div class="audit-tools">
+        <input class="audit-search" id="audit-search" type="search" placeholder="Filter by team, source, platform, title, method…">
+        <span class="audit-feedback-status" id="audit-feedback-status">Showing {{ status.audit.items|length }} recent team links</span>
+      </div>
+      <div id="audit-items">
+      {% for item in status.audit.items %}
+        <article class="audit-item" data-search="{{ (item.team ~ ' ' ~ item.source ~ ' ' ~ item.platform ~ ' ' ~ item.title ~ ' ' ~ item.method)|lower }}">
+          <div class="audit-item-top">
+            <div>
+              <div class="audit-title">{% if item.url %}<a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</div>
+              <div class="audit-meta">
+                <span class="audit-tag">{{ item.team }}</span><span>{{ item.platform }}</span><span>{{ item.source }}</span>
+                {% if item.content_type %}<span>{{ item.content_type }}</span>{% endif %}{% if item.source_role %}<span>{{ item.source_role }}</span>{% endif %}
+              </div>
+              <div class="audit-evidence">Attached by <strong>{{ item.method }}</strong> · confidence {{ item.confidence }} · ingested {{ item.ingested_label }}</div>
+            </div>
+            <div class="audit-id">content {{ item.content_id }}<br>team {{ item.team_id }}</div>
+          </div>
+          <div class="audit-actions"><button class="audit-btn" type="button" data-bad-link data-content-id="{{ item.content_id }}" data-team-id="{{ item.team_id }}" data-team="{{ item.team }}">Bad team link</button></div>
+        </article>
+      {% endfor %}
+      </div>
+    {% else %}<p class="audit-empty">Content linkage tables are not available yet.</p>{% endif %}
+  </section>
+
+  <section class="data-status-section" id="connections">
+    <h2>Source → team connections</h2>
+    <p class="data-status-muted">Highest-volume publisher/platform-to-team relationships currently feeding the site. This is useful for spotting a regional outlet that is over-attaching unrelated stories to one program.</p>
+    {% if status.audit.connections %}
+      <div class="audit-connection-grid audit-connection-head"><span>Source</span><span>Platform</span><span>Team</span><span>Items</span><span>Avg conf.</span><span>Last seen</span></div>
+      {% for row in status.audit.connections %}<div class="audit-connection-grid"><strong>{{ row.source }}</strong><span>{{ row.platform }}</span><span>{{ row.team }}</span><span>{{ row.item_count }}</span><span>{{ row.avg_confidence }}</span><span>{{ row.last_label }}</span></div>{% endfor %}
+    {% else %}<p class="audit-empty">No source/team connections are available yet.</p>{% endif %}
+  </section>
+
+  <section class="data-status-section" id="flagged-links">
+    <h2>Flagged bad team links</h2>
+    <p class="data-status-muted">These associations are suppressed from the team-link table and protected against automatic re-creation. Undo restores the prior confidence/method.</p>
+    {% if status.audit.flagged %}
+      {% for item in status.audit.flagged %}
+      <article class="audit-item audit-flagged">
+        <div class="audit-title">{% if item.url %}<a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</div>
+        <div class="audit-meta"><span class="audit-tag">{{ item.team }}</span><span>{{ item.platform }}</span><span>{{ item.source }}</span><span>{{ item.created_label }}</span></div>
+        <div class="audit-evidence">Reason: {{ item.reason or 'Not relevant to this team' }}</div>
+        <div class="audit-actions"><button class="audit-btn audit-btn-undo" type="button" data-undo-link data-content-id="{{ item.content_id }}" data-team-id="{{ item.team_id }}">Undo</button><span class="audit-id">content {{ item.content_id }} · team {{ item.team_id }}</span></div>
+      </article>
+      {% endfor %}
+    {% else %}<p class="audit-empty">No team links have been flagged yet.</p>{% endif %}
+  </section>
+
+  <section class="data-status-section" id="refresh-history">
     <h2>Latest refresh sections</h2>
     {% if status.sections %}
-    <table class="data-status-table">
-      <thead><tr><th>Section</th><th>Status</th><th>Updated</th><th>What changed</th></tr></thead>
-      <tbody>
-      {% for row in status.sections %}
-        <tr>
-          <td><strong>{{ row.label }}</strong></td>
-          <td>{% if row.status == 'success' %}<span class="data-status-ok">Success</span>{% elif row.status == 'skipped' %}<span class="data-status-muted">Skipped</span>{% elif row.status in ('failed','timeout') %}<span class="data-status-bad">{{ row.status|title }}</span>{% else %}{{ row.status|title }}{% endif %}</td>
-          <td>{{ row.time_label }}{% if row.relative_label != 'unknown' %}<div class="data-status-counts">{{ row.relative_label }}</div>{% endif %}</td>
-          <td>{% if row.message %}<span class="data-status-counts">{{ row.message }}</span>{% else %}<span class="data-status-muted">Completed</span>{% endif %}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+    <table class="data-status-table"><thead><tr><th>Section</th><th>Status</th><th>Updated</th><th>What changed</th></tr></thead><tbody>
+      {% for row in status.sections %}<tr><td><strong>{{ row.label }}</strong></td><td>{% if row.status == 'success' %}<span class="data-status-ok">Success</span>{% elif row.status == 'skipped' %}<span class="data-status-muted">Skipped</span>{% elif row.status in ('failed','timeout') %}<span class="data-status-bad">{{ row.status|title }}</span>{% else %}{{ row.status|title }}{% endif %}</td><td>{{ row.time_label }}{% if row.relative_label != 'unknown' %}<div class="data-status-counts">{{ row.relative_label }}</div>{% endif %}</td><td>{% if row.message %}<span class="data-status-counts">{{ row.message }}</span>{% else %}<span class="data-status-muted">Completed</span>{% endif %}</td></tr>{% endfor %}
+    </tbody></table>
     {% else %}<p class="data-status-muted">No per-section refresh history has been recorded yet.</p>{% endif %}
   </section>
 
-  <section class="data-status-section">
-    <h2>Recent refreshes</h2>
-    {% if status.recent_runs %}
-      {% for run in status.recent_runs %}
-      <div class="data-status-run">
-        <strong>{{ run.profile|title }}</strong><span>{{ run.finished_label }}</span>
-        <span class="{% if run.status == 'success' %}data-status-ok{% elif run.status == 'degraded' %}data-status-warn{% elif run.status == 'failed' %}data-status-bad{% endif %}">{{ run.status|title }}</span>
-        <span class="data-status-muted">{% if run.seconds is not none %}{{ run.seconds|round|int }}s{% endif %}{% if run.step_count %} · {{ run.step_count }} steps{% endif %}</span>
-      </div>
-      {% endfor %}
+  <section class="data-status-section"><h2>Recent refreshes</h2>
+    {% if status.recent_runs %}{% for run in status.recent_runs %}<div class="data-status-run"><strong>{{ run.profile|title }}</strong><span>{{ run.finished_label }}</span><span class="{% if run.status == 'success' %}data-status-ok{% elif run.status == 'degraded' %}data-status-warn{% elif run.status == 'failed' %}data-status-bad{% endif %}">{{ run.status|title }}</span><span class="data-status-muted">{% if run.seconds is not none %}{{ run.seconds|round|int }}s{% endif %}{% if run.step_count %} · {{ run.step_count }} steps{% endif %}</span></div>{% endfor %}
     {% else %}<p class="data-status-muted">No completed refresh history is available yet.</p>{% endif %}
   </section>
 
-  <p class="data-status-note">Change tracking compares a temporary before-refresh SQLite snapshot with refreshed core and content tables, then deletes the snapshot. Samples are capped to keep the ledger small. Raw logs, process IDs, filesystem paths, credentials, and detailed exception traces are intentionally omitted.</p>
+  <p class="data-status-note">Audit moderation uses the same private bearer token as manual refreshes. The token is requested in your browser only when you flag/undo a link and is not rendered into this page. Raw logs, process IDs, filesystem paths, credentials, and detailed exception traces remain omitted.</p>
 </div>
+
+<script>
+(function(){
+  const search = document.getElementById('audit-search');
+  if(search){search.addEventListener('input',function(){const q=search.value.trim().toLowerCase();let shown=0;document.querySelectorAll('#audit-items .audit-item').forEach(function(row){const visible=!q||(row.dataset.search||'').includes(q);row.classList.toggle('audit-hidden',!visible);if(visible)shown+=1;});const status=document.getElementById('audit-feedback-status');if(status)status.textContent='Showing '+shown+' matching team links';});}
+  async function moderate(button,action){
+    let token=sessionStorage.getItem('cfbAuditToken')||'';
+    if(!token){token=window.prompt('Enter the same CFB refresh token used for manual refreshes:')||'';if(!token)return;sessionStorage.setItem('cfbAuditToken',token);}
+    let reason='Not relevant to this team';
+    if(action==='bad'){const team=button.dataset.team||'this team';reason=window.prompt('Why is this a bad link for '+team+'?','Regional story / not actually about the team')||'Not relevant to this team';}
+    button.disabled=true;
+    try{const response=await fetch('{{ url_for("cfb_data_status.team_link_feedback") }}',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({content_id:Number(button.dataset.contentId),team_id:Number(button.dataset.teamId),action:action,reason:reason})});if(response.status===401){sessionStorage.removeItem('cfbAuditToken');throw new Error('Token was rejected. Try again and enter the current refresh token.');}if(!response.ok){const text=await response.text();throw new Error('Moderation failed ('+response.status+'): '+text.slice(0,180));}window.location.reload();}catch(error){window.alert(error.message||String(error));button.disabled=false;}
+  }
+  document.querySelectorAll('[data-bad-link]').forEach(function(button){button.addEventListener('click',function(){moderate(button,'bad');});});
+  document.querySelectorAll('[data-undo-link]').forEach(function(button){button.addEventListener('click',function(){moderate(button,'undo');});});
+})();
+</script>
 {% endblock %}
