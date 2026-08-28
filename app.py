@@ -24,6 +24,7 @@ from sports_aggregator.cfb.conference_extras import (
     conference_leader_packet,
     team_schedule_elo,
 )
+from sports_aggregator.cfb.model_market_display import install_model_comparison_display
 from sports_aggregator.cfb.player_game_log import player_game_log_table
 from sports_aggregator.catalog import list_leagues
 from sports_aggregator.service import build_default_service
@@ -109,6 +110,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.extensions["story_repository"] = app.config.get("STORY_REPOSITORY") or StoryRepository(source_database_path)
 
     install_market_freshness_note()
+    install_model_comparison_display()
 
     def require_refresh_auth() -> None:
         if session.get("cfb_admin") is True:
