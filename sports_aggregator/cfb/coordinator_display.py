@@ -1,9 +1,9 @@
-"""Visible coordinator continuity panels for team and matchup pages.
+"""Compact coordinator context for team and matchup pages.
 
-The existing templates are large and actively evolving. Rather than duplicating
-or replacing them, this module wraps Flask's Jinja loader and inserts small,
-stable panel calls at known template anchors. All displayed values come from the
-stored coordinator and game tables; no network request occurs during page render.
+Team pages show coordinator performance beside the head coach and a single
+continuity fact card. Matchup pages retain the side-by-side staff comparison.
+All values come from stored coordinator/game data; page rendering does not make
+network requests.
 """
 
 from __future__ import annotations
@@ -22,15 +22,16 @@ from sports_aggregator.cfb.coordinator_context import (
 from sports_aggregator.cfb.coordinators import initialize
 
 
-TEAM_ANCHOR = '<div class="layout">\n    <div>\n'
-TEAM_INSERT = (
-    '<div class="layout">\n    <div>\n'
-    '        {{ coordinator_team_panel(team.team_id, season) }}\n'
-)
 TEAM_HERO_ANCHOR = '        <div class="hero-context" aria-label="Program identity">\n'
 TEAM_HERO_INSERT = (
     '        {{ coordinator_team_summary(team.team_id, season) }}\n'
     '        <div class="hero-context" aria-label="Program identity">\n'
+)
+TEAM_FACTS_ANCHOR = '    <div class="fact"><b>{{ movements.counts.get(\'DRAFTED\', 0) }}</b><span>Drafted departures</span></div>\n</div>'
+TEAM_FACTS_INSERT = (
+    '    <div class="fact"><b>{{ movements.counts.get(\'DRAFTED\', 0) }}</b><span>Drafted departures</span></div>\n'
+    '    {{ coordinator_continuity_fact(team.team_id, season) }}\n'
+    '</div>'
 )
 GAME_ANCHOR = '<div class="scoreboard">'
 GAME_INSERT = (
@@ -48,10 +49,10 @@ class _CoordinatorTemplateLoader(BaseLoader):
             raise TemplateNotFound(template)
         source, filename, uptodate = self.wrapped.get_source(environment, template)
         if template == "cfb_team.html":
-            if "coordinator_team_panel(" not in source:
-                source = source.replace(TEAM_ANCHOR, TEAM_INSERT, 1)
             if "coordinator_team_summary(" not in source:
                 source = source.replace(TEAM_HERO_ANCHOR, TEAM_HERO_INSERT, 1)
+            if "coordinator_continuity_fact(" not in source:
+                source = source.replace(TEAM_FACTS_ANCHOR, TEAM_FACTS_INSERT, 1)
         elif template == "cfb_game.html" and "coordinator_matchup_panel(" not in source:
             source = source.replace(GAME_ANCHOR, GAME_INSERT, 1)
         return source, filename, uptodate
@@ -72,32 +73,11 @@ def _history(repository, team_id: int, season: int) -> dict[str, Any]:
                ORDER BY season DESC, side""",
             (int(team_id), int(season)),
         ).fetchall()]
-
     seasons = sorted({int(row["season"]) for row in rows})
-    by_season: dict[int, dict[str, str]] = {}
-    for row in rows:
-        by_season.setdefault(int(row["season"]), {})[str(row["side"])] = str(row["coach_name"])
-
-    changes = {"offense": 0, "defense": 0}
-    for side in changes:
-        side_rows = sorted(
-            (row for row in rows if row["side"] == side),
-            key=lambda row: int(row["season"]),
-        )
-        for previous, current in zip(side_rows, side_rows[1:]):
-            if int(current["season"]) != int(previous["season"]) + 1:
-                continue
-            if current["coach_name"] != previous["coach_name"]:
-                changes[side] += 1
-
     return {
-        "rows": rows,
-        "seasons": seasons,
-        "by_season": by_season,
         "coverage_start": seasons[0] if seasons else None,
         "coverage_end": seasons[-1] if seasons else None,
         "season_count": len(seasons),
-        "changes": changes,
     }
 
 
@@ -125,13 +105,6 @@ def _side_label(item: dict[str, Any] | None) -> str:
     if changed is False:
         return item.get("continuity_label") or "Returning"
     return "History needed"
-
-
-def _previous_stop(item: dict[str, Any] | None) -> str:
-    stop = (item or {}).get("previous_stop") or {}
-    if not stop:
-        return "—"
-    return f"{_text(stop.get('team'))} ({_text(stop.get('season'))})"
 
 
 def _coverage_label(history: dict[str, Any]) -> str:
@@ -187,73 +160,13 @@ def _team_summary(repository, team_id: int, season: int) -> Markup:
     )
 
 
-def _team_panel(repository, team_id: int, season: int) -> Markup:
+def _continuity_fact(repository, team_id: int, season: int) -> Markup:
     context = coordinator_context(repository, int(team_id), int(season))
-    history = _history(repository, int(team_id), int(season))
-    offense, defense = context.get("offense"), context.get("defense")
-
     score = context.get("continuity_score")
-    changes = context.get("change_count")
-    score_text = "—" if score is None else f"{int(score)}/8"
-    change_text = "—" if changes is None else str(int(changes))
-
-    rows = []
-    for label, item in (("Offense", offense), ("Defense", defense)):
-        if item:
-            previous = item.get("previous_coordinator") or "—"
-            tenure = f"{item.get('tenure_years', 1)} yr"
-            if int(item.get("tenure_years") or 1) != 1:
-                tenure += "s"
-            source = item.get("source_name") or "Stored source"
-            rows.append(
-                f"<tr><th>{label}</th><td><strong>{_text(item.get('coach_name'))}</strong>"
-                f"<span class='sub'>{_text(source)}</span></td><td>{_text(tenure)}</td>"
-                f"<td>{_text(_side_label(item))}</td><td>{_text(previous)}</td>"
-                f"<td>{_previous_stop(item)}</td></tr>"
-            )
-        else:
-            rows.append(
-                f"<tr><th>{label}</th><td colspan='5' class='is-empty'>"
-                f"No {season} coordinator row is stored.</td></tr>"
-            )
-
-    recent = []
-    for year in sorted(history["by_season"], reverse=True)[:6]:
-        staff = history["by_season"][year]
-        recent.append(
-            f"<tr><th>{year}</th><td>{_text(staff.get('offense'))}</td>"
-            f"<td>{_text(staff.get('defense'))}</td></tr>"
-        )
-
-    note = (
-        "Tenure and change labels use consecutive stored seasons only. "
-        "Performance averages shown above use completed games from stored coordinator seasons."
+    value = "—" if score is None else f"{int(score)}/8"
+    return Markup(
+        f'<div class="fact"><b>{escape(value)}</b><span>Staff continuity</span></div>'
     )
-    html = f"""
-<section class="section coordinator-panel" data-mobile-tab-panel="overview">
-  <h2>Coaching continuity</h2>
-  <div class="section-note">{escape(note)}</div>
-  <div class="facts coordinator-facts">
-    <div class="fact"><b>{score_text}</b><span>Staff continuity</span></div>
-    <div class="fact"><b>{change_text}</b><span>Coordinator changes</span></div>
-    <div class="fact"><b>{_text(_coverage_label(history))}</b><span>Historical coverage</span></div>
-  </div>
-  <div class="table-scroll">
-    <table class="data dense">
-      <thead><tr><th>Unit</th><th>Coordinator</th><th>Tenure</th><th>{season} status</th><th>Previous coordinator</th><th>Previous stop</th></tr></thead>
-      <tbody>{''.join(rows)}</tbody>
-    </table>
-  </div>
-  <h3 class="subhead">Recent coordinator history</h3>
-  <div class="table-scroll">
-    <table class="data dense">
-      <thead><tr><th>Season</th><th>OC</th><th>DC</th></tr></thead>
-      <tbody>{''.join(recent) if recent else '<tr><td colspan="3" class="is-empty">No coordinator history stored.</td></tr>'}</tbody>
-    </table>
-  </div>
-</section>
-"""
-    return Markup(html)
 
 
 def _matchup_team_card(name: str, packet: dict[str, Any], history: dict[str, Any]) -> str:
@@ -287,7 +200,7 @@ def _matchup_team_card(name: str, packet: dict[str, Any], history: dict[str, Any
     <thead><tr><th></th><th>Coordinator</th><th>Tenure</th><th>At team PPG · YPG</th></tr></thead>
     <tbody>{''.join(staff_rows)}</tbody>
   </table>
-  <div class="content-meta">Parenthetical/career values use stored coordinator seasons · OC = scored · DC = allowed · stored history: {_text(_coverage_label(history))}</div>
+  <div class="content-meta">Career values use stored coordinator seasons · OC = scored · DC = allowed · stored history: {_text(_coverage_label(history))}</div>
 </div>
 """
 
@@ -330,8 +243,8 @@ def install_coordinator_display(app) -> None:
     app.jinja_env.globals["coordinator_team_summary"] = (
         lambda team_id, season: _team_summary(repository, int(team_id), int(season))
     )
-    app.jinja_env.globals["coordinator_team_panel"] = (
-        lambda team_id, season: _team_panel(repository, int(team_id), int(season))
+    app.jinja_env.globals["coordinator_continuity_fact"] = (
+        lambda team_id, season: _continuity_fact(repository, int(team_id), int(season))
     )
     app.jinja_env.globals["coordinator_matchup_panel"] = (
         lambda away_id, home_id, away, home, season: _matchup_panel(
