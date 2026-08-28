@@ -16,9 +16,17 @@
     .story-head { display: flex; justify-content: space-between; gap: 10px; }
     .player-game-log .table-wrap { max-height: 430px; overflow: auto; scrollbar-gutter: stable; }
     .player-game-log thead th { position: sticky; top: 0; z-index: 2; background: var(--paper); }
+    .game-log-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+    .game-log-filters input, .game-log-filters select {
+        min-height: 34px; border: 1px solid var(--line); border-radius: 4px;
+        background: var(--paper); color: var(--ink); padding: 5px 8px;
+    }
+    .game-log-filters input { min-width: 210px; flex: 1 1 240px; }
+    .game-log-filters .game-log-count { margin-left: auto; font-size: .82rem; color: var(--muted); white-space: nowrap; }
     @media (max-width: 760px) {
         .logo { display: none; }
         .hero { grid-template-columns: minmax(0, 1fr); padding-left: 14px; border-left-width: 5px; }
+        .game-log-filters .game-log-count { width: 100%; margin-left: 0; }
     }
     @media (max-width: 559px) {
         .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -78,11 +86,27 @@
         <section class="section player-game-log">
             <h2>Game log</h2>
             <div class="section-note">
-                Completed-game production with the opponent's current Elo and ranking context for
-                this player's primary position statistic. Game rank is within that game's matching
-                stat category; conference rank is the current season rank for the same statistic.
+                Career game number runs from oldest to newest. Opponent Elo is season-specific;
+                defensive average allowed is the opponent's per-game allowance entering that game
+                for the player's primary yardage category when available. Click any column header to sort.
             </div>
-            {{ data_table(game_log_table) }}
+            {% if game_log_table.rows %}
+            <div class="game-log-filters" aria-label="Game log filters">
+                <input id="game-log-search" type="search" placeholder="Filter opponent, result, season…" aria-label="Filter game log text">
+                <select id="game-log-season" aria-label="Filter game log by season">
+                    <option value="">All seasons</option>
+                </select>
+                <select id="game-log-result" aria-label="Filter game log by result">
+                    <option value="">All results</option>
+                    <option value="W">Wins</option>
+                    <option value="L">Losses</option>
+                    <option value="T">Ties</option>
+                </select>
+                <button type="button" class="secondary" id="game-log-reset">Reset</button>
+                <span class="game-log-count" id="game-log-count"></span>
+            </div>
+            {% endif %}
+            {{ data_table(game_log_table, 'player-game-log-table') }}
         </section>
 
         <section class="section">
@@ -156,4 +180,67 @@
 </div>
 {% endblock %}
 
-{% block scripts %}{{ tabs_script() }}{% endblock %}
+{% block scripts %}
+{{ tabs_script() }}
+<script>
+(function () {
+    "use strict";
+    var table = document.querySelector(".player-game-log-table");
+    if (!table || !table.tBodies.length) return;
+    var rows = Array.prototype.slice.call(table.tBodies[0].rows);
+    var headers = Array.prototype.slice.call(table.tHead.rows[0].cells).map(function (cell) {
+        return cell.textContent.trim().toLowerCase();
+    });
+    var seasonIndex = headers.indexOf("season");
+    var resultIndex = headers.indexOf("result");
+    var search = document.getElementById("game-log-search");
+    var season = document.getElementById("game-log-season");
+    var result = document.getElementById("game-log-result");
+    var reset = document.getElementById("game-log-reset");
+    var count = document.getElementById("game-log-count");
+    if (!search || !season || !result || !reset || !count) return;
+
+    var seasonValues = {};
+    rows.forEach(function (row) {
+        if (seasonIndex < 0) return;
+        var value = row.cells[seasonIndex].textContent.trim();
+        if (value) seasonValues[value] = true;
+    });
+    Object.keys(seasonValues).sort(function (a, b) { return Number(b) - Number(a); }).forEach(function (value) {
+        var option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        season.appendChild(option);
+    });
+
+    function apply() {
+        var query = search.value.trim().toLowerCase();
+        var wantedSeason = season.value;
+        var wantedResult = result.value;
+        var visible = 0;
+        rows.forEach(function (row) {
+            var text = row.textContent.toLowerCase();
+            var rowSeason = seasonIndex >= 0 ? row.cells[seasonIndex].textContent.trim() : "";
+            var rowResult = resultIndex >= 0 ? row.cells[resultIndex].textContent.trim() : "";
+            var show = (!query || text.indexOf(query) !== -1) &&
+                       (!wantedSeason || rowSeason === wantedSeason) &&
+                       (!wantedResult || rowResult.indexOf(wantedResult) === 0);
+            row.hidden = !show;
+            if (show) visible += 1;
+        });
+        count.textContent = visible + " of " + rows.length + " games";
+    }
+
+    search.addEventListener("input", apply);
+    season.addEventListener("change", apply);
+    result.addEventListener("change", apply);
+    reset.addEventListener("click", function () {
+        search.value = "";
+        season.value = "";
+        result.value = "";
+        apply();
+    });
+    apply();
+}());
+</script>
+{% endblock %}
