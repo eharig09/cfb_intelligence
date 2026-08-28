@@ -29,6 +29,7 @@ from sports_aggregator.catalog import list_leagues
 from sports_aggregator.service import build_default_service
 from sports_aggregator.social.registry import SourceRegistry
 from sports_aggregator.social.unified import UnifiedSourceRegistry
+from sports_aggregator.social.source_admin import add_or_update_source
 from sports_aggregator.social.content import ContentRepository
 from sports_aggregator.social.stories import StoryRepository
 from sports_aggregator.cfb.repository import _logo_pair
@@ -147,6 +148,25 @@ def create_app(test_config: dict | None = None) -> Flask:
     def cfb_admin_logout():
         session.pop("cfb_admin", None)
         return jsonify({"status": "ok"})
+
+    @app.get("/college-football/source-admin/")
+    def cfb_source_admin():
+        return render_template("cfb_source_admin.html")
+
+    @app.post("/internal/cfb-source-seed")
+    def cfb_source_seed():
+        require_refresh_auth()
+        payload = request.get_json(silent=True) or request.form
+        try:
+            result = add_or_update_source(
+                app.extensions["unified_source_registry"],
+                app.extensions["source_registry"],
+                dict(payload),
+            )
+        except (TypeError, ValueError) as exc:
+            abort(400, description=str(exc))
+        cache.clear()
+        return jsonify({"status": "seeded", **result})
 
     @app.post("/internal/cfb-refresh")
     def start_cfb_refresh():
