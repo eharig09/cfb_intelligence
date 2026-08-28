@@ -19,6 +19,7 @@
     .schedule-switch { display:flex; gap:5px; flex-wrap:wrap; margin:10px 0; }
     .schedule-switch a { border:1px solid var(--line); padding:6px 10px; text-decoration:none; font-size:.72rem; font-weight:800; }
     .schedule-switch a.active { background:var(--surface-strong); border-color:var(--surface-strong); color:var(--on-strong); }
+    .coach-facts { margin-top: 10px; }
     @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
     @media (max-width: 559px) {
         .hero { gap: 9px; padding-left: 10px; border-left-width: 5px; align-items: flex-start; }
@@ -37,6 +38,7 @@
 {% endblock %}
 
 {% block content %}
+{% set team_context = team_elo_summary(team.team_id, season) %}
 <section class="hero">
     <div>
         <div class="eyebrow"><a href="{{ url_for('cfb.today') }}">{{ season }} team intelligence</a></div>
@@ -60,13 +62,18 @@
     <div class="fact"><b>{% if record %}{{ record.wins }}&ndash;{{ record.losses }}{% else %}0&ndash;0{% endif %}</b><span>Overall</span></div>
     <div class="fact"><b>{% if record %}{{ record.conference_wins }}&ndash;{{ record.conference_losses }}{% else %}0&ndash;0{% endif %}</b><span>Conference</span></div>
     <div class="fact"><b>{{ rank or '—' }}</b><span>{{ ranking_poll or 'National rank' }}</span></div>
-    {#- Roster shape, which the Team quality table below does not carry.
-        Continuity and transfer arrivals used to sit here too, repeating that
-        table exactly; it keeps them, because it is the one that says where
-        each number came from. -#}
     <div class="fact"><b>{{ summary.players }}</b><span>Roster size</span></div>
     <div class="fact"><b>{{ summary.upperclassmen_pct | cell('pct') }}</b><span>Upperclassmen</span></div>
     <div class="fact"><b>{{ movements.counts.get('DRAFTED', 0) }}</b><span>Drafted departures</span></div>
+</div>
+
+<div class="facts coach-facts">
+    <div class="fact"><b>{{ team_context.elo or '—' }}</b><span>Current Elo</span></div>
+    <div class="fact"><b>{{ team_context.coach.name if team_context.coach else '—' }}</b><span>Head coach</span></div>
+    <div class="fact"><b>{% if team_context.coach %}{{ team_context.coach.tenure_years }} yr{% if team_context.coach.tenure_years != 1 %}s{% endif %}{% else %}—{% endif %}</b><span>Current tenure</span></div>
+    <div class="fact"><b>{{ team_context.coach.career_record if team_context.coach else '—' }}</b><span>Coach career</span></div>
+    <div class="fact"><b>{{ team_context.coach.team_record if team_context.coach else '—' }}</b><span>Coach at {{ team.school }}</span></div>
+    <div class="fact"><b>{{ team_context.current_record or '—' }} / {{ team_context.current_conf_record or '—' }}</b><span>{{ season }} overall / conf</span></div>
 </div>
 
 <nav class="mobile-page-tabs" data-mobile-page-tabs role="tablist" aria-label="Team page sections">
@@ -78,10 +85,6 @@
 
 <div class="layout">
     <div>
-        {#- The year switches link to #tab-overview and #tab-stats. Those ids
-            were only ever created by the mobile tab script, so on a desktop
-            they matched nothing and changing a year returned you to the top of
-            the page. They are real anchors now. -#}
         <section class="section" id="tab-overview" data-mobile-tab-panel="overview">
             <h2>{% if schedule_is_upcoming %}Upcoming schedule{% else %}{{ schedule_year }} schedule{% endif %}</h2>
             <div class="section-note">
