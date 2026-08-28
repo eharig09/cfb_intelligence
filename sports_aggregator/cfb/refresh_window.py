@@ -45,7 +45,9 @@ def profile_for(repository, *, now: datetime | None = None,
     Live slates retain tiny quarter-hour score pulses. Outside games, scheduled
     work is split across several ``light`` ticks; tracked_refresh resolves each
     light tick to one small segment based on the local hour. Local reporting
-    remains a separate sharded ``news`` profile.
+    remains a separate sharded ``news`` profile. Overnight passes deliberately
+    repeat those bounded jobs so the source cursor can move farther while
+    traffic is low without increasing per-process memory pressure.
     """
     zone = ZoneInfo(timezone_name or os.getenv("CFB_REFRESH_TIMEZONE",
                                                "America/New_York"))
@@ -68,8 +70,8 @@ def profile_for(repository, *, now: datetime | None = None,
     # Heavy is retained only for backward-compatible explicit/manual requests;
     # production scheduling leaves this set empty.
     heavy = _hours("CFB_REFRESH_HEAVY_HOURS", "")
-    light = _hours("CFB_REFRESH_HOURS", "6,10,12,16,18,22,23")
-    news = _hours("CFB_REFRESH_NEWS_HOURS", "8,14,20")
+    light = _hours("CFB_REFRESH_HOURS", "2,4,6,10,12,16,18,22,23")
+    news = _hours("CFB_REFRESH_NEWS_HOURS", "1,3,5,8,14,20")
     if moment.hour in heavy:
         return {"profile": "heavy", "reason": "scheduled_hour", "games": 0,
                 "local_time": moment.isoformat()}
