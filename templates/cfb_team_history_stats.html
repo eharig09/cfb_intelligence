@@ -13,6 +13,8 @@
     .history-rivalry strong::before { content:'★ '; color:var(--rust); }
     .history-rivalry span { display:block; color:var(--muted); font-size:.68rem; margin-top:3px; }
     .history-rivalry a { color:inherit; }
+    .wiki-overview { max-width: 78ch; line-height: 1.55; }
+    .source-links { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
 </style>
 {% endblock %}
 {% block body_attrs %} style="--team-light:{{ identity.accent }};--team-dark:{{ identity.accent_dark }};--conference-light:{{ identity.conference_color }};--conference-dark:{{ identity.conference_color_dark }}"{% endblock %}
@@ -24,27 +26,41 @@
 {% block content %}
 {% set team_context = team_elo_summary(team.team_id, season) %}
 {% set program = team_context.program or {} %}
+{% set wiki = team_context.wiki or {} %}
 <div class="eyebrow">Program identity</div>
 <h1>{{ team.school }} historical production</h1>
 <p class="meta">
-    Team results, efficiency, position production, coaching succession, and slow-changing program context.
+    Team results, efficiency, position production, coaching succession, rivalry context, and slow-changing program history.
 </p>
-<p>
-    <a class="conference-tag" href="{{ url_for('cfb.team_history', team_id=team.team_id, season=season) }}">
-        Full historical game log &rarr;
-    </a>
-</p>
+<div class="source-links">
+    <a class="conference-tag" href="{{ url_for('cfb.team_history', team_id=team.team_id, season=season) }}">Full historical game log &rarr;</a>
+    {% if wiki.page_url %}<a class="conference-tag" href="{{ wiki.page_url }}" target="_blank" rel="noopener">Wikipedia program article ↗</a>{% endif %}
+</div>
 
 <section class="section">
-    <h2>Program context</h2>
+    <h2>Program identity &amp; overview</h2>
     <div class="section-note">
-        The record below covers the completed games stored locally, not an asserted NCAA all-time total.
-        Rivalry names/trophies come from Wikipedia context; series records use only games in this database.
+        Wikipedia supplies slow-changing identity and narrative context. Stored records and rivalry series below are calculated from this app's local game history.
     </div>
     <div class="facts">
+        <div class="fact"><b>{{ wiki.first_season or program.first_season or '—' }}</b><span>First season</span></div>
+        <div class="fact"><b>{{ wiki.conference_championships or '—' }}</b><span>Conference championships</span></div>
+        <div class="fact"><b>{{ wiki.national_championships or '—' }}</b><span>National championships</span></div>
+        <div class="fact"><b>{{ wiki.mascot or team.mascot or '—' }}</b><span>Mascot</span></div>
+        <div class="fact"><b>{{ program.venue or team.venue_name or '—' }}</b><span>Stadium</span></div>
         <div class="fact"><b>{{ program.record or '—' }}</b><span>Stored record</span></div>
-        <div class="fact"><b>{% if program.first_season and program.last_season %}{{ program.first_season }}&ndash;{{ program.last_season }}{% else %}—{% endif %}</b><span>Stored coverage</span></div>
-        <div class="fact"><b>{{ program.venue or '—' }}</b><span>Stadium</span></div>
+    </div>
+    {% if wiki.summary %}
+    <p class="wiki-overview">{{ wiki.summary }}</p>
+    {% if wiki.page_url %}<p class="meta"><a href="{{ wiki.page_url }}" target="_blank" rel="noopener">Read the full Wikipedia history ↗</a></p>{% endif %}
+    {% endif %}
+</section>
+
+<section class="section">
+    <h2>Named rivalries</h2>
+    <div class="section-note">
+        Rivalry names and trophies are contextual metadata; each series record uses only completed games stored in this database.
+        {% if program.first_season and program.last_season %} Current stored coverage is {{ program.first_season }}–{{ program.last_season }}.{% endif %}
     </div>
     {% if program.rivalries %}
     <div class="history-rivalries">
@@ -53,11 +69,11 @@
             <strong>{% if rivalry.wiki_url %}<a href="{{ rivalry.wiki_url }}" target="_blank" rel="noopener">{{ rivalry.name }}</a>{% else %}{{ rivalry.name }}{% endif %}</strong>
             <span>vs {{ rivalry.opponent or 'rival' }} · stored series {{ rivalry.series_record or '—' }}{% if rivalry.series_games %} ({{ rivalry.series_games }} games){% endif %}</span>
             {% if rivalry.trophy %}<span>{{ rivalry.trophy }}</span>{% endif %}
-            {% if rivalry.first_year %}<span>Rivalry context dates to {{ rivalry.first_year }} · <a href="{{ rivalry.source_url }}" target="_blank" rel="noopener">Wikipedia source</a></span>{% endif %}
+            {% if rivalry.first_year %}<span>Rivalry context dates to {{ rivalry.first_year }} · <a href="{{ rivalry.source_url }}" target="_blank" rel="noopener">Wikipedia rivalry list</a></span>{% endif %}
         </article>
         {% endfor %}
     </div>
-    {% endif %}
+    {% else %}<div class="empty">No named rivalry is currently in the local rivalry registry for this program.</div>{% endif %}
 </section>
 
 <section class="section">
