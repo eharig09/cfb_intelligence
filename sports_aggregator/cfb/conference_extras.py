@@ -9,6 +9,7 @@ from sports_aggregator.cfb import views
 from sports_aggregator.cfb.coaching_context import coach_lineage_table, team_coaching_context
 from sports_aggregator.cfb.models import normalize_person_name
 from sports_aggregator.cfb.statlines import category_label, sort_stat
+from sports_aggregator.cfb.wiki_context import team_wiki_context
 
 
 CONFERENCE_MINIMUMS: dict[str, tuple[str, float]] = {
@@ -57,6 +58,8 @@ def team_schedule_elo(repository, team_id: int, season: int) -> dict[str, Any]:
             (remaining_home if home else remaining_away).append(value)
 
     coaching = team_coaching_context(repository, team_id, season)
+    team = coaching.get("team") or {}
+    wiki = team_wiki_context(repository, team) if team else {}
     return {
         "remaining_home": _average(remaining_home),
         "remaining_home_games": len(remaining_home),
@@ -71,6 +74,7 @@ def team_schedule_elo(repository, team_id: int, season: int) -> dict[str, Any]:
         "elo_rank": coaching.get("elo_rank"),
         "coach": coaching.get("coach"),
         "program": coaching.get("program") or {},
+        "wiki": wiki,
         "coach_lineage": coach_lineage_table(repository, team_id, season),
     }
 
