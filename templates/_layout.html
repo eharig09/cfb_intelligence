@@ -49,7 +49,10 @@
 {% if request.endpoint == 'cfb_data_status.data_status' %}
 <section style="max-width:1180px;margin:2rem auto 0;padding:0 1rem 2.5rem">
     <div style="border:1px solid var(--line);background:var(--paper);padding:1rem">
-        <div class="eyebrow">Private moderation</div><h2 style="margin:.25rem 0 .4rem">Zap exact bad link</h2>
+        <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;flex-wrap:wrap">
+            <div><div class="eyebrow">Private moderation</div><h2 style="margin:.25rem 0 .4rem">Zap exact bad link</h2></div>
+            <a href="{{ url_for('cfb_source_admin') }}" style="border:1px solid var(--line-strong);padding:.45rem .65rem;text-decoration:none;color:inherit;font-size:.8rem;font-weight:800">Add / update source &rarr;</a>
+        </div>
         <p class="section-note" style="margin-top:0">Paste the exact external URL shown on the site. The matching content item is removed immediately and the exact URL is blocked from future ingestion.</p>
         <form id="cfb-zap-form" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
             <input id="cfb-zap-url" type="url" required placeholder="https://example.com/bad-story" aria-label="Exact bad content URL" style="flex:1 1 28rem;min-width:16rem;background:var(--paper);color:var(--ink);border:1px solid var(--line-strong);padding:.6rem .7rem">
