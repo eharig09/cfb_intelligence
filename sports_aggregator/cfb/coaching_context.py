@@ -95,12 +95,25 @@ def team_coaching_context(repository, team_id: int, season: int) -> dict[str, An
                 ),
             }
 
-    elo_row = (repository.team_elo(int(season)).get(int(team_id)) or {})
+    elo_rows = repository.team_elo(int(season))
+    elo_row = elo_rows.get(int(team_id)) or {}
     elo = elo_row.get("elo")
+    elo_rank = None
+    if elo is not None:
+        rating = float(elo)
+        # Competition rank: tied ratings receive the same rank. The Elo store is
+        # the same population used everywhere else in the app, so this stays in
+        # sync with the displayed current ratings without maintaining a second
+        # ranking table.
+        elo_rank = 1 + sum(
+            1 for row in elo_rows.values()
+            if row.get("elo") is not None and float(row["elo"]) > rating
+        )
 
     return {
         "team": team,
         "elo": round(float(elo)) if elo is not None else None,
+        "elo_rank": elo_rank,
         "coach": coach,
     }
 
