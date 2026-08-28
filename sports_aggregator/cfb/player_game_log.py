@@ -41,12 +41,13 @@ def _placeholders(values: list[str]) -> str:
 
 
 def _career_identity(connection, player: dict[str, Any]) -> tuple[list[str], list[str]]:
-    """Resolve the IDs/teams that belong to one stored player career.
+    """Resolve a bounded set of IDs for one stored player career.
 
-    CFBD's roster, season-stat and game-player endpoints do not always preserve
-    one immutable player id across every historical feed. Start with the page's
-    canonical id, then admit alternate ids only when the same normalized/exact
-    name is attached to one of the player's known teams.
+    Do not scan the historical game-player table by name here. That table can
+    contain decades of box-score rows; request-time full scans made some player
+    pages appear to hang. Instead, resolve aliases from the much smaller roster
+    and season-stat stores, then use the indexed player_id -> game_id path for
+    per-game production.
     """
     current_id = str(player.get("player_id") or "").strip()
     name = str(player.get("name") or "").strip()
@@ -86,17 +87,19 @@ def _career_identity(connection, player: dict[str, Any]) -> tuple[list[str], lis
     if name and teams:
         team_values = sorted(teams)
         placeholders = _placeholders(team_values)
-        params = [name.casefold(), *team_values]
-        for table in ("player_season_stats", "game_player_box_stats"):
-            rows = connection.execute(
-                f"SELECT DISTINCT player_id,team FROM {table} "
-                f"WHERE lower(player)=? AND team IN ({placeholders})",
-                params,
-            ).fetchall()
-            for row in rows:
-                ids.add(str(row["player_id"]))
+        rows = connection.execute(
+            f"""SELECT DISTINCT player_id,team FROM player_season_stats
+                WHERE player=? AND team IN ({placeholders})""",
+            [name, *team_values],
+        ).fetchall()
+        for row in rows:
+            ids.add(str(row["player_id"]))
 
-    return sorted(item for item in ids if item), sorted(teams)
+    ordered = sorted(item for item in ids if item)
+    if current_id and current_id in ordered:
+        ordered.remove(current_id)
+        ordered.insert(0, current_id)
+    return ordered[:12], sorted(teams)
 
 
 def _primary_stat(connection, player_ids: list[str], position: str | None):
