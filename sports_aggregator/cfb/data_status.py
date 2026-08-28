@@ -18,33 +18,20 @@ from flask import Blueprint, abort, current_app, jsonify, render_template, reque
 data_status_pages = Blueprint("cfb_data_status", __name__)
 
 _STEP_LABELS = {
-    "cfbd-sync": "Core CFBD data",
-    "cfbd-lines": "Betting lines",
-    "cfbd-box-scores": "Box scores",
-    "cfbd-current-player-stats": "Player statistics",
-    "articles": "Articles",
-    "local-articles": "Local reporting",
-    "local-news-shard": "Local reporting",
-    "weather": "Weather",
-    "bluesky": "Bluesky",
-    "reddit": "Reddit",
-    "youtube": "YouTube",
+    "cfbd-sync": "Core CFBD data", "cfbd-lines": "Betting lines",
+    "cfbd-box-scores": "Box scores", "cfbd-current-player-stats": "Player statistics",
+    "articles": "Articles", "local-articles": "Local reporting",
+    "local-news-shard": "Local reporting", "weather": "Weather",
+    "bluesky": "Bluesky", "reddit": "Reddit", "youtube": "YouTube",
     "podcasts": "Podcasts",
 }
 
 _TABLE_LABELS = {
-    "teams": "Teams",
-    "players": "Rosters",
-    "games": "Games & schedules",
-    "game_lines": "Betting lines",
-    "records": "Team records",
-    "coaches": "Coaches",
-    "rankings": "Rankings",
-    "team_stats": "Team statistics",
-    "advanced_stats": "Advanced statistics",
-    "core_ratings": "CORE ratings",
-    "content_items": "News & social content",
-    "content_ingestion_runs": "Content ingestion runs",
+    "teams": "Teams", "players": "Rosters", "games": "Games & schedules",
+    "game_lines": "Betting lines", "records": "Team records", "coaches": "Coaches",
+    "rankings": "Rankings", "team_stats": "Team statistics",
+    "advanced_stats": "Advanced statistics", "core_ratings": "CORE ratings",
+    "content_items": "News & social content", "content_ingestion_runs": "Content ingestion runs",
 }
 
 
@@ -207,33 +194,58 @@ def _safe_url(value: Any) -> str:
         return ""
 
 
-def _audit_empty(error: str = "") -> dict[str, Any]:
+def _audit_empty(error: str = "", *, platform: str = "", sample_mode: str = "random",
+                 limit: int = 80, connection_limit: int = 100) -> dict[str, Any]:
     return {
-        "items": [], "connections": [], "flagged": [], "available": False,
-        "error": str(error or "")[:180],
+        "items": [], "connections": [], "flagged": [], "platforms": [],
+        "available": False, "error": str(error or "")[:180],
+        "selected_platform": platform, "sample_mode": sample_mode,
+        "limit": limit, "connection_limit": connection_limit,
     }
 
 
-def _audit_model(limit: int = 80) -> dict[str, Any]:
+def _audit_model(*, limit: int = 80, platform: str = "", sample_mode: str = "random",
+                 connection_limit: int = 100) -> dict[str, Any]:
+    limit = max(10, min(int(limit), 200))
+    connection_limit = max(25, min(int(connection_limit), 250))
+    sample_mode = sample_mode if sample_mode in {"random", "recent"} else "random"
+    platform = str(platform or "").strip().casefold()[:40]
     database = _database_path()
     if not database.exists():
-        return _audit_empty("database not found")
+        return _audit_empty("database not found", platform=platform, sample_mode=sample_mode,
+                            limit=limit, connection_limit=connection_limit)
     try:
         with sqlite3.connect(database, timeout=5) as connection:
             connection.row_factory = sqlite3.Row
             if not all(_table_exists(connection, table) for table in ("content_items", "content_teams", "teams")):
-                return _audit_empty("content linkage tables are not available")
+                return _audit_empty("content linkage tables are not available", platform=platform,
+                                    sample_mode=sample_mode, limit=limit,
+                                    connection_limit=connection_limit)
 
             ci_cols = _columns(connection, "content_items")
             ct_cols = _columns(connection, "content_teams")
             team_cols = _columns(connection, "teams")
-            required_ci = {"content_id", "platform", "title", "ingested_at"}
-            required_ct = {"content_id", "team_id", "confidence", "method"}
-            if not required_ci.issubset(ci_cols) or not required_ct.issubset(ct_cols) or not {"team_id", "school"}.issubset(team_cols):
-                return _audit_empty("content linkage schema is incomplete")
+            if not {"content_id", "platform", "title", "ingested_at"}.issubset(ci_cols):
+                return _audit_empty("content linkage schema is incomplete", platform=platform,
+                                    sample_mode=sample_mode, limit=limit,
+                                    connection_limit=connection_limit)
+            if not {"content_id", "team_id", "confidence", "method"}.issubset(ct_cols):
+                return _audit_empty("content linkage schema is incomplete", platform=platform,
+                                    sample_mode=sample_mode, limit=limit,
+                                    connection_limit=connection_limit)
+            if not {"team_id", "school"}.issubset(team_cols):
+                return _audit_empty("content linkage schema is incomplete", platform=platform,
+                                    sample_mode=sample_mode, limit=limit,
+                                    connection_limit=connection_limit)
 
             def ci(name: str, fallback: str = "NULL") -> str:
                 return f'ci."{name}"' if name in ci_cols else fallback
+
+            platforms = [str(row[0]) for row in connection.execute(
+                "SELECT DISTINCT platform FROM content_items WHERE platform IS NOT NULL AND platform <> '' ORDER BY platform"
+            ).fetchall()]
+            if platform and platform not in {value.casefold() for value in platforms}:
+                platform = ""
 
             feedback = _table_exists(connection, "content_team_feedback")
             feedback_join = (
@@ -244,6 +256,18 @@ def _audit_model(limit: int = 80) -> dict[str, Any]:
                 "f.verdict AS feedback_verdict, f.reason AS feedback_reason"
                 if feedback else "NULL AS feedback_verdict, NULL AS feedback_reason"
             )
+            where_parts = ["1=1"]
+            params: list[Any] = []
+            if platform:
+                where_parts.append("LOWER(ci.platform)=?")
+                params.append(platform)
+            if feedback:
+                where_parts.append(
+                    "NOT EXISTS (SELECT 1 FROM content_team_feedback fx WHERE fx.content_id=ci.content_id AND fx.team_id=ct.team_id AND fx.verdict='bad')"
+                )
+            where_sql = " AND ".join(where_parts)
+            published_expr = ci("published_at", "ci.ingested_at")
+            order_sql = "RANDOM()" if sample_mode == "random" else f"COALESCE({published_expr}, ci.ingested_at) DESC, ci.content_id DESC"
 
             rows = connection.execute(
                 f"""
@@ -252,7 +276,7 @@ def _audit_model(limit: int = 80) -> dict[str, Any]:
                        {ci('original_url')} AS original_url,
                        {ci('publisher_name')} AS publisher_name,
                        {ci('author_name')} AS author_name,
-                       {ci('published_at')} AS published_at,
+                       {published_expr} AS published_at,
                        ci.ingested_at,
                        {ci('content_type')} AS content_type,
                        {ci('source_role')} AS source_role,
@@ -262,14 +286,16 @@ def _audit_model(limit: int = 80) -> dict[str, Any]:
                   JOIN content_teams ct ON ct.content_id=ci.content_id
                   JOIN teams t ON t.team_id=ct.team_id
                   {feedback_join}
-                 ORDER BY ci.ingested_at DESC, ci.content_id DESC
+                 WHERE {where_sql}
+                 ORDER BY {order_sql}
                  LIMIT ?
-                """, (max(10, min(int(limit), 200)),)
+                """, (*params, limit)
             ).fetchall()
 
             items: list[dict[str, Any]] = []
             for row in rows:
                 try:
+                    published_raw = row["published_at"]
                     source = str(row["publisher_name"] or row["author_name"] or row["platform"] or "Unknown")
                     items.append({
                         "content_id": int(row["content_id"]),
@@ -279,8 +305,10 @@ def _audit_model(limit: int = 80) -> dict[str, Any]:
                         "source": source[:120],
                         "title": str(row["title"] or "Untitled")[:240],
                         "url": _safe_url(row["canonical_url"] or row["original_url"]),
-                        "published_label": _display_time(row["published_at"]),
+                        "published_label": _display_time(published_raw),
+                        "published_age": _relative_time(published_raw),
                         "ingested_label": _display_time(row["ingested_at"]),
+                        "ingested_age": _relative_time(row["ingested_at"]),
                         "content_type": str(row["content_type"] or "")[:60],
                         "source_role": str(row["source_role"] or "")[:60],
                         "confidence": round(float(row["confidence"] or 0), 3),
@@ -293,32 +321,41 @@ def _audit_model(limit: int = 80) -> dict[str, Any]:
 
             source_expr = (
                 "COALESCE(NULLIF(ci.publisher_name,''), NULLIF(ci.author_name,''), ci.platform)"
-                if {"publisher_name", "author_name"}.issubset(ci_cols)
-                else "ci.platform"
+                if {"publisher_name", "author_name"}.issubset(ci_cols) else "ci.platform"
             )
-            filter_clause = (
-                "AND NOT EXISTS (SELECT 1 FROM content_team_feedback f WHERE f.content_id=ci.content_id AND f.team_id=ct.team_id AND f.verdict='bad')"
-                if feedback else ""
-            )
+            conn_where = ["1=1"]
+            conn_params: list[Any] = []
+            if platform:
+                conn_where.append("LOWER(ci.platform)=?")
+                conn_params.append(platform)
+            if feedback:
+                conn_where.append(
+                    "NOT EXISTS (SELECT 1 FROM content_team_feedback fx WHERE fx.content_id=ci.content_id AND fx.team_id=ct.team_id AND fx.verdict='bad')"
+                )
             connections = [dict(row) for row in connection.execute(
                 f"""
                 SELECT {source_expr} AS source, ci.platform, t.school AS team,
                        COUNT(*) AS item_count, ROUND(AVG(ct.confidence), 3) AS avg_confidence,
+                       MAX({published_expr}) AS newest_published,
                        MAX(ci.ingested_at) AS last_ingested
                   FROM content_items ci
                   JOIN content_teams ct ON ct.content_id=ci.content_id
                   JOIN teams t ON t.team_id=ct.team_id
-                 WHERE 1=1 {filter_clause}
+                 WHERE {' AND '.join(conn_where)}
                  GROUP BY source, ci.platform, t.team_id, t.school
-                 ORDER BY item_count DESC, last_ingested DESC
-                 LIMIT 60
-                """
+                 ORDER BY item_count DESC, newest_published DESC
+                 LIMIT ?
+                """, (*conn_params, connection_limit)
             ).fetchall()]
             for row in connections:
                 row["source"] = str(row.get("source") or "Unknown")[:120]
                 row["platform"] = str(row.get("platform") or "unknown")[:30]
                 row["team"] = str(row.get("team") or "Unknown")[:100]
-                row["last_label"] = _display_time(row.pop("last_ingested", None))
+                newest = row.pop("newest_published", None)
+                ingested = row.pop("last_ingested", None)
+                row["newest_label"] = _display_time(newest)
+                row["newest_age"] = _relative_time(newest)
+                row["last_ingested_label"] = _display_time(ingested)
 
             flagged: list[dict[str, Any]] = []
             if feedback:
@@ -328,8 +365,7 @@ def _audit_model(limit: int = 80) -> dict[str, Any]:
                            ci.title, ci.platform,
                            {ci('canonical_url')} AS canonical_url,
                            {ci('original_url')} AS original_url,
-                           {source_expr} AS source,
-                           t.school AS team
+                           {source_expr} AS source, t.school AS team
                       FROM content_team_feedback f
                       JOIN content_items ci ON ci.content_id=f.content_id
                       JOIN teams t ON t.team_id=f.team_id
@@ -351,23 +387,26 @@ def _audit_model(limit: int = 80) -> dict[str, Any]:
                     except Exception:
                         continue
 
-            return {"items": items, "connections": connections, "flagged": flagged, "available": True, "error": ""}
+            return {
+                "items": items, "connections": connections, "flagged": flagged,
+                "platforms": platforms, "available": True, "error": "",
+                "selected_platform": platform, "sample_mode": sample_mode,
+                "limit": limit, "connection_limit": connection_limit,
+            }
     except Exception as exc:
-        # Audit is diagnostic only. It must never take down the status page.
-        return _audit_empty(f"audit unavailable: {type(exc).__name__}")
+        return _audit_empty(f"audit unavailable: {type(exc).__name__}", platform=platform,
+                            sample_mode=sample_mode, limit=limit,
+                            connection_limit=connection_limit)
 
 
 def _ensure_feedback_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(
         """
         CREATE TABLE IF NOT EXISTS content_team_feedback (
-            content_id INTEGER NOT NULL,
-            team_id INTEGER NOT NULL,
+            content_id INTEGER NOT NULL, team_id INTEGER NOT NULL,
             verdict TEXT NOT NULL CHECK(verdict IN ('bad')),
-            reason TEXT NOT NULL DEFAULT '',
-            previous_confidence REAL,
-            previous_method TEXT,
-            created_at TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '', previous_confidence REAL,
+            previous_method TEXT, created_at TEXT NOT NULL,
             PRIMARY KEY(content_id, team_id)
         );
         CREATE INDEX IF NOT EXISTS idx_content_team_feedback_verdict
@@ -378,9 +417,7 @@ def _ensure_feedback_schema(connection: sqlite3.Connection) -> None:
             SELECT 1 FROM content_team_feedback f
             WHERE f.content_id=NEW.content_id AND f.team_id=NEW.team_id AND f.verdict='bad'
         )
-        BEGIN
-            SELECT RAISE(IGNORE);
-        END;
+        BEGIN SELECT RAISE(IGNORE); END;
         """
     )
 
@@ -394,7 +431,7 @@ def _require_audit_auth() -> None:
         abort(401)
 
 
-def _status_model(include_audit: bool = True) -> dict[str, Any]:
+def _status_model(include_audit: bool = True, *, audit_options: dict[str, Any] | None = None) -> dict[str, Any]:
     instance = _instance_dir()
     progress = _read_json(instance / "refresh_progress.json")
     history = _read_history(instance / "scheduled_refresh_history.jsonl")
@@ -412,26 +449,24 @@ def _status_model(include_audit: bool = True) -> dict[str, Any]:
         row["relative_label"] = _relative_time(row.get("at"))
     recent_runs = [{
         "profile": str(item.get("profile") or "unknown"),
-        "season": item.get("season"),
-        "status": str(item.get("status") or "unknown"),
+        "season": item.get("season"), "status": str(item.get("status") or "unknown"),
         "started_label": _display_time(item.get("started_at")),
         "finished_label": _display_time(item.get("finished_at")),
-        "seconds": item.get("seconds"),
-        "step_count": item.get("step_count"),
+        "seconds": item.get("seconds"), "step_count": item.get("step_count"),
         "degraded_count": item.get("degraded_count", 0),
         "required_failure_count": item.get("required_failure_count", 0),
     } for item in history]
     latest_finished = latest.get("finished_at") or progress.get("finished_at")
+    options = audit_options or {}
     return {
         "running": running,
         "latest_status": str(latest.get("status") or ("running" if running else "unknown")),
         "latest_profile": str(latest.get("profile") or progress.get("profile") or "unknown"),
         "latest_finished_label": _display_time(latest_finished),
         "latest_relative_label": _relative_time(latest_finished),
-        "sections": sections,
-        "recent_runs": recent_runs,
+        "sections": sections, "recent_runs": recent_runs,
         "change_ledger": _safe_change_ledger(instance),
-        "audit": _audit_model() if include_audit else _audit_empty(),
+        "audit": _audit_model(**options) if include_audit else _audit_empty(),
     }
 
 
@@ -439,16 +474,28 @@ def _status_model(include_audit: bool = True) -> dict[str, Any]:
 def inject_data_freshness() -> dict[str, Any]:
     model = _status_model(include_audit=False)
     return {"data_freshness": {
-        "running": model["running"],
-        "status": model["latest_status"],
+        "running": model["running"], "status": model["latest_status"],
         "relative": model["latest_relative_label"],
     }}
 
 
+def _int_arg(name: str, default: int) -> int:
+    try:
+        return int(request.args.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
 @data_status_pages.get("/college-football/data-status/")
 def data_status():
+    options = {
+        "platform": request.args.get("platform", ""),
+        "sample_mode": request.args.get("sample", "random"),
+        "limit": _int_arg("limit", 80),
+        "connection_limit": _int_arg("connections", 100),
+    }
     try:
-        model = _status_model(include_audit=True)
+        model = _status_model(include_audit=True, audit_options=options)
     except Exception:
         model = _status_model(include_audit=False)
     return render_template("cfb_data_status.html", status=model)
@@ -459,8 +506,7 @@ def team_link_feedback():
     _require_audit_auth()
     payload = request.get_json(silent=True) or {}
     try:
-        content_id = int(payload.get("content_id"))
-        team_id = int(payload.get("team_id"))
+        content_id = int(payload.get("content_id")); team_id = int(payload.get("team_id"))
     except (TypeError, ValueError):
         abort(400, description="content_id and team_id are required")
     action = str(payload.get("action") or "bad").strip().casefold()
@@ -503,7 +549,8 @@ def team_link_feedback():
             connection.execute("DELETE FROM content_team_feedback WHERE content_id=? AND team_id=?", (content_id, team_id))
             connection.execute(
                 "INSERT OR IGNORE INTO content_teams(content_id, team_id, confidence, method) VALUES (?, ?, ?, ?)",
-                (content_id, team_id, float(previous["previous_confidence"] or 0), str(previous["previous_method"] or "manual_restore")),
+                (content_id, team_id, float(previous["previous_confidence"] or 0),
+                 str(previous["previous_method"] or "manual_restore")),
             )
         connection.commit()
     return jsonify({"status": "ok", "action": action, "content_id": content_id, "team_id": team_id})
