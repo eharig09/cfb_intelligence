@@ -19,19 +19,7 @@
     .schedule-switch { display:flex; gap:5px; flex-wrap:wrap; margin:10px 0; }
     .schedule-switch a { border:1px solid var(--line); padding:6px 10px; text-decoration:none; font-size:.72rem; font-weight:800; }
     .schedule-switch a.active { background:var(--surface-strong); border-color:var(--surface-strong); color:var(--on-strong); }
-    .coach-facts { margin-top: 10px; }
-    .rivalry-strip {
-        display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:10px 0 2px;
-        font-size:.69rem; color:var(--muted);
-    }
-    .rivalry-strip > strong { color:var(--ink); text-transform:uppercase; letter-spacing:.06em; font-size:.62rem; }
-    .rivalry-chip, .program-chip {
-        display:inline-flex; align-items:center; gap:4px; padding:4px 7px;
-        border:1px solid var(--line); background:var(--paper); border-radius:999px;
-        color:var(--ink); font-weight:800; text-decoration:none;
-    }
-    .rivalry-chip::before { content:'★'; color:var(--rust); }
-    .rivalry-chip:hover { text-decoration:underline; }
+    .coach-facts, .identity-facts { margin-top: 10px; }
     table.data td.rivalry .sub { color:var(--rust); font-weight:800; }
     @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
     @media (max-width: 559px) {
@@ -53,6 +41,7 @@
 {% block content %}
 {% set team_context = team_elo_summary(team.team_id, season) %}
 {% set program = team_context.program or {} %}
+{% set wiki = team_context.wiki or {} %}
 <section class="hero">
     <div>
         <div class="eyebrow"><a href="{{ url_for('cfb.today') }}">{{ season }} team intelligence</a></div>
@@ -65,6 +54,7 @@
             <a href="{{ url_for('cfb.team_history', team_id=team.team_id, season=season) }}">Historical game log</a>
             &middot;
             <a href="{{ url_for('cfb.team_history_stats', team_id=team.team_id, season=season) }}">Historical stats &amp; identity</a>
+            {% if wiki.page_url %}&middot; <a href="{{ wiki.page_url }}" target="_blank" rel="noopener">Wikipedia ↗</a>{% endif %}
         </div>
     </div>
     {% if team.logos %}{% set marks = team.logos | logo_pair %}<span class="logo team-mark" role="img" aria-label="{{ team.school }} logo"
@@ -90,17 +80,12 @@
     <div class="fact"><b>{{ team_context.coach.team_conf_record if team_context.coach else '—' }}</b><span>At {{ team.school }} conf</span></div>
 </div>
 
-{% if program.record or program.rivalries %}
-<div class="rivalry-strip" aria-label="Program history and named rivalries">
-    <strong>Program</strong>
-    {% if program.record %}<span class="program-chip">{{ program.record }} stored{% if program.first_season and program.last_season %} · {{ program.first_season }}&ndash;{{ program.last_season }}{% endif %}</span>{% endif %}
-    {% for rivalry in program.rivalries[:6] %}
-    {% if rivalry.wiki_url %}<a class="rivalry-chip" href="{{ rivalry.wiki_url }}" target="_blank" rel="noopener" title="{% if rivalry.trophy %}{{ rivalry.trophy }} · {% endif %}{{ rivalry.series_games or 0 }} stored meetings">{{ rivalry.opponent }} · {{ rivalry.name }} · {{ rivalry.series_record }}</a>
-    {% else %}<span class="rivalry-chip">{{ rivalry.opponent }} · {{ rivalry.name }} · {{ rivalry.series_record }}</span>{% endif %}
-    {% endfor %}
-    {% if program.rivalries|length > 6 %}<a href="{{ url_for('cfb.team_history_stats', team_id=team.team_id, season=season) }}">+{{ program.rivalries|length - 6 }} more</a>{% endif %}
+<div class="facts identity-facts">
+    <div class="fact"><b>{{ wiki.first_season or program.first_season or '—' }}</b><span>First season</span></div>
+    <div class="fact"><b>{{ wiki.conference_championships or '—' }}</b><span>Conference championships</span></div>
+    <div class="fact"><b>{{ wiki.national_championships or '—' }}</b><span>National championships</span></div>
+    <div class="fact"><b>{{ wiki.mascot or team.mascot or '—' }}</b><span>Mascot</span></div>
 </div>
-{% endif %}
 
 <nav class="mobile-page-tabs" data-mobile-page-tabs role="tablist" aria-label="Team page sections">
     <button type="button" role="tab" data-mobile-tab="overview" aria-selected="true">Overview</button>
