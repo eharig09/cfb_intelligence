@@ -110,9 +110,15 @@ def team_coaching_context(repository, team_id: int, season: int) -> dict[str, An
             if row.get("elo") is not None and float(row["elo"]) > rating
         )
 
+    elo_value = round(float(elo)) if elo is not None else None
+    elo_display = (
+        f"{elo_value} · #{elo_rank}" if elo_value is not None and elo_rank is not None
+        else (str(elo_value) if elo_value is not None else None)
+    )
     return {
         "team": team,
-        "elo": round(float(elo)) if elo is not None else None,
+        "elo": elo_display,
+        "elo_value": elo_value,
         "elo_rank": elo_rank,
         "coach": coach,
     }
