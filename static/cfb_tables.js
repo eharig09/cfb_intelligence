@@ -140,3 +140,22 @@
     document.querySelectorAll("[data-mobile-page-tabs]").forEach(setup);
 }());
 
+(function () {
+    "use strict";
+
+    /* The canonical feed can call the late-August opener Week 1 even when the
+       football calendar treats it as Week 0.  Games-to-Watch carries the
+       normalized display week, so keep the matchup-section heading aligned
+       with the slate the reader is actually seeing. */
+    var firstWatchLabel = document.querySelector(".watch-card-top span:first-child");
+    if (!firstWatchLabel) return;
+    var match = firstWatchLabel.textContent.match(/Week\s+(\d+)/i);
+    if (!match) return;
+    Array.prototype.forEach.call(document.querySelectorAll(".section-title h2"), function (heading) {
+        if (!/^Upcoming Week\b/i.test(heading.textContent.trim())) return;
+        heading.textContent = heading.textContent.replace(
+            /Upcoming Week(?:\s+\d+)?/i, "Upcoming Week " + match[1]
+        );
+    });
+}());
+
