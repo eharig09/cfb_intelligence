@@ -9,6 +9,12 @@
     .hero > div { flex: 1 1 auto; min-width: 0; }
     .logo { width: 64px; height: 64px; object-fit: contain; flex: 0 0 auto; display: block; }
     @media (min-width: 860px) { .logo { width: 92px; height: 92px; } }
+    .hero-context { display:flex; flex-wrap:wrap; gap:5px 14px; margin-top:7px; font-size:.69rem; color:var(--muted); line-height:1.35; }
+    .hero-context + .hero-context { margin-top:3px; }
+    .hero-context .item { display:inline-flex; gap:5px; align-items:baseline; white-space:nowrap; }
+    .hero-context .label { text-transform:uppercase; letter-spacing:.055em; font-size:.58rem; color:var(--muted); }
+    .hero-context strong { color:var(--ink); font-size:.72rem; }
+    .hero-context .wiki-link { color:var(--muted); }
     .depth-unit { margin: 20px 0; }
     .depth-unit > h3 { font: 800 1.4rem var(--display-font); margin: 0 0 10px; }
     .stories { display: grid; gap: 9px; }
@@ -19,12 +25,13 @@
     .schedule-switch { display:flex; gap:5px; flex-wrap:wrap; margin:10px 0; }
     .schedule-switch a { border:1px solid var(--line); padding:6px 10px; text-decoration:none; font-size:.72rem; font-weight:800; }
     .schedule-switch a.active { background:var(--surface-strong); border-color:var(--surface-strong); color:var(--on-strong); }
-    .coach-facts, .identity-facts { margin-top: 10px; }
     table.data td.rivalry .sub { color:var(--rust); font-weight:800; }
     @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
     @media (max-width: 559px) {
         .hero { gap: 9px; padding-left: 10px; border-left-width: 5px; align-items: flex-start; }
         .logo { width: 46px; height: 46px; }
+        .hero-context { gap:4px 10px; }
+        .hero-context .item { white-space:normal; }
         .schedule-switch a { flex: 1 1 auto; text-align: center; }
     }
 
@@ -50,11 +57,23 @@
             {% if team.conference %}<a class="conference-tag" href="{{ url_for('cfb.conference_preview', slug=team.conference | lower | replace(' ', '-'), season=season) }}">{{ team.conference }}</a>{% endif %}
             {{ team.mascot or '' }} &middot; {{ team.venue_name or 'Venue TBD' }}
         </div>
+        <div class="hero-context" aria-label="Current team context">
+            <span class="item"><span class="label">Elo</span><strong>{{ team_context.elo or '—' }}</strong></span>
+            <span class="item"><span class="label">Coach</span><strong>{{ team_context.coach.name if team_context.coach else '—' }}</strong>{% if team_context.coach %}<span>{{ team_context.coach.tenure_years }} yr{% if team_context.coach.tenure_years != 1 %}s{% endif %}</span>{% endif %}</span>
+            {% if team_context.coach %}<span class="item"><span class="label">Career</span><strong>{{ team_context.coach.career_record }}</strong></span>{% endif %}
+            {% if team_context.coach %}<span class="item"><span class="label">At {{ team.school }}</span><strong>{{ team_context.coach.team_record }}</strong><span>({{ team_context.coach.team_conf_record }} conf)</span></span>{% endif %}
+        </div>
+        <div class="hero-context" aria-label="Program identity">
+            <span class="item"><span class="label">First season</span><strong>{{ wiki.first_season or '—' }}</strong></span>
+            <span class="item"><span class="label">Conf titles</span><strong>{{ wiki.conference_championships or '—' }}</strong></span>
+            <span class="item"><span class="label">National titles</span><strong>{{ wiki.national_championships or '—' }}</strong></span>
+            <span class="item"><span class="label">Mascot</span><strong>{{ wiki.mascot or team.mascot or '—' }}</strong></span>
+        </div>
         <div class="meta" style="margin-top:8px">
             <a href="{{ url_for('cfb.team_history', team_id=team.team_id, season=season) }}">Historical game log</a>
             &middot;
             <a href="{{ url_for('cfb.team_history_stats', team_id=team.team_id, season=season) }}">Historical stats &amp; identity</a>
-            {% if wiki.page_url %}&middot; <a href="{{ wiki.page_url }}" target="_blank" rel="noopener">Wikipedia ↗</a>{% endif %}
+            {% if wiki.page_url %}&middot; <a class="wiki-link" href="{{ wiki.page_url }}" target="_blank" rel="noopener">Wikipedia ↗</a>{% endif %}
         </div>
     </div>
     {% if team.logos %}{% set marks = team.logos | logo_pair %}<span class="logo team-mark" role="img" aria-label="{{ team.school }} logo"
@@ -69,22 +88,6 @@
     <div class="fact"><b>{{ summary.players }}</b><span>Roster size</span></div>
     <div class="fact"><b>{{ summary.upperclassmen_pct | cell('pct') }}</b><span>Upperclassmen</span></div>
     <div class="fact"><b>{{ movements.counts.get('DRAFTED', 0) }}</b><span>Drafted departures</span></div>
-</div>
-
-<div class="facts coach-facts">
-    <div class="fact"><b>{{ team_context.elo or '—' }}</b><span>Current Elo</span></div>
-    <div class="fact"><b>{{ team_context.coach.name if team_context.coach else '—' }}</b><span>Head coach</span></div>
-    <div class="fact"><b>{% if team_context.coach %}{{ team_context.coach.tenure_years }} yr{% if team_context.coach.tenure_years != 1 %}s{% endif %}{% else %}—{% endif %}</b><span>Current tenure</span></div>
-    <div class="fact"><b>{{ team_context.coach.career_record if team_context.coach else '—' }}</b><span>Coach career</span></div>
-    <div class="fact"><b>{{ team_context.coach.team_record if team_context.coach else '—' }}</b><span>At {{ team.school }} overall</span></div>
-    <div class="fact"><b>{{ team_context.coach.team_conf_record if team_context.coach else '—' }}</b><span>At {{ team.school }} conf</span></div>
-</div>
-
-<div class="facts identity-facts">
-    <div class="fact"><b>{{ wiki.first_season or program.first_season or '—' }}</b><span>First season</span></div>
-    <div class="fact"><b>{{ wiki.conference_championships or '—' }}</b><span>Conference championships</span></div>
-    <div class="fact"><b>{{ wiki.national_championships or '—' }}</b><span>National championships</span></div>
-    <div class="fact"><b>{{ wiki.mascot or team.mascot or '—' }}</b><span>Mascot</span></div>
 </div>
 
 <nav class="mobile-page-tabs" data-mobile-page-tabs role="tablist" aria-label="Team page sections">
