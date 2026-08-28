@@ -19,18 +19,19 @@
     .schedule-switch { display:flex; gap:5px; flex-wrap:wrap; margin:10px 0; }
     .schedule-switch a { border:1px solid var(--line); padding:6px 10px; text-decoration:none; font-size:.72rem; font-weight:800; }
     .schedule-switch a.active { background:var(--surface-strong); border-color:var(--surface-strong); color:var(--on-strong); }
-    .coach-facts, .history-facts { margin-top: 10px; }
+    .coach-facts { margin-top: 10px; }
     .rivalry-strip {
         display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:10px 0 2px;
         font-size:.69rem; color:var(--muted);
     }
     .rivalry-strip > strong { color:var(--ink); text-transform:uppercase; letter-spacing:.06em; font-size:.62rem; }
-    .rivalry-chip {
+    .rivalry-chip, .program-chip {
         display:inline-flex; align-items:center; gap:4px; padding:4px 7px;
         border:1px solid var(--line); background:var(--paper); border-radius:999px;
-        color:var(--ink); font-weight:800;
+        color:var(--ink); font-weight:800; text-decoration:none;
     }
     .rivalry-chip::before { content:'★'; color:var(--rust); }
+    .rivalry-chip:hover { text-decoration:underline; }
     table.data td.rivalry .sub { color:var(--rust); font-weight:800; }
     @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
     @media (max-width: 559px) {
@@ -89,20 +90,15 @@
     <div class="fact"><b>{{ team_context.coach.team_conf_record if team_context.coach else '—' }}</b><span>At {{ team.school }} conf</span></div>
 </div>
 
-<div class="facts history-facts">
-    <div class="fact"><b>{{ program.first_season or '—' }}</b><span>First stored season</span></div>
-    <div class="fact"><b>{{ program.record or '—' }}</b><span>Stored W-L-T</span></div>
-    <div class="fact"><b>{{ program.games or '—' }}</b><span>Stored games</span></div>
-    <div class="fact"><b>{{ program.venue or '—' }}</b><span>Stadium</span></div>
-    <div class="fact"><b>{{ program.rivalry_count or 0 }}</b><span>Named rivalries</span></div>
-</div>
-{% if program.rivalries %}
-<div class="rivalry-strip" aria-label="Named rivalries">
-    <strong>Rivalries</strong>
-    {% for rivalry in program.rivalries[:8] %}
-    <span class="rivalry-chip" title="{% if rivalry.trophy %}Trophy: {{ rivalry.trophy }} · {% endif %}Source: {{ rivalry.source }}">{{ rivalry.name }}</span>
+{% if program.record or program.rivalries %}
+<div class="rivalry-strip" aria-label="Program history and named rivalries">
+    <strong>Program</strong>
+    {% if program.record %}<span class="program-chip">{{ program.record }} stored{% if program.first_season and program.last_season %} · {{ program.first_season }}&ndash;{{ program.last_season }}{% endif %}</span>{% endif %}
+    {% for rivalry in program.rivalries[:6] %}
+    {% if rivalry.wiki_url %}<a class="rivalry-chip" href="{{ rivalry.wiki_url }}" target="_blank" rel="noopener" title="{% if rivalry.trophy %}{{ rivalry.trophy }} · {% endif %}{{ rivalry.series_games or 0 }} stored meetings">{{ rivalry.opponent }} · {{ rivalry.name }} · {{ rivalry.series_record }}</a>
+    {% else %}<span class="rivalry-chip">{{ rivalry.opponent }} · {{ rivalry.name }} · {{ rivalry.series_record }}</span>{% endif %}
     {% endfor %}
-    {% if program.rivalries|length > 8 %}<span>+{{ program.rivalries|length - 8 }} more</span>{% endif %}
+    {% if program.rivalries|length > 6 %}<a href="{{ url_for('cfb.team_history_stats', team_id=team.team_id, season=season) }}">+{{ program.rivalries|length - 6 }} more</a>{% endif %}
 </div>
 {% endif %}
 
