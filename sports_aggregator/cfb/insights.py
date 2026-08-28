@@ -2,11 +2,44 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
 from typing import Any
 
 
 def _rank_points(rank: int | None) -> float:
     return max(0.0, (26 - rank) * 1.35) if rank else 0.0
+
+
+def _week_one_start(season: int) -> date:
+    """First Thursday of the conventional Week 1 Labor Day window.
+
+    CFBD can label the late-August opening slate as Week 1 even when the public
+    schedule calls it Week 0.  The dashboard should follow the football-week
+    convention without rewriting the canonical schedule stored in SQLite.
+    """
+    september_first = date(int(season), 9, 1)
+    labor_day = september_first + timedelta(days=(7 - september_first.weekday()) % 7)
+    return labor_day - timedelta(days=4)
+
+
+def _display_week(game: dict[str, Any]) -> int | None:
+    raw = game.get("week")
+    try:
+        raw_week = int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        raw_week = None
+
+    season = game.get("season")
+    start_value = game.get("start_date")
+    if season is None or not start_value:
+        return raw_week
+    try:
+        start = datetime.fromisoformat(str(start_value).replace("Z", "+00:00")).date()
+        if start < _week_one_start(int(season)):
+            return 0
+    except (TypeError, ValueError):
+        pass
+    return raw_week
 
 
 def score_game_attention(game: dict[str, Any]) -> tuple[int, list[str]]:
@@ -43,9 +76,28 @@ def score_game_attention(game: dict[str, Any]) -> tuple[int, list[str]]:
 
 
 def games_to_watch(games: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
-    scored = []
+    """Rank games from the nearest football week, including Week 0.
+
+    The dashboard previously ranked the whole upcoming query at once.  During
+    Week 0 that let higher-profile Week 1 games crowd the opening slate out of
+    the cards.  Normalize display week on copies, select the nearest week, then
+    apply the existing attention score inside that slate.
+    """
+    normalized: list[dict[str, Any]] = []
     for game in games:
         item = dict(game)
+        item["week"] = _display_week(item)
+        normalized.append(item)
+
+    nearest = min(
+        (item["week"] for item in normalized if item.get("week") is not None),
+        default=None,
+    )
+    if nearest is not None:
+        normalized = [item for item in normalized if item.get("week") == nearest]
+
+    scored = []
+    for item in normalized:
         item["attention_score"], item["attention_factors"] = score_game_attention(item)
         scored.append(item)
     scored.sort(key=lambda item: (-item["attention_score"], item["start_date"]))
