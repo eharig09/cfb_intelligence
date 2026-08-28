@@ -67,9 +67,10 @@ def team_schedule_elo(repository, team_id: int, season: int) -> dict[str, Any]:
         "nonconference": _average(nonconference_values),
         "nonconference_games": len(nonconference_values),
         "elo": coaching.get("elo"),
+        "elo_value": coaching.get("elo_value"),
+        "elo_rank": coaching.get("elo_rank"),
         "coach": coaching.get("coach"),
-        "current_record": coaching.get("current_record"),
-        "current_conf_record": coaching.get("current_conf_record"),
+        "program": coaching.get("program") or {},
         "coach_lineage": coach_lineage_table(repository, team_id, season),
     }
 
