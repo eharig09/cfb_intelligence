@@ -1,8 +1,8 @@
 """Wikipedia-backed FBS coordinator ingestion.
 
 Season-team articles commonly expose OC/DC fields in the college-football team
-infobox.  Wikipedia is used as the production-safe baseline because some compact
-staff-board sites block cloud-hosted requests.  Source URLs are retained per row
+infobox. Wikipedia is used as the production-safe baseline because some compact
+staff-board sites block cloud-hosted requests. Source URLs are retained per row
 for later official-school verification.
 """
 
@@ -28,7 +28,6 @@ def _clean_wikitext(value: str | None) -> str:
     text = re.sub(r"<ref\b[^>]*>.*?</ref>", "", text, flags=re.I | re.S)
     text = re.sub(r"<ref\b[^>]*/>", "", text, flags=re.I)
     text = re.sub(r"\{\{[^{}]*\}\}", "", text)
-    # [[Target|Label]] -> Label, [[Target]] -> Target
     text = re.sub(r"\[\[([^\]|]+)\|([^\]]+)\]\]", r"\2", text)
     text = re.sub(r"\[\[([^\]]+)\]\]", r"\1", text)
     text = re.sub(r"''+", "", text)
@@ -39,10 +38,7 @@ def _clean_wikitext(value: str | None) -> str:
 
 def _infobox_value(wikitext: str, keys: tuple[str, ...]) -> str | None:
     for key in keys:
-        match = re.search(
-            rf"(?im)^\s*\|\s*{re.escape(key)}\s*=\s*(.*?)\s*$",
-            wikitext,
-        )
+        match = re.search(rf"(?im)^\s*\|\s*{re.escape(key)}\s*=\s*(.*?)\s*$", wikitext)
         if match:
             value = _clean_wikitext(match.group(1))
             if value:
@@ -51,7 +47,6 @@ def _infobox_value(wikitext: str, keys: tuple[str, ...]) -> str | None:
 
 
 def parse_coordinators(wikitext: str) -> dict[str, str | None]:
-    """Extract the primary offensive and defensive coordinator names."""
     return {
         "offense": _infobox_value(
             wikitext,
@@ -79,19 +74,14 @@ def _page_wikitext(client: requests.Session, title: str, timeout: float) -> tupl
     response = client.get(
         API_URL,
         params={
-            "action": "parse",
-            "page": title,
-            "prop": "wikitext",
-            "format": "json",
-            "formatversion": 2,
-            "redirects": 1,
+            "action": "parse", "page": title, "prop": "wikitext",
+            "format": "json", "formatversion": 2, "redirects": 1,
         },
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         timeout=timeout,
     )
     response.raise_for_status()
-    payload = response.json()
-    parsed = payload.get("parse") or {}
+    parsed = (response.json().get("parse") or {})
     text = parsed.get("wikitext")
     canonical = parsed.get("title") or title
     if not text:
@@ -103,13 +93,8 @@ def _search_title(client: requests.Session, query: str, season: int, timeout: fl
     response = client.get(
         API_URL,
         params={
-            "action": "query",
-            "list": "search",
-            "srsearch": query,
-            "srnamespace": 0,
-            "srlimit": 5,
-            "format": "json",
-            "formatversion": 2,
+            "action": "query", "list": "search", "srsearch": query,
+            "srnamespace": 0, "srlimit": 5, "format": "json", "formatversion": 2,
         },
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         timeout=timeout,
@@ -126,7 +111,6 @@ def _search_title(client: requests.Session, query: str, season: int, timeout: fl
 
 def fetch_team_coordinators(client: requests.Session, team: dict[str, Any], season: int,
                             timeout: float = 20.0) -> dict[str, Any]:
-    """Resolve one team's season page and extract primary OC/DC."""
     last_error = None
     for title in _candidate_titles(team, season):
         try:
@@ -136,7 +120,7 @@ def fetch_team_coordinators(client: requests.Session, team: dict[str, Any], seas
                 page = None
             else:
                 raise
-        except Exception as exc:  # malformed/nonexistent title can return API errors as JSON
+        except Exception as exc:
             last_error = str(exc)
             page = None
         if page:
@@ -156,9 +140,20 @@ def fetch_team_coordinators(client: requests.Session, team: dict[str, Any], seas
     return {"title": None, "offense": None, "defense": None, "error": last_error}
 
 
+def _mark_wikipedia_source(repository, season: int, team_id: int, source_url: str) -> None:
+    """Correct generic store_rows provenance for Wikipedia-loaded assignments."""
+    with closing(repository._connect()) as connection:
+        connection.execute(
+            """UPDATE coordinator_seasons
+               SET source_name='Wikipedia', source_url=?
+               WHERE season=? AND team_id=?""",
+            (source_url, int(season), int(team_id)),
+        )
+        connection.commit()
+
+
 def sync_season_wikipedia(repository, season: int, *, timeout: float = 20.0,
                           session: requests.Session | None = None) -> dict[str, Any]:
-    """Fetch primary OC/DC assignments for every stored FBS team in one season."""
     initialize(repository)
     with closing(repository._connect()) as connection:
         rows = connection.execute(
@@ -183,7 +178,9 @@ def sync_season_wikipedia(repository, season: int, *, timeout: float = 20.0,
         if not title:
             missing.append(str(team["school"]))
             continue
-        source_url = "https://en.wikipedia.org/wiki/" + quote(str(title).replace(" ", "_"), safe="_()-,'")
+        source_url = "https://en.wikipedia.org/wiki/" + quote(
+            str(title).replace(" ", "_"), safe="_()-,'"
+        )
         source_rows = []
         if result.get("offense"):
             source_rows.append({
@@ -199,6 +196,7 @@ def sync_season_wikipedia(repository, season: int, *, timeout: float = 20.0,
             missing.append(str(team["school"]))
             continue
         report = store_rows(repository, int(season), source_url, source_rows)
+        _mark_wikipedia_source(repository, int(season), int(team["team_id"]), source_url)
         stored += int(report.get("stored") or 0)
 
     return {
