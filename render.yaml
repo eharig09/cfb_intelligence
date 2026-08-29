@@ -18,6 +18,12 @@ services:
         value: "1"
       - key: MALLOC_ARENA_MAX
         value: "2"
+      # Request pages read reporting already stored by the background ingestion
+      # jobs. Do not create network-fetch thread pools inside the web worker.
+      - key: CFB_LIVE_RSS_ENABLED
+        value: "0"
+      - key: LIVE_RSS_CACHE_SECONDS
+        value: "3600"
       # Prevent numerical libraries from creating extra CPU-hungry worker threads
       # on the 0.5-CPU Render instance.
       - key: OMP_NUM_THREADS
