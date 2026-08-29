@@ -44,6 +44,7 @@
 
 {% block content %}
 {% set game_log_table = player_game_log(player, season) %}
+{% set career = player_career_context(player) %}
 <section class="hero">
     <div>
         <div class="eyebrow">Player intelligence &middot; latest roster {{ player.season }}</div>
@@ -135,18 +136,34 @@
         <section class="section">
             <h2>Career path</h2>
             <div class="timeline">
-                {% for stint in player.stints %}
+                {% if career.recruit %}
+                <article class="card event">
+                    <span class="label">{{ career.recruit.season }} recruit</span>
+                    <strong>{{ career.recruit.stars or '—' }}★ &middot; {{ career.recruit.rating | cell('f4') if career.recruit.rating is not none else 'rating —' }}</strong>
+                    <div class="meta">
+                        {% if career.recruit.ranking %}#{{ career.recruit.ranking }} overall &middot; {% endif %}
+                        committed to {{ career.recruit.committed_to or '—' }}
+                    </div>
+                </article>
+                {% endif %}
+                {% for stint in career.stints %}
                 <article class="card event">
                     <span class="label">{{ stint.season }}</span>
                     <strong>{{ stint.team }}</strong>
-                    <div class="meta">{{ stint.position or '—' }} &middot; class {{ stint.class_year or '—' }}</div>
+                    <div class="meta">
+                        {{ stint.position or '—' }} &middot; class {{ stint.class_year or '—' }}
+                        {% if stint.games_recorded is not none %} &middot; {{ stint.games_recorded }} games recorded{% endif %}
+                        {% if career.has_prior_college_season and stint.injury_data_present %} &middot; injury reporting present{% endif %}
+                    </div>
                 </article>
                 {% endfor %}
                 {% for transfer in player.transfers %}
                 <article class="card event">
                     <span class="label">{{ transfer.season }} transfer</span>
                     <strong>{{ transfer.origin }} &rarr; {{ transfer.destination or 'Destination TBD' }}</strong>
-                    <div class="meta">{{ transfer.eligibility or '' }}{% if transfer.rating %} &middot; rating {{ transfer.rating | cell('f2') }}{% endif %}</div>
+                    <div class="meta">
+                        {{ transfer.eligibility or '' }}{% if transfer.rating %} &middot; transfer rating {{ transfer.rating | cell('f4') }}{% endif %}
+                    </div>
                 </article>
                 {% endfor %}
                 {% for pick in player.draft %}
