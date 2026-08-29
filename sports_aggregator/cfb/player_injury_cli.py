@@ -65,7 +65,8 @@ def main(argv: list[str] | None = None) -> int:
             f"espn={report.get('espn_athlete_id') or '—'} "
             f"status={report.get('skipped') or 'ok'} "
             f"news={report.get('athlete_news_status') or '—'} "
-            f"search={report.get('search_matches', 0)}"
+            f"search={report.get('search_matches', 0)} "
+            f"page={report.get('player_page_matches', 0)}"
         )
         if index + 1 < len(players) and args.pause > 0:
             time.sleep(args.pause)
