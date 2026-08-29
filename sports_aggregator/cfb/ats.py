@@ -146,6 +146,39 @@ def _grade(played: list[dict[str, Any]]) -> dict[str, Any] | None:
     }
 
 
+def _role_grade(played: list[dict[str, Any]], role: str) -> dict[str, Any] | None:
+    """ATS record from games played as a favorite or underdog.
+
+    `spread` is already expressed from this team's perspective. Negative means
+    the team laid points (favorite), positive means it received points (dog),
+    and zero is a pick'em that belongs to neither split.
+    """
+    if role == "favorite":
+        selected = [game for game in played
+                    if game.get("spread") is not None and game["spread"] < 0]
+    elif role == "underdog":
+        selected = [game for game in played
+                    if game.get("spread") is not None and game["spread"] > 0]
+    else:
+        return None
+    return _grade(selected)
+
+
+def _current_consensus_spread(repository, game_id: Any) -> float | None:
+    """Current consensus spread stored for a game, from the home-team side."""
+    if game_id is None:
+        return None
+    repository.initialize()
+    with closing(repository._connect()) as connection:
+        row = connection.execute(
+            "SELECT AVG(spread) spread FROM game_lines WHERE game_id=?",
+            (game_id,),
+        ).fetchone()
+    if not row or row["spread"] is None:
+        return None
+    return float(row["spread"])
+
+
 def season_record(repository, team_id: int, *, season: int) -> dict[str, Any] | None:
     """This season only, each game graded against the number it was given."""
     repository.initialize()
@@ -159,12 +192,15 @@ def against_the_spread(repository, team_id: int, *, season: int,
     tenure = tenure or coach_tenure(repository, team_id, season=season)
     if not tenure:
         return None
-    graded = _grade(_played(repository, team_id,
-                            first=tenure["since"], last=tenure["through"]))
+    played = _played(repository, team_id,
+                     first=tenure["since"], last=tenure["through"])
+    graded = _grade(played)
     if not graded:
         return None
     return {
         **tenure, **graded,
+        "favorite": _role_grade(played, "favorite"),
+        "underdog": _role_grade(played, "underdog"),
         "label": tenure["coach"] or "Current coach",
         "span": (f"{tenure['since']} or earlier" if tenure.get("truncated")
                  else f"since {tenure['since']}"),
@@ -203,24 +239,45 @@ def _record(won: int, lost: int, pushed: int) -> str:
     return f"{won}-{lost}-{pushed}" if pushed else f"{won}-{lost}"
 
 
+def _with_current_role(tenure: dict[str, Any] | None,
+                       team_spread: float | None) -> dict[str, Any] | None:
+    """Annotate a coach tenure record with the Fav/Dog split relevant today."""
+    if not tenure or team_spread is None or abs(team_spread) < 1e-9:
+        return tenure
+    result = dict(tenure)
+    role_key = "favorite" if team_spread < 0 else "underdog"
+    role_label = "Fav" if role_key == "favorite" else "Dog"
+    role = result.get(role_key)
+    result["current_role"] = role_label
+    result["current_role_record"] = role
+    if role and role.get("ats_record"):
+        result["span"] = f"{result['span']} · {role_label} {role['ats_record']} ATS"
+    return result
+
+
 def matchup_ats(repository, game: dict[str, Any], *,
                 total: float | None = None) -> dict[str, Any]:
     """Three readings per side, for the page that shows the line.
 
     This season on its own, which is what the team is doing now; the current
-    coach's whole tenure, which is what it has done since the last time the
-    program changed; and this game's total applied to every game played this
+    coach's whole tenure, including the favorite/underdog split relevant to the
+    current matchup; and this game's total applied to every game played this
     year, which says whether tonight's number is a high one for this team.
     """
     season = int(game.get("season") or 0)
+    home_spread = _current_consensus_spread(repository, game.get("game_id"))
     packet: dict[str, Any] = {}
     for prefix in ("away", "home"):
         team_id = game.get(f"{prefix}_team_id")
         if not team_id:
             continue
+        team_spread = None
+        if home_spread is not None:
+            team_spread = home_spread if prefix == "home" else -home_spread
+        tenure = against_the_spread(repository, team_id, season=season)
         packet[prefix] = {
             "season": season_record(repository, team_id, season=season),
-            "tenure": against_the_spread(repository, team_id, season=season),
+            "tenure": _with_current_role(tenure, team_spread),
             "versus": versus_total(repository, team_id, season=season, total=total),
         }
     return packet
