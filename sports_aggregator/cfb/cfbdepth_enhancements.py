@@ -19,6 +19,7 @@ from markupsafe import Markup
 from sports_aggregator.cfb.cfbdepth_data import initialize, roster_breakdown
 from sports_aggregator.cfb.depth_chart_profiles import install_depth_chart_profiles
 from sports_aggregator.cfb.models import normalize_alias
+from sports_aggregator.cfb.production_display import install_production_display
 
 
 ROSTER_CALL = "{{ cfbdepth_roster_strip(team.school) }}"
@@ -207,6 +208,7 @@ def install_cfbdepth_enhancements(app) -> None:
     if app.extensions.get("cfbdepth_enhancements_installed"):
         return
     install_depth_chart_profiles()
+    install_production_display(app)
     repository = app.extensions["cfb_repository"]
     app.jinja_env.globals["cfbdepth_roster_facts"] = (
         lambda school: _roster_facts(repository, str(school))
