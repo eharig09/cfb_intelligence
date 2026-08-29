@@ -17,6 +17,13 @@ def _hours(name: str, default: str) -> set[int]:
             if value.strip()}
 
 
+def _positive_int(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.getenv(name, str(default))))
+    except ValueError:
+        return default
+
+
 def games_in_progress(repository, *, now: datetime | None = None,
                       season: int | None = None) -> int:
     moment = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
@@ -42,12 +49,10 @@ def profile_for(repository, *, now: datetime | None = None,
                 timezone_name: str | None = None) -> dict[str, Any]:
     """Return one bounded profile, or None when this cron tick needs no work.
 
-    Live slates retain tiny quarter-hour score pulses. Outside games, scheduled
-    work is split across several ``light`` ticks; tracked_refresh resolves each
-    light tick to one small segment based on the local hour. Local reporting
-    remains a separate sharded ``news`` profile. Overnight passes deliberately
-    repeat those bounded jobs so the source cursor can move farther while
-    traffic is low without increasing per-process memory pressure.
+    Local/dev keeps the original quarter-hour live behavior by default. A
+    constrained production deployment can set ``CFB_LIVE_REFRESH_EVERY_HOURS``
+    to 2 (or more) so top-of-hour cron checks only launch live refreshes on that
+    cadence. Outside games, scheduled work remains split into bounded segments.
     """
     zone = ZoneInfo(timezone_name or os.getenv("CFB_REFRESH_TIMEZONE",
                                                "America/New_York"))
@@ -55,10 +60,30 @@ def profile_for(repository, *, now: datetime | None = None,
     live = games_in_progress(repository, now=moment, season=season)
 
     if live:
-        profile = "results" if moment.minute == 0 else "scores"
+        interval = _positive_int("CFB_LIVE_REFRESH_EVERY_HOURS", 1)
+        # Preserve the old minute-level behavior when interval=1 so local
+        # development and existing tests continue to get tiny score pulses.
+        if interval == 1:
+            profile = "results" if moment.minute == 0 else "scores"
+            return {
+                "profile": profile,
+                "reason": "hourly_live_results" if profile == "results" else "games_in_progress",
+                "games": live,
+                "local_time": moment.isoformat(),
+            }
+
+        # Production cron wakes on the hour. Only every Nth hour launches the
+        # heavier games + box scores + lines pass; intervening checks are free.
+        if moment.minute != 0 or moment.hour % interval != 0:
+            return {
+                "profile": None,
+                "reason": "between_live_refreshes",
+                "games": live,
+                "local_time": moment.isoformat(),
+            }
         return {
-            "profile": profile,
-            "reason": "hourly_live_results" if profile == "results" else "games_in_progress",
+            "profile": "results",
+            "reason": f"live_results_every_{interval}h",
             "games": live,
             "local_time": moment.isoformat(),
         }
