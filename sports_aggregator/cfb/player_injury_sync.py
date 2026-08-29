@@ -19,6 +19,7 @@ from sports_aggregator.cfb.player_injuries import (
     NEWS_URL,
     SEARCH_URLS,
     USER_AGENT,
+    _attributed_injury_clause,
     _json,
     _search_injury_articles,
     _store_rows,
@@ -156,21 +157,14 @@ def _article_from_page(url: str) -> dict[str, Any] | None:
     }
 
 
-def _injury_year(text: str, default: int) -> int:
-    """Prefer a year mentioned in the same sentence as injury language."""
-    injury = re.compile(
-        r"injur|acl|mcl|meniscus|achilles|concussion|surgery|torn|tear|fractur|"
-        r"sprain|strain|ankle|knee|shoulder|hamstring",
-        re.I,
-    )
-    for sentence in re.split(r"(?<=[.!?])\s+", text):
-        if not injury.search(sentence):
-            continue
-        years = [int(value) for value in re.findall(r"\b(20\d{2})\b", sentence)]
-        years = [value for value in years if 2000 <= value <= int(default)]
-        if years:
-            return years[-1]
-    return int(default)
+def _injury_year(text: str, default: int, player_name: str) -> int:
+    """Use a historical year only when it is in the player's injury clause."""
+    clause = _attributed_injury_clause(text, player_name)
+    if not clause:
+        return int(default)
+    years = [int(value) for value in re.findall(r"\b(20\d{2})\b", clause)]
+    years = [value for value in years if 2000 <= value <= int(default)]
+    return years[-1] if years else int(default)
 
 
 def _player_page_injury_articles(
@@ -199,7 +193,9 @@ def _player_page_injury_articles(
         evidence = " ".join(
             str(article.get(key) or "") for key in ("headline", "description")
         )
-        row["season"] = _injury_year(evidence, int(row.get("season") or season))
+        row["season"] = _injury_year(
+            evidence, int(row.get("season") or season), player_name
+        )
     return rows
 
 
@@ -218,7 +214,11 @@ def sync_player(repository, player: dict[str, Any], season: int) -> dict[str, An
     if athlete_id:
         try:
             payload = _json(NEWS_URL.format(athlete_id=athlete_id))
-            rows.extend(parse_injury_articles(payload, fallback_season=season))
+            rows.extend(parse_injury_articles(
+                payload,
+                fallback_season=season,
+                required_player_name=player_name,
+            ))
             news_status = "ok"
         except HTTPError as exc:
             news_status = f"http_{exc.code}"
