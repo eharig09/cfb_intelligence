@@ -46,12 +46,16 @@ STYLE_INSERT = '''
     .cfbdepth-player-flag {
         display:inline-flex; gap:5px; align-items:baseline; padding:5px 8px;
         border:1px solid var(--line); border-left:3px solid var(--rust);
-        background:var(--paper); font-size:.67rem;
+        background:var(--paper); font-size:.67rem; cursor:help;
     }
     .cfbdepth-player-flag a { font-weight:800; text-decoration:none; }
     .cfbdepth-player-flag .status {
         color:var(--rust); font-size:.56rem; font-weight:900;
         text-transform:uppercase; letter-spacing:.045em;
+    }
+    .cfbdepth-player-flag .impact {
+        font-size:.58rem; font-weight:900; font-variant-numeric:tabular-nums;
+        color:var(--ink); white-space:nowrap;
     }
     .cfbdepth-player-flag .meta { font-size:.58rem; }
     .cfbdepth-player-flags-label {
@@ -158,6 +162,7 @@ def _matchup_updates(repository, away: str, home: str, season: int) -> list[dict
     status_order = {"Out for Season": 0, "Out": 1, "Doubtful": 2, "Questionable": 3, "Probable": 4}
     matched.sort(key=lambda row: (
         status_order.get(str(row.get("status") or ""), 9),
+        -(float(row.get("impact")) if row.get("impact") is not None else -1.0),
         str(row.get("display_team") or ""),
         str(row.get("player_name") or ""),
     ))
@@ -175,16 +180,23 @@ def _matchup_flags(repository, away: str, home: str, season: int) -> Markup:
         status = escape(str(row.get("status") or "Update"))
         position = escape(str(row.get("display_position") or "—"))
         team = escape(str(row.get("display_team") or ""))
+        impact = _fmt(row.get("impact"), 1)
+        description = str(row.get("update_text") or "").strip()
+        last_update = str(row.get("last_update") or "").strip()
+        tooltip_parts = [part for part in (description, f"Updated {last_update}" if last_update else "") if part]
+        tooltip = escape(" — ".join(tooltip_parts), quote=True)
+        title_attr = f' title="{tooltip}"' if tooltip else ""
         flags.append(
-            '<span class="cfbdepth-player-flag">'
+            f'<span class="cfbdepth-player-flag"{title_attr}>'
             f'<a href="{href}">{name}</a>'
             f'<span class="status">{status}</span>'
+            f'<span class="impact">Impact {impact}</span>'
             f'<span class="meta">{team} · {position}</span>'
             '</span>'
         )
     return Markup(
         '<div class="cfbdepth-player-flags">'
-        '<div class="cfbdepth-player-flags-label">Player availability connections · private CFBDepth export</div>'
+        '<div class="cfbdepth-player-flags-label">Player availability connections · private CFBDepth export · hover for update detail</div>'
         + "".join(flags)
         + '</div>'
     )
