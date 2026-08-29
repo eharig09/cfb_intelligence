@@ -14,6 +14,7 @@ from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
 from sports_aggregator.cfb.coordinator_context import coordinator_context
+from sports_aggregator.cfb.player_injury_display import install_player_injury_display
 
 
 TEAM_HERO_ANCHOR = '        <div class="hero-context" aria-label="Program identity">\n'
@@ -134,6 +135,7 @@ def _continuity_fact(repository, team_id: int, season: int) -> Markup:
 def install_coordinator_display(app) -> None:
     """Register compact team-page coordinator presentation."""
     if app.extensions.get("coordinator_display_installed"):
+        install_player_injury_display(app)
         return
     repository = app.extensions["cfb_repository"]
     app.jinja_env.globals["coordinator_team_summary"] = (
@@ -145,3 +147,4 @@ def install_coordinator_display(app) -> None:
     app.jinja_loader = _CoordinatorTemplateLoader(app.jinja_loader)
     app.jinja_env.cache.clear()
     app.extensions["coordinator_display_installed"] = True
+    install_player_injury_display(app)
