@@ -159,3 +159,124 @@
     });
 }());
 
+(function () {
+    "use strict";
+
+    /* Long intelligence pages should behave like workspaces, not documents.
+       Build one in-page navigator from the headings that already define the
+       page so team, matchup, player and history pages stay in sync automatically. */
+    var sections = Array.prototype.slice.call(document.querySelectorAll("main .section")).map(
+        function (node) {
+            var heading = node.querySelector(":scope > h2, :scope > .section-title h2");
+            return heading ? { node: node, heading: heading } : null;
+        }
+    ).filter(Boolean);
+
+    if (sections.length < 3) return;
+
+    var stylesheet = document.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = "/static/cfb_section_nav.css?v=20260829";
+    document.head.appendChild(stylesheet);
+
+    function slug(text) {
+        return text.toLowerCase()
+            .replace(/&/g, " and ")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "section";
+    }
+
+    var used = {};
+    sections.forEach(function (item) {
+        var base = slug(item.heading.textContent.trim());
+        var count = used[base] || 0;
+        used[base] = count + 1;
+        item.id = count ? base + "-" + (count + 1) : base;
+        item.node.id = item.node.id || item.id;
+        item.node.dataset.sectionNavTarget = "true";
+    });
+
+    var nav = document.createElement("nav");
+    nav.className = "section-nav";
+    nav.setAttribute("aria-label", "On this page");
+    nav.innerHTML =
+        '<div class="section-nav-inner">' +
+          '<span class="section-nav-label">On this page</span>' +
+          '<div class="section-nav-links"></div>' +
+          '<div class="section-nav-actions">' +
+            '<button type="button" data-section-prev title="Previous section" aria-label="Previous section">↑</button>' +
+            '<button type="button" data-section-next title="Next section" aria-label="Next section">↓</button>' +
+            '<button type="button" data-section-top title="Back to top" aria-label="Back to top">Top</button>' +
+          '</div>' +
+        '</div>';
+
+    var header = document.querySelector(".site-header");
+    if (header) header.insertAdjacentElement("afterend", nav);
+    else document.body.insertAdjacentElement("afterbegin", nav);
+
+    var linksHost = nav.querySelector(".section-nav-links");
+    sections.forEach(function (item, index) {
+        var link = document.createElement("a");
+        link.href = "#" + item.node.id;
+        link.textContent = item.heading.textContent.trim();
+        link.dataset.sectionIndex = String(index);
+        link.addEventListener("click", function (event) {
+            event.preventDefault();
+            item.node.scrollIntoView({ behavior: "smooth", block: "start" });
+            if (window.history && window.history.replaceState) {
+                window.history.replaceState(null, "", "#" + item.node.id);
+            }
+        });
+        linksHost.appendChild(link);
+        item.link = link;
+    });
+
+    var previous = nav.querySelector("[data-section-prev]");
+    var next = nav.querySelector("[data-section-next]");
+    var top = nav.querySelector("[data-section-top]");
+    var active = 0;
+
+    function select(index, move) {
+        index = Math.max(0, Math.min(sections.length - 1, index));
+        active = index;
+        sections.forEach(function (item, position) {
+            if (position === index) item.link.setAttribute("aria-current", "location");
+            else item.link.removeAttribute("aria-current");
+        });
+        previous.disabled = index === 0;
+        next.disabled = index === sections.length - 1;
+        sections[index].link.scrollIntoView({ block: "nearest", inline: "nearest" });
+        if (move) sections[index].node.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function currentSection() {
+        var threshold = nav.getBoundingClientRect().bottom + 18;
+        var index = 0;
+        sections.forEach(function (item, position) {
+            if (item.node.getBoundingClientRect().top <= threshold) index = position;
+        });
+        select(index, false);
+    }
+
+    previous.addEventListener("click", function () { select(active - 1, true); });
+    next.addEventListener("click", function () { select(active + 1, true); });
+    top.addEventListener("click", function () {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        if (window.history && window.history.replaceState) {
+            window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        }
+    });
+
+    var queued = false;
+    window.addEventListener("scroll", function () {
+        if (queued) return;
+        queued = true;
+        window.requestAnimationFrame(function () {
+            currentSection();
+            queued = false;
+        });
+    }, { passive: true });
+
+    currentSection();
+}());
+
