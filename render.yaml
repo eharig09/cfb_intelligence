@@ -5,8 +5,12 @@ services:
     plan: starter
     buildCommand: pip install -r requirements.txt
     # One worker/thread leaves the most headroom on the constrained web service.
-    startCommand: gunicorn --workers 1 --threads 1 --timeout 120 --max-requests 500 --max-requests-jitter 50 run:app
-    healthCheckPath: /api/v1/cfb/status
+    # The rendered-page cache is disk-backed, so recycling the worker more often
+    # bounds Python heap growth without throwing away warmed page output.
+    startCommand: gunicorn --workers 1 --threads 1 --timeout 120 --max-requests 200 --max-requests-jitter 25 run:app
+    # The old /api/v1/cfb/status probe performs several database summaries. The
+    # home shell is a much cheaper liveness check and avoids background DB work.
+    healthCheckPath: /
     envVars:
       - key: REGISTER_LEGACY_DASHBOARDS
         value: "0"
