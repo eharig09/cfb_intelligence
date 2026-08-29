@@ -224,6 +224,7 @@ def team_impact(repository, school: str) -> dict[str, Any] | None:
 
 def player_updates(repository, player_name: str, team: str | None = None,
                    limit: int = 8) -> list[dict[str, Any]]:
+    """Return only an exact-team match or a name that is unique to one source team."""
     initialize(repository)
     normalized_name = normalize_alias(player_name)
     with closing(repository._connect()) as connection:
@@ -231,15 +232,19 @@ def player_updates(repository, player_name: str, team: str | None = None,
             rows = connection.execute(
                 """SELECT * FROM cfbdepth_player_updates
                    WHERE normalized_name=? AND normalized_team=?
-                   ORDER BY last_update DESC, update_id DESC LIMIT ?""",
+                   ORDER BY update_id DESC LIMIT ?""",
                 (normalized_name, normalize_alias(team), int(limit)),
             ).fetchall()
             if rows:
                 return [dict(row) for row in rows]
-        rows = connection.execute(
+        all_rows = [dict(row) for row in connection.execute(
             """SELECT * FROM cfbdepth_player_updates
-               WHERE normalized_name=?
-               ORDER BY last_update DESC, update_id DESC LIMIT ?""",
-            (normalized_name, int(limit)),
-        ).fetchall()
-    return [dict(row) for row in rows]
+               WHERE normalized_name=? ORDER BY update_id DESC""",
+            (normalized_name,),
+        ).fetchall()]
+    if not all_rows:
+        return []
+    source_teams = {row["normalized_team"] for row in all_rows}
+    if len(source_teams) != 1:
+        return []
+    return all_rows[: int(limit)]
