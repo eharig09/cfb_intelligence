@@ -6,7 +6,7 @@ from html import escape
 import secrets
 from typing import Any
 
-from flask import Blueprint, current_app, redirect, render_template_string, request, session, url_for
+from flask import Blueprint, current_app, render_template_string, request, session
 from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
@@ -18,6 +18,7 @@ from sports_aggregator.cfb.cfbdepth_data import (
     roster_breakdown,
     team_impact,
 )
+from sports_aggregator.page_cache import cache
 
 
 TEAM_FACTS_END = '</div>\n\n<nav class="mobile-page-tabs"'
@@ -127,10 +128,11 @@ def _player_update_cards(repository, name: str, team: str) -> Markup:
         status = escape(str(row.get("status") or "Update"))
         when = escape(str(row.get("last_update") or ""))
         text = escape(str(row.get("update_text") or "").strip())
+        text_html = f"<p>{text}</p>" if text else ""
         rendered.append(
             '<article class="card cfbdepth-update">'
             f'<div class="story-head"><span class="status">{status}</span><span class="meta">{when}</span></div>'
-            f'{f"<p>{text}</p>" if text else ""}'
+            f'{text_html}'
             '<div class="cfbdepth-private">CFBDepth player update · private imported data</div>'
             '</article>'
         )
@@ -199,6 +201,7 @@ def install_cfbdepth_display(app) -> None:
                 counts.append(f"impact={import_team_impact(repository, impact.read())}")
             if updates and updates.filename:
                 counts.append(f"updates={import_player_updates(repository, updates.read())}")
+            cache.clear()
             message = "Imported " + ", ".join(counts) if counts else "No CSV files selected."
         return render_template_string(IMPORT_PAGE, message=message)
 
