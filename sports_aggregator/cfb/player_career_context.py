@@ -3,7 +3,8 @@
 This deliberately avoids diagnosing injuries. It adds only:
 - original CFBD recruiting pedigree, matched by athlete id when possible;
 - distinct stored game appearances by season;
-- a boolean that sourced injury-reporting rows exist for that season.
+- a boolean that sourced injury-reporting rows exist for that season;
+- one chronological event stream for the player-page career path.
 
 Transfer ratings remain separate portal data and are never substituted for the
 player's original recruiting rating.
@@ -82,6 +83,40 @@ def _injury_presence(connection, player_id: str) -> set[int]:
         return set()
 
 
+def _career_events(
+    recruit: dict[str, Any] | None,
+    stints: list[dict[str, Any]],
+    transfers: list[dict[str, Any]],
+    draft: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Oldest-to-newest career events, with sensible ordering within a year."""
+    events: list[dict[str, Any]] = []
+    if recruit:
+        events.append({"kind": "recruit", "season": int(recruit["season"]), **recruit})
+
+    for transfer in transfers:
+        if transfer.get("season") is None:
+            continue
+        events.append({"kind": "transfer", **dict(transfer)})
+
+    for stint in stints:
+        events.append({"kind": "stint", **dict(stint)})
+
+    for pick in draft:
+        if pick.get("draft_year") is None:
+            continue
+        events.append({"kind": "draft", "season": int(pick["draft_year"]), **dict(pick)})
+
+    # Recruiting pedigree starts a career. In a transfer year, the move happens
+    # before the destination-season roster card. Draft is the final event when
+    # it shares a calendar year with the last college season.
+    order = {"recruit": 0, "transfer": 1, "stint": 2, "draft": 3}
+    return sorted(
+        events,
+        key=lambda event: (int(event.get("season") or 9999), order.get(event["kind"], 9)),
+    )
+
+
 def player_career_context(repository, player: dict[str, Any]) -> dict[str, Any]:
     repository.initialize()
     player_id = str(player.get("player_id") or "")
@@ -97,9 +132,17 @@ def player_career_context(repository, player: dict[str, Any]) -> dict[str, Any]:
         stint["games_recorded"] = games.get(year)
         stint["injury_data_present"] = year in injury_seasons
         stints.append(stint)
+    stints.sort(key=lambda row: int(row["season"]))
 
+    events = _career_events(
+        recruit,
+        stints,
+        [dict(row) for row in (player.get("transfers") or [])],
+        [dict(row) for row in (player.get("draft") or [])],
+    )
     return {
         "recruit": recruit,
         "stints": stints,
+        "events": events,
         "has_prior_college_season": len({row["season"] for row in stints}) > 1,
     }
