@@ -101,8 +101,13 @@ def _pff_by_player(connection, season: int) -> dict[str, dict[str, Any]]:
 
 
 def team_production(repository: CFBRepository, team_id: int, season: int, *,
-                    stat_season: int | None = None, per_category: int = 6) -> dict[str, Any]:
-    """Returning, arrived and departed production for one team."""
+                    stat_season: int | None = None, per_category: int = 200) -> dict[str, Any]:
+    """Returning, arrived and departed production for one team.
+
+    The team page is a data surface, not a six-player preview.  Keep a generous
+    default so the scrollable table can expose every qualifying row; callers
+    that genuinely need a compact leaderboard can still pass a smaller limit.
+    """
     team = repository.get_team(team_id)
     if team is None:
         return {"season": season, "stat_season": None, "groups": [], "totals": {}}
