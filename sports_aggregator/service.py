@@ -5,6 +5,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
 import threading
 import time
 from typing import Callable, Iterable, Mapping
@@ -47,6 +48,18 @@ class AggregationResult:
 def _sort_key(article: Article) -> tuple[float, str]:
     timestamp = article.published_at.timestamp() if article.published_at else float("-inf")
     return timestamp, article.title.casefold()
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    fallback = "1" if default else "0"
+    return os.getenv(name, fallback).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _cache_ttl() -> int:
+    try:
+        return max(0, int(os.getenv("LIVE_RSS_CACHE_SECONDS", "900")))
+    except ValueError:
+        return 900
 
 
 class AggregationService:
@@ -108,8 +121,20 @@ class AggregationService:
 
 
 def build_default_service() -> AggregationService:
-    providers = {
-        league.slug: tuple(RSSNewsProvider(feed) for feed in league.feeds)
-        for league in list_leagues()
-    }
-    return AggregationService(providers)
+    """Build request-time RSS aggregation only when explicitly useful.
+
+    The CFB production site already ingests reporting into SQLite on scheduled
+    background passes. Opening network connections from the web worker on a
+    cache miss competes with page rendering for the same tiny Render instance,
+    so production can set ``CFB_LIVE_RSS_ENABLED=0`` and receive the same result
+    object with an empty live feed. Local/dev environments retain the original
+    behavior by default.
+    """
+    if _env_flag("CFB_LIVE_RSS_ENABLED", True):
+        providers = {
+            league.slug: tuple(RSSNewsProvider(feed) for feed in league.feeds)
+            for league in list_leagues()
+        }
+    else:
+        providers = {}
+    return AggregationService(providers, cache_ttl_seconds=_cache_ttl())
