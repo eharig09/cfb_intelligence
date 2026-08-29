@@ -49,6 +49,10 @@ services:
         value: "600"
       - key: CFB_REFRESH_TIMEZONE
         value: America/New_York
+      # Keep live Saturday updates useful without running CFBD games, box scores,
+      # and lines every hour on the constrained web instance.
+      - key: CFB_LIVE_REFRESH_EVERY_HOURS
+        value: "2"
       # Seven bounded maintenance segments/day: core twice, content twice, and
       # roster/stats/models once each. News gets three separate shards below.
       - key: CFB_REFRESH_HOURS
@@ -91,8 +95,8 @@ services:
   - type: cron
     name: cfb-refresh-trigger
     runtime: python
-    # Hourly is enough for live scores/results and still reaches every scheduled
-    # maintenance hour. This cuts cron wakeups from 96/day to 24/day.
+    # The trigger checks hourly so odd-hour maintenance jobs are still reachable;
+    # live-game work itself is throttled to every two hours by the web service.
     schedule: "0 * * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: python -m sports_aggregator.render_trigger
