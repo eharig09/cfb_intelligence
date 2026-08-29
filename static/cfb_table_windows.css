@@ -1,0 +1,37 @@
+/* Long statistical tables stay fully accessible without making the page itself
+   dozens of screens tall. The shared table renderer already emits every row and
+   sticky column headers; this layer only turns long tables into two-axis data
+   windows. */
+
+.table-wrap:has(table.data tbody tr:nth-child(9)) {
+    max-height: min(62vh, 560px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable both-edges;
+}
+
+/* The header already uses position:sticky in cfb.css. Give it a slightly higher
+   stacking context inside a vertically scrolling table so data never paints over
+   the headings while the user scrolls through a long roster/stat list. */
+.table-wrap:has(table.data tbody tr:nth-child(9)) table.data thead th {
+    z-index: 3;
+}
+
+/* Preserve totals as a visible endpoint when a long table supplies one. */
+.table-wrap:has(table.data tbody tr:nth-child(9)) table.data tfoot td {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+}
+
+/* A focused scroll region should make it obvious that keyboard/wheel scrolling
+   is occurring inside the data window rather than on the whole page. */
+.table-wrap:has(table.data tbody tr:nth-child(9)):focus-visible {
+    outline-offset: 3px;
+}
+
+@media (max-width: 767px) {
+    .table-wrap:has(table.data tbody tr:nth-child(9)) {
+        max-height: min(68vh, 520px);
+    }
+}
