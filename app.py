@@ -28,6 +28,7 @@ from sports_aggregator.cfb.model_market_display import install_model_comparison_
 from sports_aggregator.cfb.wiki_context_enrichment import install_wiki_context_enrichment
 from sports_aggregator.cfb.coordinator_display import install_coordinator_display
 from sports_aggregator.cfb.player_game_log import player_game_log_table
+from sports_aggregator.cfb.player_career_context import player_career_context
 from sports_aggregator.catalog import list_leagues
 from sports_aggregator.service import build_default_service
 from sports_aggregator.social.registry import SourceRegistry
@@ -252,6 +253,9 @@ def create_app(test_config: dict | None = None) -> Flask:
     )
     app.jinja_env.globals["player_game_log"] = lambda player, season: player_game_log_table(
         app.extensions["cfb_repository"], player, int(season)
+    )
+    app.jinja_env.globals["player_career_context"] = lambda player: player_career_context(
+        app.extensions["cfb_repository"], player
     )
 
     app.register_blueprint(league_pages)
