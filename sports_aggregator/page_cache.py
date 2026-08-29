@@ -7,7 +7,7 @@ one page took 21.8 seconds and throughput *fell* from 1.34/s to 0.37/s under
 contention. A single Render instance could serve two or three people at once.
 
 Caching is the whole answer, because the data behind these pages changes only
-when a refresh runs, every six hours. A cached page costs microseconds.
+when refresh jobs write new data. A cached page costs microseconds.
 
 Invalidation without cross-process signalling
 ---------------------------------------------
@@ -18,17 +18,11 @@ the cache key carries a *data version* taken from the database's modification
 time — including the write-ahead log, because under WAL a commit lands in
 `-wal` and may not touch the main file until a checkpoint.
 
-When a refresh writes, the version changes, every key changes, and the old
-entries simply become unreachable. No signal, no coordination, and no window
-where a page is served from data that has already been replaced.
-
-`timeout` remains a backstop for anything that changes the database without
-moving those timestamps, not the primary mechanism.
-
-One consequence worth knowing: a process's first request touches the database
-for one-time setup, which moves its timestamp, so that request lands under a
-key nothing else will reuse. The cache settles from the second request onward.
-The cost is a single extra render per process start.
+On larger deployments every write can invalidate immediately. On constrained
+instances, ``CFB_PAGE_CACHE_DATA_VERSION_SECONDS`` can deliberately coalesce
+writes into a time bucket. This prevents a multi-step refresh from making an
+expensive page render again after every individual SQLite commit. The normal
+cache TTL remains a backstop, so the maximum staleness stays bounded.
 """
 
 from __future__ import annotations
@@ -59,23 +53,44 @@ def page_cache_seconds() -> int:
         return DEFAULT_PAGE_CACHE_SECONDS
 
 
-def data_version() -> str:
-    """A token that changes whenever the database is written.
+def data_version_seconds() -> int:
+    """Return the optional invalidation-coalescing window.
 
-    Two `stat()` calls, which cost microseconds against the second-plus it
-    takes to render any of these pages.
+    Zero preserves the original behaviour: every database write gets a new
+    version immediately. Production can use a larger window when refreshes are
+    more frequent than users need the rendered HTML to change.
     """
+    raw = (os.getenv("CFB_PAGE_CACHE_DATA_VERSION_SECONDS") or "").strip()
+    if not raw:
+        return 0
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 0
+
+
+def _version_stamp(path: Path, bucket_seconds: int) -> str:
+    try:
+        modified_ns = path.stat().st_mtime_ns
+    except OSError:
+        return "0"
+    if bucket_seconds <= 0:
+        return str(modified_ns)
+    bucket_ns = bucket_seconds * 1_000_000_000
+    return str(modified_ns // bucket_ns)
+
+
+def data_version() -> str:
+    """A token that changes when the database data version advances."""
     configured = current_app.config.get("CFB_DATABASE_PATH") or ""
     if not configured:
         return "0"
     database = Path(configured)
-    stamps = []
-    for candidate in (database, database.with_name(database.name + "-wal")):
-        try:
-            stamps.append(str(candidate.stat().st_mtime_ns))
-        except OSError:
-            stamps.append("0")
-    return "-".join(stamps)
+    bucket_seconds = data_version_seconds()
+    return "-".join(
+        _version_stamp(candidate, bucket_seconds)
+        for candidate in (database, database.with_name(database.name + "-wal"))
+    )
 
 
 def caching_disabled() -> bool:
@@ -93,12 +108,7 @@ def page_key() -> str:
 
 
 def cached_page(view):
-    """Cache a rendered page against the data it was built from.
-
-    Deliberately a thin wrapper rather than `@cache.cached(...)` at each call
-    site: the timeout is read per request so it can be changed by configuration
-    without redeploying, and testing bypasses it entirely.
-    """
+    """Cache a rendered page against the data it was built from."""
     from functools import wraps
 
     @wraps(view)
