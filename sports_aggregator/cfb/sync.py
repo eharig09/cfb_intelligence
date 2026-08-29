@@ -56,6 +56,8 @@ class CFBDataSync:
             ("players", lambda: self.repository.replace_players(
                 season, (Player.from_cfbd(item, season)
                          for item in _as_list("roster", self.client.roster(season, force))))),
+            ("recruits", lambda: self.repository.replace_recruits(
+                season, _as_list("recruits", self.client.recruits(season, force)))),
             ("games", lambda: self.repository.replace_games(
                 season, (Game.from_cfbd(item)
                          for item in _as_list("games", self.client.games(season, force))))),
