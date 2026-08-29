@@ -147,8 +147,8 @@ def _continuity_fact(repository, team_id: int, season: int) -> Markup:
     )
 
 
-def _balance_card(repository, team_id: int) -> str:
-    context = coordinator_run_pass_context(repository, int(team_id), _balance_card.season)
+def _balance_card(repository, team_id: int, season: int) -> str:
+    context = coordinator_run_pass_context(repository, int(team_id), int(season))
     if not context:
         return ""
     career = context.get("career")
@@ -181,12 +181,9 @@ def _balance_card(repository, team_id: int) -> str:
 
 
 def _matchup_balance(repository, away_team_id: int, home_team_id: int, season: int) -> Markup:
-    # Keep the helper signature compact while letting the individual card helper
-    # reuse the same renderer.
-    _balance_card.season = int(season)
     cards = [
-        _balance_card(repository, int(away_team_id)),
-        _balance_card(repository, int(home_team_id)),
+        _balance_card(repository, int(away_team_id), int(season)),
+        _balance_card(repository, int(home_team_id), int(season)),
     ]
     cards = [card for card in cards if card]
     if not cards:
