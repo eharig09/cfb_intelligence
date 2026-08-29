@@ -93,8 +93,13 @@ def sync_dataset(
             season, (Player.from_cfbd(item, season) for item in client.roster(season, force))
         )
     if name == "games":
+        # An explicit games sync is the live-score pulse. The raw /games cache is
+        # deliberately useful for ordinary reads, but accepting a cached response
+        # here can make a successful 15-minute Scores cron simply rewrite the
+        # previous score snapshot. Always hit CFBD for this dataset so in-progress
+        # points and the completed flag advance on every scheduled pulse.
         return repository.replace_games(
-            season, (Game.from_cfbd(item) for item in client.games(season, force))
+            season, (Game.from_cfbd(item) for item in client.games(season, True))
         )
     if name == "betting_lines":
         return store_lines(repository, season, client.betting_lines(season, force))
