@@ -362,7 +362,11 @@ def _enrich_pff(repository, groups: list[dict[str, Any]], pff_season: int) -> No
 
 def _ordered_leader_groups(original, repository, leaders, season, *, include_team=True, limit=None):
     leaders = _full_team_leaders(repository, leaders, season, include_team)
-    rendered = original(leaders, season, include_team=include_team, limit=limit)
+    # Team-v-team production panels are filtered by football-specific usage
+    # qualifiers in the repository. Once a player qualifies, do not truncate the
+    # display to an arbitrary top-N; the scroll window is the presentation limit.
+    render_limit = limit if include_team else None
+    rendered = original(leaders, season, include_team=include_team, limit=render_limit)
     by_category = {item.get("category"): item for item in rendered}
     defense = _defense_leaders(leaders, season, include_team)
     result = []
