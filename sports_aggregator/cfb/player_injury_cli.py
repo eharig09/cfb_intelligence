@@ -1,7 +1,7 @@
 """Populate sourced player injury annotations from ESPN evidence.
 
 Examples:
-    python -m sports_aggregator.cfb.player_injury_cli --season 2026 --player-id 4427455
+    python -m sports_aggregator.cfb.player_injury_cli --season 2026 --player-id 4603101
     python -m sports_aggregator.cfb.player_injury_cli --season 2026 --team-id 130
 """
 
@@ -15,7 +15,7 @@ import time
 
 from dotenv import load_dotenv
 
-from sports_aggregator.cfb.player_injuries import sync_player
+from sports_aggregator.cfb.player_injury_sync import sync_player
 from sports_aggregator.cfb.repository import CFBRepository
 
 
@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--player-id", default=None, help="One CFBD player ID")
     parser.add_argument("--team-id", type=int, default=None, help="All eligible players on one current roster")
     parser.add_argument("--database", default=None, help="Override CFB_DATABASE_PATH")
-    parser.add_argument("--delay", type=float, default=0.35, help="Pause between players to reduce ESPN throttling")
+    parser.add_argument("--pause", type=float, default=0.35, help="Seconds between roster players")
     return parser
 
 
@@ -55,24 +55,21 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     database = args.database or os.getenv("CFB_DATABASE_PATH", "instance/cfb.sqlite3")
     repository = CFBRepository(database)
-    reports = []
     players = _players(repository, args.season, args.player_id, args.team_id)
+    reports = []
     for index, player in enumerate(players):
         report = sync_player(repository, player, args.season)
         reports.append(report)
-        extra = ""
-        if report.get("athlete_news_status") is not None:
-            extra = (
-                f" news={report.get('athlete_news_status')}"
-                f" search={report.get('search_matches', 0)}"
-            )
         print(
             f"{player.get('name')}: stored={report.get('stored', 0)} "
             f"espn={report.get('espn_athlete_id') or '—'} "
-            f"status={report.get('skipped') or 'ok'}{extra}"
+            f"status={report.get('skipped') or 'ok'} "
+            f"news={report.get('athlete_news_status') or '—'} "
+            f"search={report.get('search_matches', 0)}"
         )
-        if index + 1 < len(players) and args.delay > 0:
-            time.sleep(args.delay)
+        if index + 1 < len(players) and args.pause > 0:
+            time.sleep(args.pause)
+
     print(json.dumps({
         "season": args.season,
         "players": len(reports),
