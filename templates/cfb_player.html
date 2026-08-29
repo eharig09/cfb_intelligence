@@ -7,7 +7,10 @@
 <style>
     .hero { border-left: 9px solid var(--team); padding: 8px 0 14px 22px; display: grid; grid-template-columns: 1fr auto; }
     .logo { width: 86px; height: 86px; object-fit: contain; display: block; }
-    .facts { grid-template-columns: repeat(5, 1fr); }
+    .facts { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .facts .fact { min-width: 0; padding-inline: 8px; }
+    .facts .fact b { white-space: nowrap; font-size: 1.05rem; }
+    .facts .fact span { font-size: .58rem; line-height: 1.15; }
     .timeline { border-left: 3px solid var(--line); padding-left: 15px; }
     .event { position: relative; margin-bottom: 9px; }
     .event:before { content: ""; position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--rust); left: -21px; top: 17px; }
@@ -58,7 +61,7 @@
 <div class="facts">
     <div class="fact"><b>{{ player.position or '—' }}</b><span>Position</span></div>
     <div class="fact"><b>#{{ player.jersey or '—' }}</b><span>Jersey</span></div>
-    <div class="fact"><b>{{ player.class_year or '—' }}</b><span>Class year</span></div>
+    <div class="fact"><b>{{ player.class_year or '—' }}</b><span>Current class</span></div>
     <div class="fact"><b>{{ player.height | height or '—' }}</b><span>Height</span></div>
     <div class="fact"><b>{{ player.weight or '—' }}</b><span>Weight (lb)</span></div>
 </div>
@@ -151,7 +154,7 @@
                     <span class="label">{{ stint.season }}</span>
                     <strong>{{ stint.team }}</strong>
                     <div class="meta">
-                        {{ stint.position or '—' }} &middot; class {{ stint.class_year or '—' }}
+                        {{ stint.position or '—' }}
                         {% if stint.games_recorded is not none %} &middot; {{ stint.games_recorded }} games recorded{% endif %}
                         {% if career.has_prior_college_season and stint.injury_data_present %} &middot; injury reporting present{% endif %}
                     </div>
