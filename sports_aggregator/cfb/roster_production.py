@@ -62,6 +62,44 @@ def _stat_lines(connection, player_ids: list[str], season: int) -> dict[str, dic
     return lines
 
 
+def _stats_by_player(connection, player_ids: list[str], season: int) -> dict[str, dict[str, Any]]:
+    """All prior-season counting lines for each player, grouped by category."""
+    grouped: dict[str, dict[str, Any]] = {}
+    for (player_id, category), line in _stat_lines(connection, player_ids, season).items():
+        player = grouped.setdefault(player_id, {"team": line.get("team"), "categories": {}})
+        player["categories"][category] = dict(line.get("stats") or {})
+    return grouped
+
+
+def _pff_by_player(connection, season: int) -> dict[str, dict[str, Any]]:
+    """Dataset-specific PFF grades for players already linked to CFBD identities."""
+    rows = connection.execute(
+        """SELECT p.cfbd_player_id,p.interest_score,p.cfbd_team,
+                  m.dataset,m.primary_grade,m.usage_count,m.game_count,m.metrics_json
+           FROM pff_players p
+           LEFT JOIN pff_player_metrics m
+             ON m.season=p.season AND m.pff_player_id=p.pff_player_id
+           WHERE p.season=? AND p.cfbd_player_id IS NOT NULL""",
+        (season,),
+    ).fetchall()
+    result: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        player_id = str(row["cfbd_player_id"])
+        item = result.setdefault(player_id, {
+            "interest_score": row["interest_score"],
+            "team": row["cfbd_team"],
+            "datasets": {},
+        })
+        if row["dataset"]:
+            item["datasets"][str(row["dataset"])] = {
+                "primary_grade": row["primary_grade"],
+                "usage_count": row["usage_count"],
+                "game_count": row["game_count"],
+                "metrics_json": row["metrics_json"],
+            }
+    return result
+
+
 def team_production(repository: CFBRepository, team_id: int, season: int, *,
                     stat_season: int | None = None, per_category: int = 6) -> dict[str, Any]:
     """Returning, arrived and departed production for one team."""
@@ -104,7 +142,6 @@ def team_production(repository: CFBRepository, team_id: int, season: int, *,
             counterpart = movement.get("origin") or entry["team"]
         else:
             state, note, counterpart = RETURNING, "Returning", None
-        # Production earned at another school is labeled every time it appears.
         earned_at = entry["team"] if entry["team"] != team["school"] else None
         by_category.setdefault(category, []).append({
             **entry,
@@ -150,22 +187,29 @@ def team_production(repository: CFBRepository, team_id: int, season: int, *,
 
 def projected_depth(repository: CFBRepository, team_id: int, season: int, *,
                     stat_season: int | None = None) -> dict[str, dict[str, Any]]:
-    """Production evidence per current player, for ordering a depth board.
+    """Production and grade evidence per current player for the depth board.
 
-    An arriving starter should not sit below a returning reserve simply because
-    he is new. This returns the evidence a depth board needs to place him, and
-    keeps the origin so the projection can be labeled rather than asserted.
+    Ordering still follows the strongest headline production / grade evidence,
+    but the packet now carries every prior-season stat category and every linked
+    PFF dataset so the UI can show a real position-specific profile instead of
+    one headline number followed by a duplicate PFF score.
     """
     stat_season = stat_season or (season - 1)
     production = team_production(repository, team_id, season, stat_season=stat_season,
                                  per_category=200)
-    # A grade is evidence in its own right: an offensive lineman produces no
-    # counting statistics, so production alone would place him last.
+    team = repository.get_team(team_id)
+    if team is None:
+        return {}
+
     with closing(repository._connect()) as connection:
-        grades = {row["cfbd_player_id"]: dict(row) for row in connection.execute(
-            """SELECT cfbd_player_id,interest_score,cfbd_team,match_status
-               FROM pff_players WHERE season=? AND cfbd_player_id IS NOT NULL
-               AND interest_score IS NOT NULL""", (stat_season,))}
+        current_rows = [dict(row) for row in connection.execute(
+            "SELECT player_id FROM players WHERE season=? AND team=?",
+            (season, team["school"]),
+        ).fetchall()]
+        current_ids = [str(row["player_id"]) for row in current_rows]
+        full_stats = _stats_by_player(connection, current_ids, stat_season)
+        grades = _pff_by_player(connection, stat_season)
+
     evidence: dict[str, dict[str, Any]] = {}
     for group in production["groups"]:
         for entry in group["players"]:
@@ -175,6 +219,7 @@ def projected_depth(repository: CFBRepository, team_id: int, season: int, *,
             if current and current["headline_value"] >= entry["headline_value"]:
                 continue
             grade = grades.get(entry["player_id"]) or {}
+            stat_packet = full_stats.get(entry["player_id"]) or {}
             evidence[entry["player_id"]] = {
                 "state": entry["state"],
                 "category": entry["category"],
@@ -182,24 +227,33 @@ def projected_depth(repository: CFBRepository, team_id: int, season: int, *,
                 "headline_value": entry["headline_value"],
                 "earned_at": entry["earned_at"],
                 "grade": grade.get("interest_score"),
-                "graded_at": grade.get("cfbd_team"),
-                "summary": (f"{entry['headline_value']:g} {entry['headline_stat']} "
-                            f"in {stat_season}"
-                            + (f" at {entry['earned_at']}" if entry["earned_at"] else "")
-                            + (f" · PFF {grade['interest_score']:.0f}"
-                               if grade.get("interest_score") else "")),
+                "graded_at": grade.get("team"),
+                "stats_by_category": stat_packet.get("categories") or {},
+                "stats_team": stat_packet.get("team"),
+                "pff_datasets": grade.get("datasets") or {},
+                "stat_season": stat_season,
             }
-    # Graded players with no counting statistics still belong on a depth board.
-    for player_id, grade in grades.items():
+
+    # Players with grades or lower-volume stats still need a profile even when
+    # they never cleared the leaderboard threshold used for depth ordering.
+    for player_id in current_ids:
         if player_id in evidence:
             continue
+        grade = grades.get(player_id) or {}
+        stat_packet = full_stats.get(player_id) or {}
+        if not grade and not stat_packet:
+            continue
         evidence[player_id] = {
-            "state": None, "category": None,
-            "headline_stat": None, "headline_value": 0.0,
-            "earned_at": grade.get("cfbd_team"),
+            "state": None,
+            "category": None,
+            "headline_stat": None,
+            "headline_value": 0.0,
+            "earned_at": (stat_packet.get("team") if stat_packet.get("team") != team["school"] else None),
             "grade": grade.get("interest_score"),
-            "graded_at": grade.get("cfbd_team"),
-            "summary": (f"PFF {grade['interest_score']:.0f} in {stat_season}"
-                        + (f" at {grade['cfbd_team']}" if grade.get("cfbd_team") else "")),
+            "graded_at": grade.get("team"),
+            "stats_by_category": stat_packet.get("categories") or {},
+            "stats_team": stat_packet.get("team"),
+            "pff_datasets": grade.get("datasets") or {},
+            "stat_season": stat_season,
         }
     return evidence
