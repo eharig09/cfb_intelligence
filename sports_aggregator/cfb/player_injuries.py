@@ -1,10 +1,10 @@
 """Sourced historical injury annotations for CFB player career paths.
 
 ESPN does not expose a reliable NCAAF injury-history collection comparable to
-its NFL feed. This module instead resolves an ESPN college-football athlete,
-reads that athlete's ESPN news, and stores only articles whose headline/summary
-explicitly contains injury or surgery language. Absence from a game is never
-classified as an injury by itself.
+its NFL feed. This module therefore uses two conservative ESPN evidence paths:
+an athlete-news feed when an athlete ID resolves, plus ESPN search results for
+the player's exact name combined with injury terms. Absence from a game is
+never classified as an injury by itself.
 """
 
 from __future__ import annotations
@@ -14,19 +14,20 @@ from datetime import datetime, timezone
 import json
 import re
 from typing import Any, Iterable
+from urllib.error import HTTPError
 from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
 
 
 SEARCH_URLS = (
-    "https://site.web.api.espn.com/apis/search/v2?query={query}&sport=football&limit=12",
-    "https://site.web.api.espn.com/apis/common/v3/search?query={query}&limit=12",
+    "https://site.web.api.espn.com/apis/search/v2?query={query}&sport=football&limit=20",
+    "https://site.web.api.espn.com/apis/common/v3/search?query={query}&limit=20",
 )
 NEWS_URL = (
     "https://site.api.espn.com/apis/site/v2/sports/football/"
-    "college-football/athletes/{athlete_id}/news"
+    "college-football/athletes/{athlete_id}/news?limit=50"
 )
-USER_AGENT = "cfb-intelligence/1.0 injury-research"
+USER_AGENT = "cfb-intelligence/1.1 injury-research"
 
 INJURY_TERMS = re.compile(
     r"\b(injur(?:y|ed|ies)|hurt|surgery|surgical|torn|tear|sprain(?:ed)?|strain(?:ed)?|"
@@ -77,7 +78,7 @@ def initialize(repository) -> None:
 
 def _json(url: str) -> Any:
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urlopen(request, timeout=20) as response:  # nosec - fixed ESPN hosts only
+    with urlopen(request, timeout=15) as response:  # nosec - fixed ESPN hosts only
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -185,16 +186,32 @@ def _label(text: str, body_part: str | None) -> str:
     return "Injury"
 
 
-def parse_injury_articles(payload: Any, *, fallback_season: int) -> list[dict[str, Any]]:
-    """Extract conservative injury evidence from an ESPN athlete-news payload."""
+def _contains_exact_name(text: str, player_name: str) -> bool:
+    """Require all normalized name tokens in order for search-fallback stories."""
+    tokens = [re.escape(token) for token in re.findall(r"[A-Za-z0-9]+", player_name)]
+    if not tokens:
+        return False
+    return re.search(r"\b" + r"\W+".join(tokens) + r"\b", text, re.I) is not None
+
+
+def parse_injury_articles(
+    payload: Any, *, fallback_season: int, required_player_name: str | None = None
+) -> list[dict[str, Any]]:
+    """Extract conservative injury evidence from ESPN news/search payloads."""
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     for article in _walk(payload):
         title, description, text = _article_text(article)
         if not title or not INJURY_TERMS.search(text):
             continue
+        if required_player_name and not _contains_exact_name(text, required_player_name):
+            continue
         url = _article_url(article)
         if not url or url in seen:
+            continue
+        # Keep actual ESPN editorial/story URLs. Search payloads contain many
+        # navigation/profile URLs that can happen to sit next to injury words.
+        if "espn.com" not in url.casefold():
             continue
         seen.add(url)
         part = _body_part(text)
@@ -207,9 +224,6 @@ def parse_injury_articles(payload: Any, *, fallback_season: int) -> list[dict[st
             "source_name": "ESPN",
             "source_url": url,
             "source_published_at": _published(article),
-            # Athlete-specific ESPN reporting explicitly describing an injury is
-            # evidence, but we reserve "confirmed" for wording that states a
-            # diagnosis, surgery, tear/fracture, or season-ending outcome.
             "confidence": "confirmed" if (
                 part or SEASON_ENDING.search(text) or
                 re.search(r"\b(torn|tear|fractur(?:e|ed)|surgery|concussion)\b", text, re.I)
@@ -218,22 +232,30 @@ def parse_injury_articles(payload: Any, *, fallback_season: int) -> list[dict[st
     return rows
 
 
-def sync_player(repository, player: dict[str, Any], season: int) -> dict[str, Any]:
-    """Resolve one current player, scan ESPN athlete news, and upsert events."""
-    initialize(repository)
-    stints = player.get("stints") or []
-    if len({int(row.get("season")) for row in stints if row.get("season") is not None}) < 2:
-        return {"player_id": player.get("player_id"), "skipped": "new_recruit", "stored": 0}
+def _search_injury_articles(player_name: str, season: int) -> list[dict[str, Any]]:
+    """Fallback to ESPN's search index when athlete-news is absent or blocked."""
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for suffix in ("injury", "injured", "surgery"):
+        query = quote_plus(f'"{player_name}" {suffix}')
+        for template in SEARCH_URLS:
+            try:
+                payload = _json(template.format(query=query))
+            except Exception:
+                continue
+            for row in parse_injury_articles(
+                payload, fallback_season=season, required_player_name=player_name
+            ):
+                if row["source_url"] not in seen:
+                    seen.add(row["source_url"])
+                    rows.append(row)
+            # One working search endpoint is enough for this query.
+            break
+    return rows
 
-    athlete_id = resolve_espn_athlete(player.get("name") or "")
-    if not athlete_id:
-        return {"player_id": player.get("player_id"), "skipped": "espn_unresolved", "stored": 0}
-    try:
-        payload = _json(NEWS_URL.format(athlete_id=athlete_id))
-    except Exception as exc:
-        return {"player_id": player.get("player_id"), "skipped": f"espn_news_error:{type(exc).__name__}", "stored": 0}
 
-    rows = parse_injury_articles(payload, fallback_season=season)
+def _store_rows(repository, player_id: str, athlete_id: str | None,
+                rows: list[dict[str, Any]]) -> int:
     with closing(repository._connect()) as connection:
         for row in rows:
             connection.execute(
@@ -248,14 +270,54 @@ def sync_player(repository, player: dict[str, Any], season: int) -> dict[str, An
                        source_published_at=excluded.source_published_at,
                        confidence=excluded.confidence,updated_at=excluded.updated_at""",
                 (
-                    str(player["player_id"]), int(row["season"]), athlete_id,
+                    str(player_id), int(row["season"]), athlete_id,
                     row["injury_label"], row["body_part"], row["details"],
                     int(row["season_ending"]), row["source_name"], row["source_url"],
                     row["source_published_at"], row["confidence"], _now_iso(),
                 ),
             )
         connection.commit()
-    return {"player_id": player.get("player_id"), "espn_athlete_id": athlete_id, "stored": len(rows)}
+    return len(rows)
+
+
+def sync_player(repository, player: dict[str, Any], season: int) -> dict[str, Any]:
+    """Resolve one veteran player and upsert conservative ESPN injury evidence."""
+    initialize(repository)
+    stints = player.get("stints") or []
+    if len({int(row.get("season")) for row in stints if row.get("season") is not None}) < 2:
+        return {"player_id": player.get("player_id"), "skipped": "new_recruit", "stored": 0}
+
+    player_name = str(player.get("name") or "").strip()
+    athlete_id = resolve_espn_athlete(player_name)
+    rows: list[dict[str, Any]] = []
+    news_status = "not_resolved"
+
+    if athlete_id:
+        try:
+            payload = _json(NEWS_URL.format(athlete_id=athlete_id))
+            rows.extend(parse_injury_articles(payload, fallback_season=season))
+            news_status = "ok"
+        except HTTPError as exc:
+            news_status = f"http_{exc.code}"
+        except Exception as exc:
+            news_status = f"{type(exc).__name__}"
+
+    # College athlete-news is inconsistent. Search is a fallback, not a looser
+    # evidence standard: the returned headline/summary still must contain the
+    # player's exact name and explicit injury language.
+    fallback_rows = _search_injury_articles(player_name, season)
+    seen = {row["source_url"] for row in rows}
+    rows.extend(row for row in fallback_rows if row["source_url"] not in seen)
+
+    stored = _store_rows(repository, str(player["player_id"]), athlete_id, rows)
+    return {
+        "player_id": player.get("player_id"),
+        "espn_athlete_id": athlete_id,
+        "stored": stored,
+        "athlete_news_status": news_status,
+        "search_matches": len(fallback_rows),
+        "skipped": None if rows else "no_injury_evidence",
+    }
 
 
 def events_for_player(repository, player_id: str, *, through_season: int | None = None) -> list[dict[str, Any]]:
