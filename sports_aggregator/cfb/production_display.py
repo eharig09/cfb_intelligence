@@ -1,13 +1,15 @@
 """Consistent, full team-production presentation.
 
-Football readers expect the same category order everywhere.  This layer keeps
-that order stable even when a category is populated late (for example by an
-incoming transfer), and combines defensive counting categories into one useful
-view instead of forcing tackles, interceptions and fumbles into separate tabs.
+Football readers expect the same category order everywhere. This layer keeps
+that order stable, combines defensive counting categories, expands matchup
+leader tables to the full qualifying team pool, and adds selected PFF signature
+metrics only when the imported raw PFF rows actually contain them.
 """
 
 from __future__ import annotations
 
+from contextlib import closing
+import json
 from typing import Any
 
 from sports_aggregator.cfb import views
@@ -20,6 +22,7 @@ PRIMARY_ORDER = (
 )
 DEFENSE_CATEGORIES = ("defensive", "interceptions", "fumbles")
 STATE_ORDER = {"RETURNING": 0, "ARRIVED": 1, "DEPARTED": 2}
+FULL_TEAM_LEADER_LIMIT = 200
 
 
 def _number(value: Any) -> float:
@@ -56,13 +59,8 @@ def _defense_production_group(production: dict[str, Any], season: int) -> dict[s
             player_id = str(entry.get("player_id") or entry.get("player") or "")
             if not player_id:
                 continue
-            item = players.setdefault(player_id, {
-                "entry": entry,
-                "categories": {},
-            })
+            item = players.setdefault(player_id, {"entry": entry, "categories": {}})
             item["categories"][category] = dict(entry.get("stats") or {})
-            # Prefer the defensive row as the identity/state source because it
-            # represents the broadest sample, but never discard an INT-only row.
             if category == "defensive":
                 item["entry"] = entry
 
@@ -72,7 +70,8 @@ def _defense_production_group(production: dict[str, Any], season: int) -> dict[s
         defensive = packet["categories"].get("defensive") or {}
         interceptions = packet["categories"].get("interceptions") or {}
         fumbles = packet["categories"].get("fumbles") or {}
-        row = {
+        rows.append({
+            "player_id": entry.get("player_id"),
             "player": entry.get("player"),
             "player_url": views._player_url(entry.get("player_id"), season),
             "player_sub": _state_sub(entry),
@@ -90,12 +89,8 @@ def _defense_production_group(production: dict[str, Any], season: int) -> dict[s
             "FUM": fumbles.get("FUM"),
             "FR": fumbles.get("REC"),
             "_state": entry.get("state"),
-        }
-        rows.append(row)
+        })
 
-    # The default question on a preseason team page is "what do we have?".
-    # Keep current-roster production first, while sortable stat headers still
-    # let the reader rank the entire set by tackles, sacks, interceptions, etc.
     rows.sort(key=lambda row: (
         STATE_ORDER.get(str(row.get("_state") or ""), 9),
         -_number(row.get("TOT")), -_number(row.get("TFL")),
@@ -112,27 +107,27 @@ def _defense_production_group(production: dict[str, Any], season: int) -> dict[s
             counts[state] += 1
     note = (f"{counts['RETURNING']} returning · {counts['ARRIVED']} arrived · "
             f"{counts['DEPARTED']} departed · tackles + takeaways combined")
-    table = Table(
-        columns=[
-            Column(key="player", label="Player", align="left", emphasis=True),
-            Column(key="state", label="Status", align="left"),
-            Column(key="position", label="Pos", align="left"),
-            Column(key="SOLO", label="Solo", format="int"),
-            Column(key="TOT", label="Tkl", format="int"),
-            Column(key="TFL", label="TFL", format="f1"),
-            Column(key="SACKS", label="Sack", format="f1"),
-            Column(key="QB HUR", label="Hur", format="int"),
-            Column(key="PD", label="PD", format="int"),
-            Column(key="INT", label="INT", format="int"),
-            Column(key="FUM", label="Fum", format="int"),
-            Column(key="FR", label="FR", format="int"),
-        ],
-        rows=rows,
-        caption="Defense",
-        note=note,
-        empty="No defensive production is stored.",
-    )
-    return {"category": "defense", "label": "Defense", "table": table}
+    return {
+        "category": "defense", "label": "Defense",
+        "table": Table(
+            columns=[
+                Column(key="player", label="Player", align="left", emphasis=True),
+                Column(key="state", label="Status", align="left"),
+                Column(key="position", label="Pos", align="left"),
+                Column(key="SOLO", label="Solo", format="int"),
+                Column(key="TOT", label="Tkl", format="int"),
+                Column(key="TFL", label="TFL", format="f1"),
+                Column(key="SACKS", label="Sack", format="f1"),
+                Column(key="QB HUR", label="Hur", format="int"),
+                Column(key="PD", label="PD", format="int"),
+                Column(key="INT", label="INT", format="int"),
+                Column(key="FUM", label="Fum", format="int"),
+                Column(key="FR", label="FR", format="int"),
+            ],
+            rows=rows, caption="Defense", note=note,
+            empty="No defensive production is stored.",
+        ),
+    }
 
 
 def _ordered_production_groups(original, production, season):
@@ -143,8 +138,6 @@ def _ordered_production_groups(original, production, season):
         for index, raw in enumerate(raw_groups)
         if index < len(rendered)
     }
-    # Current players first within every non-defensive category too. Stable sort
-    # preserves the existing production ranking inside each state.
     for category, item in by_category.items():
         if category in DEFENSE_CATEGORIES:
             continue
@@ -163,7 +156,6 @@ def _ordered_production_groups(original, production, season):
         item = by_category.get(category)
         if item:
             result.append(item)
-    # Preserve any future CFBD categories after the conventional football set.
     used = set(PRIMARY_ORDER) | set(DEFENSE_CATEGORIES)
     result.extend(item for category, item in by_category.items() if category not in used)
     return result
@@ -192,7 +184,8 @@ def _defense_leaders(leaders: dict[str, Any], season: int,
         defense = packet["categories"].get("defensive") or {}
         ints = packet["categories"].get("interceptions") or {}
         fumbles = packet["categories"].get("fumbles") or {}
-        row = {
+        rows.append({
+            "player_id": entry.get("player_id"),
             "player": entry.get("player"),
             "player_url": views._player_url(entry.get("player_id"), season),
             "player_sub": f"arrived from {entry.get('origin')}" if entry.get("arrival") else None,
@@ -203,8 +196,7 @@ def _defense_leaders(leaders: dict[str, Any], season: int,
             "SACKS": defense.get("SACKS"), "QB HUR": defense.get("QB HUR"),
             "PD": defense.get("PD"), "INT": ints.get("INT"),
             "FUM": fumbles.get("FUM"), "FR": fumbles.get("REC"),
-        }
-        rows.append(row)
+        })
     rows.sort(key=lambda row: (
         -_number(row.get("TOT")), -_number(row.get("TFL")),
         -_number(row.get("SACKS")), -_number(row.get("INT")),
@@ -237,7 +229,139 @@ def _defense_leaders(leaders: dict[str, Any], season: int,
     }
 
 
-def _ordered_leader_groups(original, leaders, season, *, include_team=True, limit=None):
+def _first_team(leaders: dict[str, Any]) -> str | None:
+    for group in (leaders.get("groups") or {}).values():
+        for player in group.get("players") or []:
+            if player.get("team"):
+                return str(player["team"])
+    return None
+
+
+def _full_team_leaders(repository, leaders: dict[str, Any], season: int,
+                       include_team: bool) -> dict[str, Any]:
+    """Expand team-v-team leader packets beyond the repository's compact default."""
+    if include_team:
+        return leaders
+    team = _first_team(leaders)
+    if not team:
+        return leaders
+    return repository.team_player_leaders(team, season, limit=FULL_TEAM_LEADER_LIMIT)
+
+
+def _raw_metrics_by_player(repository, player_ids: list[str], pff_season: int) -> dict[str, dict[str, dict[str, Any]]]:
+    ids = list(dict.fromkeys(str(player_id) for player_id in player_ids if player_id))
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    with closing(repository._connect()) as connection:
+        rows = connection.execute(
+            f"""SELECT p.cfbd_player_id,m.dataset,m.metrics_json
+                FROM pff_players p JOIN pff_player_metrics m
+                  ON m.season=p.season AND m.pff_player_id=p.pff_player_id
+                WHERE p.season=? AND p.cfbd_player_id IN ({placeholders})""",
+            (int(pff_season), *ids),
+        ).fetchall()
+    result: dict[str, dict[str, dict[str, Any]]] = {}
+    for row in rows:
+        try:
+            raw = json.loads(row["metrics_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            raw = {}
+        result.setdefault(str(row["cfbd_player_id"]), {})[str(row["dataset"])] = raw
+    return result
+
+
+def _metric(raw: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = raw.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _receiving_yprr(datasets: dict[str, dict[str, Any]]) -> float | None:
+    raw = datasets.get("receiving") or {}
+    direct = _metric(raw, "yards_per_route_run", "yprr")
+    if direct is not None:
+        return direct
+    yards = _metric(raw, "yards")
+    routes = _metric(raw, "routes")
+    return (yards / routes) if yards is not None and routes and routes > 0 else None
+
+
+def _rushing_metrics(datasets: dict[str, dict[str, Any]]) -> dict[str, float | None]:
+    raw = datasets.get("rushing") or {}
+    bay = _metric(raw, "breakaway_yards", "breakaway_yardage", "breakaway_yards_total")
+    elu = _metric(raw, "elusive_rating", "elu")
+    ycoa = _metric(raw, "yards_after_contact_per_attempt", "yco_per_attempt", "yco_attempt")
+    if ycoa is None:
+        yco = _metric(raw, "yards_after_contact")
+        attempts = _metric(raw, "attempts")
+        if yco is not None and attempts and attempts > 0:
+            ycoa = yco / attempts
+    return {"BAY": bay, "ELU": elu, "YCOA": ycoa}
+
+
+def _defense_metrics(datasets: dict[str, dict[str, Any]]) -> dict[str, float | None]:
+    pass_rush = datasets.get("pass_rush") or {}
+    run_defense = datasets.get("run_defense_detail") or datasets.get("run_defense") or {}
+    coverage = datasets.get("coverage") or {}
+    return {
+        "PRWR": _metric(pass_rush, "pass_rush_win_rate", "win_rate"),
+        "STOP": _metric(run_defense, "run_stop_percent", "stop_percent"),
+        "QBR": _metric(coverage, "qb_rating_against", "passer_rating_against"),
+    }
+
+
+def _add_column_if_present(table: Table, key: str, label: str, fmt: str,
+                           title: str) -> None:
+    if any(row.get(key) is not None for row in table.rows):
+        table.columns.append(Column(key=key, label=label, format=fmt, title=title))
+
+
+def _enrich_pff(repository, groups: list[dict[str, Any]], pff_season: int) -> None:
+    player_ids = [
+        str(row.get("player_id"))
+        for group in groups for row in group["table"].rows
+        if row.get("player_id")
+    ]
+    metrics = _raw_metrics_by_player(repository, player_ids, pff_season)
+    for group in groups:
+        category = group.get("category")
+        table = group["table"]
+        for row in table.rows:
+            datasets = metrics.get(str(row.get("player_id") or ""), {})
+            if category == "receiving":
+                row["YPRR"] = _receiving_yprr(datasets)
+            elif category == "rushing":
+                row.update(_rushing_metrics(datasets))
+            elif category == "defense":
+                row.update(_defense_metrics(datasets))
+        if category == "receiving":
+            _add_column_if_present(table, "YPRR", "YPRR", "f2",
+                                   "PFF yards per route run")
+        elif category == "rushing":
+            _add_column_if_present(table, "BAY", "BAY", "int",
+                                   "PFF breakaway yards")
+            _add_column_if_present(table, "ELU", "ELU", "f1",
+                                   "PFF elusive rating")
+            _add_column_if_present(table, "YCOA", "YCO/A", "f2",
+                                   "PFF yards after contact per attempt")
+        elif category == "defense":
+            _add_column_if_present(table, "PRWR", "PR Win%", "f1",
+                                   "PFF pass-rush win rate")
+            _add_column_if_present(table, "STOP", "Run Stop%", "f1",
+                                   "PFF run-stop percentage")
+            _add_column_if_present(table, "QBR", "QBR Allowed", "f1",
+                                   "PFF passer rating allowed in coverage")
+
+
+def _ordered_leader_groups(original, repository, leaders, season, *, include_team=True, limit=None):
+    leaders = _full_team_leaders(repository, leaders, season, include_team)
     rendered = original(leaders, season, include_team=include_team, limit=limit)
     by_category = {item.get("category"): item for item in rendered}
     defense = _defense_leaders(leaders, season, include_team)
@@ -252,12 +376,15 @@ def _ordered_leader_groups(original, leaders, season, *, include_team=True, limi
             result.append(item)
     used = set(PRIMARY_ORDER) | set(DEFENSE_CATEGORIES)
     result.extend(item for category, item in by_category.items() if category not in used)
+    pff_season = int(leaders.get("season") or season - 1)
+    _enrich_pff(repository, result, pff_season)
     return result
 
 
 def install_production_display(app) -> None:
     if app.extensions.get("production_display_installed"):
         return
+    repository = app.extensions["cfb_repository"]
     original_production = views.production_groups
     original_leaders = views.leader_groups
 
@@ -266,7 +393,8 @@ def install_production_display(app) -> None:
 
     def leader_groups(leaders, season, *, include_team=True, limit=None):
         return _ordered_leader_groups(
-            original_leaders, leaders, season, include_team=include_team, limit=limit)
+            original_leaders, repository, leaders, season,
+            include_team=include_team, limit=limit)
 
     views.production_groups = production_groups
     views.leader_groups = leader_groups
