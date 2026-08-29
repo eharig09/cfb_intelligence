@@ -1,0 +1,119 @@
+/* Sticky in-page navigation for long CFB intelligence pages.
+
+   The links are generated from existing .section headings, so every team,
+   matchup, player, conference, and history page gets navigation without
+   maintaining a second hard-coded outline. */
+
+.section-nav {
+    display: none;
+}
+
+@media (min-width: 980px) {
+    .section-nav {
+        position: sticky;
+        top: 0;
+        z-index: 45;
+        display: block;
+        width: 100%;
+        background: color-mix(in srgb, var(--surface-strong) 97%, transparent);
+        border-bottom: 1px solid var(--line-strong);
+        box-shadow: var(--shadow-bar);
+        backdrop-filter: blur(8px);
+    }
+
+    .section-nav-inner {
+        max-width: var(--shell);
+        margin: 0 auto;
+        padding: 6px var(--pad);
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 9px;
+        align-items: center;
+    }
+
+    .section-nav-label {
+        color: var(--on-strong-muted);
+        font-size: .58rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .075em;
+        white-space: nowrap;
+    }
+
+    .section-nav-links {
+        min-width: 0;
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+        scrollbar-width: thin;
+        overscroll-behavior-inline: contain;
+        padding: 1px 0 3px;
+    }
+
+    .section-nav-links a {
+        flex: 0 0 auto;
+        padding: 5px 8px;
+        border: 1px solid transparent;
+        color: var(--on-strong-muted);
+        text-decoration: none;
+        font-size: .65rem;
+        font-weight: 750;
+        line-height: 1.1;
+        white-space: nowrap;
+        border-radius: 4px;
+    }
+
+    .section-nav-links a:hover,
+    .section-nav-links a:focus-visible {
+        color: var(--on-strong);
+        background: var(--tab-hover);
+        border-color: var(--on-strong-line);
+        outline: none;
+    }
+
+    .section-nav-links a[aria-current="location"] {
+        color: var(--on-strong);
+        background: color-mix(in srgb, var(--team) 18%, var(--surface-strong));
+        border-color: var(--team);
+    }
+
+    .section-nav-actions {
+        display: inline-flex;
+        gap: 3px;
+    }
+
+    .section-nav-actions button {
+        min-width: 29px;
+        height: 27px;
+        padding: 0 7px;
+        border: 1px solid var(--on-strong-line);
+        background: transparent;
+        color: var(--on-strong-muted);
+        font: 800 .65rem/1 var(--body-font);
+        cursor: pointer;
+        border-radius: 4px;
+    }
+
+    .section-nav-actions button:hover,
+    .section-nav-actions button:focus-visible {
+        color: var(--on-strong);
+        border-color: var(--team);
+        outline: none;
+    }
+
+    .section-nav-actions button:disabled {
+        opacity: .3;
+        cursor: default;
+    }
+
+    /* Anchored headings should stop below both the site header and this rail. */
+    main .section,
+    main [data-section-nav-target] {
+        scroll-margin-top: 58px;
+    }
+
+    /* The richer sticky rail replaces the passive floating breadcrumb on desktop. */
+    .scroll-context {
+        display: none !important;
+    }
+}
