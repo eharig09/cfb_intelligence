@@ -28,6 +28,7 @@ from sports_aggregator.cfb.model_market_display import install_model_comparison_
 from sports_aggregator.cfb.wiki_context_enrichment import install_wiki_context_enrichment
 from sports_aggregator.cfb.coordinator_display import install_coordinator_display
 from sports_aggregator.cfb.cfbdepth_display import install_cfbdepth_display
+from sports_aggregator.cfb.cfbdepth_enhancements import install_cfbdepth_enhancements
 from sports_aggregator.cfb.player_game_log import player_game_log_table
 from sports_aggregator.cfb.player_career_context import player_career_context
 from sports_aggregator.catalog import list_leagues
@@ -118,6 +119,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     install_wiki_context_enrichment()
     install_coordinator_display(app)
     install_cfbdepth_display(app)
+    install_cfbdepth_enhancements(app)
 
     def require_refresh_auth() -> None:
         if session.get("cfb_admin") is True:
