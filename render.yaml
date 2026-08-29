@@ -14,14 +14,29 @@ services:
         value: "1"
       - key: MALLOC_ARENA_MAX
         value: "2"
+      # Prevent numerical libraries from creating extra CPU-hungry worker threads
+      # on the 0.5-CPU Render instance.
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+      - key: NUMEXPR_NUM_THREADS
+        value: "1"
       - key: CFB_REFRESH_CHILD_MB
         value: "200"
+      # Rendered CFB pages are CPU-heavy but change much less often than requests.
+      # Keep them for an hour and let refresh writes invalidate at most once per
+      # hour instead of invalidating the whole page cache after every SQLite write.
       - key: CFB_PAGE_CACHE_SECONDS
-        value: "900"
+        value: "3600"
+      - key: CFB_PAGE_CACHE_DATA_VERSION_SECONDS
+        value: "3600"
       - key: CFB_PAGE_CACHE_DIR
         value: /var/data/page_cache
       - key: CFB_PAGE_CACHE_THRESHOLD
-        value: "150"
+        value: "600"
       - key: CFB_REFRESH_TIMEZONE
         value: America/New_York
       - key: CFB_REFRESH_HOURS
@@ -64,7 +79,9 @@ services:
   - type: cron
     name: cfb-refresh-trigger
     runtime: python
-    schedule: "*/15 * * * *"
+    # Hourly is enough for live scores/results and still reaches every scheduled
+    # maintenance hour. This cuts cron wakeups from 96/day to 24/day.
+    schedule: "0 * * * *"
     buildCommand: pip install -r requirements.txt
     startCommand: python -m sports_aggregator.render_trigger
     envVars:
