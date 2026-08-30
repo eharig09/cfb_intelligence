@@ -9,7 +9,7 @@ from flask import url_for
 from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
-from sports_aggregator.cfb.qb_air_yards import game_summary
+from sports_aggregator.cfb.qb_air_yards import game_summary, METRIC_VERSION
 
 ANCHOR = "{{ postgame_tendencies(game) }}"
 REPLACEMENT = ANCHOR + "\n{{ postgame_qb_air_yards(game) }}"
@@ -98,7 +98,7 @@ def _render(repository, game: dict[str, Any]) -> Markup:
         ordered.extend(team_rows)
     return Markup(
         STYLE + '<section class="pg-qb-air">'
-        '<div class="pg-qb-air-head"><h3>Quarterback air yards</h3><span>qb-air-yards-v1 · play-detail-v3 × ep-v1</span></div>'
+        f'<div class="pg-qb-air-head"><h3>Quarterback air yards</h3><span>{escape(METRIC_VERSION)} · play-detail-v3 × ep-v1</span></div>'
         f'<div class="pg-qb-air-grid">{"".join(_card(row) for row in ordered)}</div>'
         '<p class="pg-qb-note">Air yards and YAC are measured only on completions with an unambiguous catch spot. “Air yds / comp” is not full aDOT; numeric coverage shows how much of the attributed passing sample has measured depth.</p>'
         '</section>'
