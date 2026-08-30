@@ -5,6 +5,7 @@ import argparse
 from contextlib import closing
 import json
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -25,19 +26,27 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def _team_key(value: object) -> str:
+    """Punctuation/spacing-insensitive team key for diagnostic lookup only."""
+    normalized = normalize_alias(str(value or ""))
+    return re.sub(r"[^a-z0-9]+", "", normalized.casefold())
+
+
 def _matches(away: object, home: object, teams: list[str]) -> bool:
     if len(teams) != 2:
         return False
-    wanted = {normalize_alias(str(team)) for team in teams}
-    actual = {normalize_alias(str(away or "")), normalize_alias(str(home or ""))}
+    wanted = {_team_key(team) for team in teams}
+    actual = {_team_key(away), _team_key(home)}
     return actual == wanted
 
 
-def _candidate_games(connection, teams: list[str]) -> list[dict]:
-    """Discover matchup IDs from PBP first, then enrich with games metadata."""
-    if len(teams) != 2:
-        return []
-    pbp_rows = connection.execute("""
+def _involves(team: str, away: object, home: object) -> bool:
+    wanted = _team_key(team)
+    return wanted in {_team_key(away), _team_key(home)}
+
+
+def _pbp_games(connection) -> list:
+    return connection.execute("""
       SELECT p.game_id,
              MAX(p.season) AS pbp_season,
              MAX(p.week) AS pbp_week,
@@ -48,9 +57,12 @@ def _candidate_games(connection, teams: list[str]) -> list[dict]:
       GROUP BY p.game_id
       ORDER BY MAX(p.season) DESC, MAX(p.week) DESC, p.game_id DESC
     """).fetchall()
-    ids = [int(row["game_id"]) for row in pbp_rows if _matches(row["pbp_away_team"], row["pbp_home_team"], teams)]
-    if not ids:
+
+
+def _enrich_candidates(connection, pbp_rows: list) -> list[dict]:
+    if not pbp_rows:
         return []
+    ids = [int(row["game_id"]) for row in pbp_rows]
     marks = ",".join("?" for _ in ids)
     game_rows = connection.execute(
         f"SELECT game_id,season,week,away_team,home_team,away_points,home_points,completed FROM games WHERE game_id IN ({marks})",
@@ -60,8 +72,6 @@ def _candidate_games(connection, teams: list[str]) -> list[dict]:
     output: list[dict] = []
     for row in pbp_rows:
         game_id = int(row["game_id"])
-        if game_id not in ids:
-            continue
         game = by_id.get(game_id, {})
         output.append({
             "game_id": game_id,
@@ -79,6 +89,20 @@ def _candidate_games(connection, teams: list[str]) -> list[dict]:
             "pbp_rows": row["pbp_rows"],
         })
     return output
+
+
+def _candidate_games(connection, teams: list[str]) -> list[dict]:
+    """Discover exact two-team matchup IDs from PBP first."""
+    if len(teams) != 2:
+        return []
+    rows = [row for row in _pbp_games(connection) if _matches(row["pbp_away_team"], row["pbp_home_team"], teams)]
+    return _enrich_candidates(connection, rows)
+
+
+def _single_team_games(connection, team: str) -> list[dict]:
+    """Fallback discovery showing every PBP game involving one requested team."""
+    rows = [row for row in _pbp_games(connection) if _involves(team, row["pbp_away_team"], row["pbp_home_team"])]
+    return _enrich_candidates(connection, rows)
 
 
 def _resolve_game(connection, game_id: int | None, teams: list[str], season: int | None):
@@ -130,15 +154,27 @@ def main(argv: list[str] | None = None) -> int:
     with closing(repository._connect()) as connection:
         game, alternatives = _resolve_game(connection, args.game_id, args.team, args.season)
         if args.list_matches:
-            if not alternatives and len(args.team) == 2:
-                alternatives = _candidate_games(connection, args.team)
-            print(json.dumps({"matches": alternatives}, indent=2, default=str))
+            exact = _candidate_games(connection, args.team) if len(args.team) == 2 else []
+            fallback = []
+            if not exact and args.team:
+                fallback = _single_team_games(connection, args.team[0])
+            print(json.dumps({
+                "requested_teams": args.team,
+                "team_keys": [_team_key(team) for team in args.team],
+                "matches": exact,
+                "fallback_games_for_first_team": fallback[:30],
+            }, indent=2, default=str))
             return 0
         if not game:
-            if alternatives:
-                print(json.dumps({"requested_season": args.season, "matching_games": alternatives}, indent=2, default=str))
-                raise SystemExit("Game not found in requested season; matching PBP games printed above.")
-            raise SystemExit("Game not found in games or cfb_plays. Try --list-matches without --season.")
+            fallback = _single_team_games(connection, args.team[0]) if args.team else []
+            print(json.dumps({
+                "requested_teams": args.team,
+                "requested_season": args.season,
+                "team_keys": [_team_key(team) for team in args.team],
+                "matching_games": alternatives,
+                "fallback_games_for_first_team": fallback[:30],
+            }, indent=2, default=str))
+            raise SystemExit("Game not found; discovery details printed above. Use the displayed --game-id when available.")
         game_id = int(game["game_id"])
         rows = [dict(r) for r in connection.execute("""
           SELECT p.play_id,p.period,p.clock_minutes,p.clock_seconds,p.drive_number,p.play_number,
