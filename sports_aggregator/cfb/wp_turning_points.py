@@ -6,10 +6,9 @@ therefore use valid pre-play WP states for the before/after probabilities, but
 attribute each transition to the most meaningful football event that occurred
 between those states.
 
-The report also suppresses obviously implausible *ordinary-play* swings. Those
-rows remain in the stored wp-v2 output for model diagnostics; they simply do not
-masquerade as editorial turning points. Scores, turnovers and fourth-down events
-are never suppressed by this guardrail.
+The report also suppresses obviously implausible *ordinary-play* swings and
+requires the WP direction to agree with our possession-aware ep-v1 EPA whenever
+EPA is available. Stored wp-v2 predictions remain untouched for diagnostics.
 """
 from __future__ import annotations
 
@@ -101,8 +100,6 @@ def _choose_event(segment: list[dict[str, Any]]) -> dict[str, Any]:
             best = row
             best_priority = priority
         elif priority == best_priority and priority >= 85:
-            # For chained turnover/return/scoring rows, the later provider row
-            # generally contains the most complete description of the outcome.
             best = row
     return best
 
@@ -125,13 +122,33 @@ def _ranking_score(row: dict[str, Any]) -> float:
     return leverage * stage * competitive * event
 
 
-def _credible_ordinary_swing(row: dict[str, Any]) -> bool:
-    """Reject state discontinuities that are not believable football events.
+def _directionally_consistent(row: dict[str, Any]) -> bool:
+    """Require a WP move to agree with ep-v1's offense-perspective play value.
 
-    wp-v2 remains stored exactly as scored. This is a report guardrail for cases
-    where provider-state transitions produce a huge probability jump on a routine
-    play. A genuine major event or fourth-down result is always retained.
+    EPA is possession-oriented. Positive EPA should raise home WP when home has
+    the ball and lower home WP when away has the ball; negative EPA does the
+    reverse. Tiny EPA values are too close to neutral to use as a sign test.
     """
+    epa = row.get("epa")
+    if epa is None:
+        return True
+    try:
+        epa_f = float(epa)
+        wp_change = float(row.get("wp_change") or 0.0)
+    except (TypeError, ValueError):
+        return True
+    if abs(epa_f) < 0.05 or abs(wp_change) < 0.005:
+        return True
+    offense_is_home = str(row.get("offense") or "") == str(row.get("home_team") or "")
+    expected_home_sign = epa_f if offense_is_home else -epa_f
+    return expected_home_sign * wp_change > 0
+
+
+def _credible_ordinary_swing(row: dict[str, Any]) -> bool:
+    """Reject state discontinuities that are not believable football events."""
+    if not _directionally_consistent(row):
+        return False
+
     priority = int(row.get("event_priority") or 0)
     if priority >= 25:
         return True
@@ -151,23 +168,13 @@ def _credible_ordinary_swing(row: dict[str, Any]) -> bool:
     except (TypeError, ValueError):
         return False
 
-    # Ordinary first-half and third-quarter snaps should not move a robust WP
-    # model by 12+ points. Keep those rows available for a future wp-v3 audit,
-    # but do not publish them as decisive plays.
     if period <= 3:
         return False
 
     remaining = minute * 60 + second
     score_margin = abs(home_score - away_score)
-
-    # In the final five minutes of a one-score game, a red-zone or conversion-
-    # pressure snap can legitimately create a very large shift even without a
-    # turnover or score (e.g. 3rd-and-goal completion to the 2).
     if remaining <= 300 and score_margin <= 8 and (down >= 3 or ytg <= 10):
         return True
-
-    # Elsewhere in Q4, ordinary-play swings above 18 points are too unstable to
-    # publish without a stronger event explanation.
     return leverage <= 0.18
 
 
@@ -175,8 +182,10 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
                         limit: int = 6) -> list[dict[str, Any]]:
     """Return the largest event-attributed, report-credible WP changes."""
     from sports_aggregator.cfb.win_probability import initialize
+    from sports_aggregator.cfb.expected_points_v2 import initialize as initialize_ep
 
     initialize(repository)
+    initialize_ep(repository)
     game_id = int(game_id)
     limit = max(1, int(limit))
 
@@ -189,11 +198,13 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
                  p.home_team,p.away_team,p.play_type,p.play_text,p.offense_score,p.defense_score,
                  p.down,p.distance,p.yardline,p.yards_to_goal,p.yards_gained,p.scoring,
                  p.drive_number,p.play_number,m.rush_pass,m.down_type,
-                 w.home_win_probability
+                 w.home_win_probability,e.epa
           FROM cfb_plays p
           JOIN cfb_play_win_probability w USING(play_id)
           LEFT JOIN cfb_play_metrics m
             ON m.play_id=p.play_id AND m.metric_version='pbp-v1'
+          LEFT JOIN cfb_play_epa e
+            ON e.play_id=p.play_id AND e.model_version='ep-v1'
           WHERE p.game_id=? AND w.model_version=? AND p.period BETWEEN 1 AND 4
           ORDER BY p.period,p.clock_minutes DESC,p.clock_seconds DESC,
                    COALESCE(p.drive_number,0),COALESCE(p.play_number,0),p.play_id
@@ -233,8 +244,6 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
             continue
 
         event = dict(_choose_event(segment) or state)
-        # Football situation describes the state BEFORE the event. Preserve the
-        # event's text/type while using the valid state's down/distance/spot.
         for key in (
             "period", "clock_minutes", "clock_seconds", "offense", "defense",
             "home_team", "away_team", "offense_score", "defense_score", "down",
@@ -242,6 +251,11 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
         ):
             event[f"event_{key}"] = event.get(key)
             event[key] = state.get(key)
+
+        # If the selected special event lacks its own EPA, use the state play's
+        # EPA as the best available transition-direction signal.
+        if event.get("epa") is None:
+            event["epa"] = state.get("epa")
 
         event["home_wp_before"] = before_f
         event["home_wp_after"] = after_f
