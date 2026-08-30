@@ -18,7 +18,7 @@ STYLE = '''<style>
 .pg-analytics{margin:0 0 24px}.pg-section-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-end;margin:18px 0 7px;padding-bottom:6px;border-bottom:1px solid var(--line)}.pg-section-head h3{margin:0;font-size:.8rem}.pg-section-head span{font-size:.51rem;color:var(--muted)}
 .pg-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}.pg-summary-card{border:1px solid var(--line);background:var(--paper);padding:10px 12px}.pg-summary-card h4{margin:0 0 8px;font-size:.68rem}.pg-summary-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.pg-summary-metric span{display:block;font-size:.48rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800}.pg-summary-metric strong{display:block;margin-top:3px;font-family:var(--display-font);font-size:.82rem;font-variant-numeric:tabular-nums}
 .pg-details{border:1px solid var(--line);background:var(--paper);margin:8px 0 5px}.pg-details summary{cursor:pointer;padding:8px 11px;font-size:.56rem;font-weight:800;text-transform:uppercase;letter-spacing:.055em;color:var(--muted)}.pg-details[open] summary{border-bottom:1px solid var(--line)}.pg-detail-grid{display:grid;grid-template-columns:1fr 1fr}.pg-detail-team{padding:9px 11px}.pg-detail-team+.pg-detail-team{border-left:1px solid var(--line)}.pg-detail-team h4{margin:0 0 6px;font-size:.64rem}.pg-row{display:grid;grid-template-columns:1.35fr .72fr .72fr;gap:8px;padding:4px 0;border-top:1px solid var(--line);font-size:.57rem}.pg-row:first-of-type{border-top:0}.pg-num{text-align:right;font-variant-numeric:tabular-nums}.pg-note{color:var(--muted);font-size:.55rem;line-height:1.45;margin:7px 0 0}
-.pg-turning{border-top:1px solid var(--line);margin:8px 0}.pg-turn{display:grid;grid-template-columns:minmax(235px,.82fr) minmax(0,1.7fr);gap:15px;padding:10px 2px;border-bottom:1px solid var(--line);align-items:start}.pg-turn-state{display:flex;flex-wrap:wrap;gap:4px 7px;align-items:center}.pg-turn strong{font-size:.62rem;line-height:1.35}.pg-turn-chip{display:inline-block;font-size:.48rem;line-height:1;text-transform:uppercase;letter-spacing:.045em;color:var(--muted);padding:3px 5px;border:1px solid var(--line)}.pg-turn-context{margin-top:5px;font-size:.56rem;line-height:1.45;color:var(--muted)}.pg-turn-play{margin:0;font-size:.61rem;line-height:1.45}.pg-turn-meta{margin-top:4px;color:var(--muted);font-size:.49rem;line-height:1.35}
+.pg-turning{border-top:1px solid var(--line);margin:8px 0}.pg-turn{display:grid;grid-template-columns:minmax(250px,.9fr) minmax(0,1.65fr);gap:15px;padding:10px 2px;border-bottom:1px solid var(--line);align-items:start}.pg-turn-state{display:flex;flex-wrap:wrap;gap:4px 7px;align-items:center}.pg-turn-chip{display:inline-block;font-size:.48rem;line-height:1;text-transform:uppercase;letter-spacing:.045em;color:var(--muted);padding:3px 5px;border:1px solid var(--line)}.pg-turn-chip.wp-direction{color:var(--ink);font-weight:850}.pg-turn-context{margin-top:5px;font-size:.56rem;line-height:1.45;color:var(--muted)}.pg-turn-play{margin:0;font-size:.61rem;line-height:1.45}.pg-turn-meta{margin-top:4px;color:var(--muted);font-size:.49rem;line-height:1.35}
 @media(max-width:720px){.pg-summary-grid,.pg-detail-grid{grid-template-columns:1fr}.pg-detail-team+.pg-detail-team{border-left:0;border-top:1px solid var(--line)}.pg-turn{grid-template-columns:1fr;gap:5px}.pg-section-head span{display:none}}@media(max-width:460px){.pg-summary-metrics{grid-template-columns:1fr 1fr}}
 </style>'''
 
@@ -139,17 +139,20 @@ def _render(repository, game: dict[str, Any]) -> Markup:
         )
 
     turn_rows = []
+    home_team = str(game.get("home_team") or "Home")
     for row in turns:
         period = int(row.get("period") or 0)
         minute = int(row.get("clock_minutes") or 0)
         second = int(row.get("clock_seconds") or 0)
         leverage = float(row.get("leverage") or 0)
-        wp = row.get("home_win_probability")
+        before = row.get("home_wp_before")
+        after = row.get("home_wp_after")
         chips = [f"Q{period} {minute}:{second:02d}", f"WP swing {100 * leverage:.1f} pts"]
-        if wp is not None:
-            chips.append(f"Home WP {100 * float(wp):.1f}%")
+        if before is not None and after is not None:
+            direction = "↑" if float(after) > float(before) else "↓" if float(after) < float(before) else "→"
+            chips.append(f"{home_team} WP {100 * float(before):.1f}% {direction} {100 * float(after):.1f}%")
         if row.get("terminal_outcome") is not None:
-            chips.append("Final play")
+            chips.append("Final valid state")
         context = []
         scoreline = _scoreline(row, game)
         if scoreline: context.append(scoreline)
@@ -163,20 +166,23 @@ def _render(repository, game: dict[str, Any]) -> Markup:
         if gained is not None:
             try: context.append(f"{int(gained):+d} yds")
             except (TypeError, ValueError): pass
-        chip_html = ''.join(f'<span class="pg-turn-chip">{escape(chip)}</span>' for chip in chips)
+        chip_parts = []
+        for index, chip in enumerate(chips):
+            css = 'pg-turn-chip wp-direction' if index == 2 and before is not None and after is not None else 'pg-turn-chip'
+            chip_parts.append(f'<span class="{css}">{escape(chip)}</span>')
         context_html = ' · '.join(escape(piece) for piece in context)
         turn_rows.append(
             '<div class="pg-turn">'
-            f'<div><div class="pg-turn-state">{chip_html}</div>'
+            f'<div><div class="pg-turn-state">{"".join(chip_parts)}</div>'
             f'<div class="pg-turn-context">{context_html}</div></div>'
             f'<div><p class="pg-turn-play">{escape(str(row.get("play_text") or row.get("play_type") or "Play"))}</p>'
-            '<div class="pg-turn-meta">Ranked by WP swing, game stage, competitive state and play context.</div></div></div>'
+            '<div class="pg-turn-meta">WP change is reconstructed from consecutive valid football states; administrative/no-play rows are skipped.</div></div></div>'
         )
     turning_html = ''.join(turn_rows) or f'<div class="empty">Fit and score {escape(WP_MODEL_VERSION)} to identify leverage and turning points.</div>'
 
     return Markup(
         STYLE + '<section class="section pg-analytics">' + pace_html +
-        f'<div class="pg-section-head"><h3>Turning points</h3><span>{escape(WP_MODEL_VERSION)} · context-aware ranking</span></div>'
+        f'<div class="pg-section-head"><h3>Turning points</h3><span>{escape(WP_MODEL_VERSION)} · valid-state ranking</span></div>'
         f'<div class="pg-turning">{turning_html}</div></section>'
     )
 
