@@ -18,50 +18,98 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--game-id", type=int, default=None)
     p.add_argument("--team", action="append", default=[], help="Team name; pass twice to find latest matchup")
     p.add_argument("--season", type=int, default=None)
+    p.add_argument("--list-matches", action="store_true", help="List matching games and exit")
     p.add_argument("--database", default=None)
     p.add_argument("--wp-model-version", default="wp-v2")
     p.add_argument("--ep-model-version", default="ep-v1")
     return p
 
 
-def _matching_games(connection, teams: list[str], season: int | None) -> list:
-    """Resolve matchup using the same normalized-name semantics as the app."""
+def _matches(away: object, home: object, teams: list[str]) -> bool:
+    if len(teams) != 2:
+        return False
+    wanted = {normalize_alias(str(team)) for team in teams}
+    actual = {normalize_alias(str(away or "")), normalize_alias(str(home or ""))}
+    return actual == wanted
+
+
+def _candidate_games(connection, teams: list[str]) -> list[dict]:
+    """Discover matchup IDs from PBP first, then enrich with games metadata."""
     if len(teams) != 2:
         return []
-    wanted = {normalize_alias(str(team)) for team in teams}
-    clauses = []
-    params: list[object] = []
-    if season is not None:
-        clauses.append("season=?")
-        params.append(int(season))
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    rows = connection.execute(
-        f"""SELECT game_id,season,week,away_team,home_team,away_points,home_points,completed
-            FROM games {where}
-            ORDER BY season DESC,week DESC,game_id DESC""",
-        params,
+    pbp_rows = connection.execute("""
+      SELECT p.game_id,
+             MAX(p.season) AS pbp_season,
+             MAX(p.week) AS pbp_week,
+             MAX(p.away_team) AS pbp_away_team,
+             MAX(p.home_team) AS pbp_home_team,
+             COUNT(*) AS pbp_rows
+      FROM cfb_plays p
+      GROUP BY p.game_id
+      ORDER BY MAX(p.season) DESC, MAX(p.week) DESC, p.game_id DESC
+    """).fetchall()
+    ids = [int(row["game_id"]) for row in pbp_rows if _matches(row["pbp_away_team"], row["pbp_home_team"], teams)]
+    if not ids:
+        return []
+    marks = ",".join("?" for _ in ids)
+    game_rows = connection.execute(
+        f"SELECT game_id,season,week,away_team,home_team,away_points,home_points,completed FROM games WHERE game_id IN ({marks})",
+        ids,
     ).fetchall()
-    return [
-        row for row in rows
-        if {normalize_alias(str(row["away_team"])), normalize_alias(str(row["home_team"]))} == wanted
-    ]
+    by_id = {int(row["game_id"]): dict(row) for row in game_rows}
+    output: list[dict] = []
+    for row in pbp_rows:
+        game_id = int(row["game_id"])
+        if game_id not in ids:
+            continue
+        game = by_id.get(game_id, {})
+        output.append({
+            "game_id": game_id,
+            "season": game.get("season"),
+            "week": game.get("week"),
+            "away_team": game.get("away_team"),
+            "home_team": game.get("home_team"),
+            "away_points": game.get("away_points"),
+            "home_points": game.get("home_points"),
+            "completed": game.get("completed"),
+            "pbp_season": row["pbp_season"],
+            "pbp_week": row["pbp_week"],
+            "pbp_away_team": row["pbp_away_team"],
+            "pbp_home_team": row["pbp_home_team"],
+            "pbp_rows": row["pbp_rows"],
+        })
+    return output
 
 
 def _resolve_game(connection, game_id: int | None, teams: list[str], season: int | None):
     if game_id is not None:
-        return connection.execute(
+        game = connection.execute(
             "SELECT game_id,season,week,away_team,home_team,away_points,home_points,completed FROM games WHERE game_id=?",
             (int(game_id),),
-        ).fetchone(), []
+        ).fetchone()
+        if game:
+            return dict(game), []
+        pbp = connection.execute("""
+          SELECT game_id,MAX(season) AS pbp_season,MAX(week) AS pbp_week,
+                 MAX(away_team) AS pbp_away_team,MAX(home_team) AS pbp_home_team,COUNT(*) AS pbp_rows
+          FROM cfb_plays WHERE game_id=? GROUP BY game_id
+        """, (int(game_id),)).fetchone()
+        if pbp:
+            return {
+                "game_id": int(pbp["game_id"]), "season": pbp["pbp_season"], "week": pbp["pbp_week"],
+                "away_team": pbp["pbp_away_team"], "home_team": pbp["pbp_home_team"],
+                "away_points": None, "home_points": None, "completed": None,
+            }, []
+        return None, []
     if len(teams) != 2:
         raise SystemExit("Provide --game-id or exactly two --team arguments")
-    matches = _matching_games(connection, teams, season)
-    if matches:
-        return matches[0], matches
-    # If the requested season was wrong, surface matching games from other seasons
-    # instead of returning an unhelpful generic failure.
-    alternatives = _matching_games(connection, teams, None) if season is not None else []
-    return None, alternatives
+    candidates = _candidate_games(connection, teams)
+    if season is not None:
+        exact = [row for row in candidates if int(row.get("pbp_season") or row.get("season") or -1) == int(season)]
+        if exact:
+            return exact[0], candidates
+        return None, candidates
+    return (candidates[0], candidates) if candidates else (None, [])
 
 
 def _home_scores(row) -> tuple[int | None, int | None]:
@@ -81,17 +129,16 @@ def main(argv: list[str] | None = None) -> int:
     repository = CFBRepository(args.database or os.getenv("CFB_DATABASE_PATH", "instance/cfb.sqlite3"))
     with closing(repository._connect()) as connection:
         game, alternatives = _resolve_game(connection, args.game_id, args.team, args.season)
+        if args.list_matches:
+            if not alternatives and len(args.team) == 2:
+                alternatives = _candidate_games(connection, args.team)
+            print(json.dumps({"matches": alternatives}, indent=2, default=str))
+            return 0
         if not game:
             if alternatives:
-                options = ", ".join(
-                    f"game_id={row['game_id']} season={row['season']} week={row['week']} "
-                    f"{row['away_team']} at {row['home_team']}"
-                    for row in alternatives[:8]
-                )
-                raise SystemExit(f"Game not found in requested season. Matching games: {options}")
-            raise SystemExit(
-                "Game not found. Team matching is alias-normalized; use --game-id if you know the exact game."
-            )
+                print(json.dumps({"requested_season": args.season, "matching_games": alternatives}, indent=2, default=str))
+                raise SystemExit("Game not found in requested season; matching PBP games printed above.")
+            raise SystemExit("Game not found in games or cfb_plays. Try --list-matches without --season.")
         game_id = int(game["game_id"])
         rows = [dict(r) for r in connection.execute("""
           SELECT p.play_id,p.period,p.clock_minutes,p.clock_seconds,p.drive_number,p.play_number,
@@ -149,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         previous = row
 
     output = {
-        "game": dict(game),
+        "game": game,
         "models": {"ep": args.ep_model_version, "wp": args.wp_model_version},
         "published_turning_points": game_turning_points(repository, game_id, model_version=args.wp_model_version, limit=12),
         "event_neighborhood": audit_rows,
