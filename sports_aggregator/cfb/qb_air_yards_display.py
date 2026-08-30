@@ -13,10 +13,12 @@ from sports_aggregator.cfb.qb_air_yards import game_summary, METRIC_VERSION
 
 ANCHOR = "{{ postgame_tendencies(game) }}"
 REPLACEMENT = ANCHOR + "\n{{ postgame_qb_air_yards(game) }}"
+BACKUP_SHARE_MIN = 0.20
+BACKUP_PLAYS_MIN = 8
 
 STYLE = '''<style>
 .pg-qb-air{margin:0 0 18px}.pg-qb-air-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-end;margin:17px 0 7px;padding-bottom:6px;border-bottom:1px solid var(--line)}.pg-qb-air-head h3{margin:0;font-size:.8rem}.pg-qb-air-head span{font-size:.51rem;color:var(--muted)}
-.pg-qb-air-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.pg-qb-card{border-top:2px solid var(--line);padding-top:9px;min-width:0}.pg-qb-card h4{margin:0 0 7px;font-size:.72rem}.pg-qb-card h4 a{text-decoration:none}.pg-qb-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pg-qb-metric span{display:block;font-size:.45rem;text-transform:uppercase;letter-spacing:.055em;color:var(--muted);font-weight:800}.pg-qb-metric strong{display:block;margin-top:2px;font-family:var(--display-font);font-size:.75rem;font-variant-numeric:tabular-nums}.pg-qb-depth{margin-top:8px;padding-top:7px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:5px 10px;font-size:.53rem}.pg-qb-depth strong{font-variant-numeric:tabular-nums}.pg-qb-note{margin:7px 0 0;color:var(--muted);font-size:.52rem;line-height:1.45}
+.pg-qb-air-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.pg-qb-team{min-width:0}.pg-qb-team-head{margin:0 0 5px;font-size:.57rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:850}.pg-qb-card{border-top:2px solid var(--line);padding:9px 0 10px;min-width:0}.pg-qb-card.backup{border-top:1px solid var(--line);padding-top:8px}.pg-qb-card h4{margin:0 0 7px;font-size:.72rem}.pg-qb-card.backup h4{font-size:.65rem}.pg-qb-card h4 a{text-decoration:none}.pg-qb-role{color:var(--muted);font-size:.48rem;text-transform:uppercase;letter-spacing:.05em;margin-left:5px}.pg-qb-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pg-qb-metric span{display:block;font-size:.45rem;text-transform:uppercase;letter-spacing:.055em;color:var(--muted);font-weight:800}.pg-qb-metric strong{display:block;margin-top:2px;font-family:var(--display-font);font-size:.75rem;font-variant-numeric:tabular-nums}.pg-qb-card.backup .pg-qb-metric strong{font-size:.68rem}.pg-qb-depth{margin-top:8px;padding-top:7px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:5px 10px;font-size:.53rem}.pg-qb-depth strong{font-variant-numeric:tabular-nums}.pg-qb-note{margin:7px 0 0;color:var(--muted);font-size:.52rem;line-height:1.45}
 @media(max-width:760px){.pg-qb-air-grid{grid-template-columns:1fr}.pg-qb-air-head span{display:none}}@media(max-width:480px){.pg-qb-metrics{grid-template-columns:1fr 1fr}}
 </style>'''
 
@@ -48,11 +50,14 @@ def _pct(value: Any) -> str:
     except (TypeError, ValueError): return "—"
 
 
-def _card(row: dict[str, Any]) -> str:
+def _card(row: dict[str, Any], *, backup: bool = False, share: float | None = None) -> str:
     name = escape(str(row.get("player_name") or "Quarterback"))
     player_id = row.get("player_id")
     href = url_for("cfb.player_preview", player_id=player_id, season=row.get("season")) if player_id else None
     shown = f'<a href="{href}">{name}</a>' if href else name
+    role = "Backup"
+    if backup and share is not None:
+        role = f"Backup · {100*share:.0f}% of team pass plays"
     metrics = (
         ("Air yards", _f1(row.get("measured_air_yards"))),
         ("Air yds / comp", _f1(row.get("measured_adot"))),
@@ -75,12 +80,27 @@ def _card(row: dict[str, Any]) -> str:
     )
     depth_html = ' · '.join(f'{escape(label)} <strong>{int(value or 0)}</strong>' for label, value in depth)
     return (
-        '<article class="pg-qb-card">'
-        f'<h4>{shown} <small>· {escape(str(row.get("team") or ""))}</small></h4>'
+        f'<article class="pg-qb-card{" backup" if backup else ""}">'
+        f'<h4>{shown}{f"<span class=\"pg-qb-role\">{escape(role)}</span>" if backup else ""}</h4>'
         f'<div class="pg-qb-metrics">{metric_html}</div>'
         f'<div class="pg-qb-depth">{depth_html}</div>'
         '</article>'
     )
+
+
+def _team_column(team: str, rows: list[dict[str, Any]]) -> str:
+    rows = sorted(rows, key=lambda r: (-int(r.get("attributed_pass_plays") or 0), str(r.get("player_name") or "")))
+    if not rows:
+        return f'<section class="pg-qb-team"><div class="pg-qb-team-head">{escape(team)}</div><div class="empty">No attributed quarterback passing plays.</div></section>'
+    total = sum(int(r.get("attributed_pass_plays") or 0) for r in rows)
+    primary = rows[0]
+    cards = [_card(primary)]
+    for backup in rows[1:]:
+        plays = int(backup.get("attributed_pass_plays") or 0)
+        share = plays / total if total else 0.0
+        if plays >= BACKUP_PLAYS_MIN and share >= BACKUP_SHARE_MIN:
+            cards.append(_card(backup, backup=True, share=share))
+    return f'<section class="pg-qb-team"><div class="pg-qb-team-head">{escape(team)}</div>{"".join(cards)}</section>'
 
 
 def _render(repository, game: dict[str, Any]) -> Markup:
@@ -90,17 +110,14 @@ def _render(repository, game: dict[str, Any]) -> Markup:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         grouped[str(row.get("team") or "Team")].append(row)
-    preferred = [str(game.get("away_team") or ""), str(game.get("home_team") or "")]
-    ordered: list[dict[str, Any]] = []
-    for team in preferred:
-        ordered.extend(grouped.pop(team, []))
-    for team_rows in grouped.values():
-        ordered.extend(team_rows)
+    away = str(game.get("away_team") or "Away")
+    home = str(game.get("home_team") or "Home")
+    columns = [_team_column(away, grouped.get(away, [])), _team_column(home, grouped.get(home, []))]
     return Markup(
         STYLE + '<section class="pg-qb-air">'
         f'<div class="pg-qb-air-head"><h3>Quarterback air yards</h3><span>{escape(METRIC_VERSION)} · play-detail-v3 × ep-v1</span></div>'
-        f'<div class="pg-qb-air-grid">{"".join(_card(row) for row in ordered)}</div>'
-        '<p class="pg-qb-note">Air yards and YAC are measured only on completions with an unambiguous catch spot. “Air yds / comp” is not full aDOT; numeric coverage shows how much of the attributed passing sample has measured depth.</p>'
+        f'<div class="pg-qb-air-grid">{"".join(columns)}</div>'
+        '<p class="pg-qb-note">Primary quarterbacks are paired for direct comparison. Backups appear only when they account for at least 20% of attributed team pass plays and at least 8 plays. Air yards and YAC are measured only on completions with an unambiguous catch spot; “Air yds / comp” is not full aDOT.</p>'
         '</section>'
     )
 
