@@ -12,6 +12,7 @@ from sports_aggregator.cfb.win_probability import game_turning_points
 
 ANCHOR="{{ postgame_analysis(game, team_stats, player_stats) }}"
 REPLACEMENT=ANCHOR+"\n{{ postgame_pace_and_leverage(game) }}"
+WP_MODEL_VERSION="wp-v2"
 
 STYLE='''<style>
 .pg-analytics{margin:0 0 26px}.pg-analytics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin:10px 0 18px}
@@ -61,7 +62,7 @@ def _render(repository,game:dict[str,Any])->Markup:
     game_id=int(game.get("game_id") or 0)
     try: pace=game_pace_summary(repository,game_id)
     except Exception: pace={"teams":{}}
-    try: turns=game_turning_points(repository,game_id)
+    try: turns=game_turning_points(repository,game_id,model_version=WP_MODEL_VERSION)
     except Exception: turns=[]
     if not pace.get("teams") and not turns: return Markup("")
     pace_cards=''.join(_pace_card(team,states) for team,states in pace.get("teams",{}).items())
@@ -75,12 +76,12 @@ def _render(repository,game:dict[str,Any])->Markup:
         turn_html.append('<div class="pg-turn">'
                          f'<strong>{escape(label)}</strong>'
                          f'<p>{escape(str(row.get("play_text") or row.get("play_type") or "Play"))}</p></div>')
-    turning=''.join(turn_html) or '<div class="empty">Fit and score wp-v1 to identify leverage and turning points.</div>'
+    turning=''.join(turn_html) or f'<div class="empty">Fit and score {escape(WP_MODEL_VERSION)} to identify leverage and turning points.</div>'
     return Markup(STYLE+'<section class="section pg-analytics">'
         '<div class="postgame-section-head"><h3>Pace & game state</h3><span>pace-v1 · garbage time excluded</span></div>'
         f'<div class="pg-analytics-grid">{pace_cards}</div>'
-        '<p class="pg-note">Neutral = score margin within 8 points. Play rate is qualifying rush/pass snaps per represented game-clock minute; it is a tempo proxy, not literal seconds per snap. Counts are shown beside each split.</p>'
-        '<div class="postgame-section-head"><h3>Turning points</h3><span>wp-v1 leverage</span></div>'
+        '<p class="pg-note">Neutral = score margin within 8 points. Play rate uses represented same-drive game-clock intervals between qualifying rush/pass snaps; it is a tempo proxy, not wall-clock seconds to snap. Counts are shown beside each split.</p>'
+        f'<div class="postgame-section-head"><h3>Turning points</h3><span>{escape(WP_MODEL_VERSION)} leverage</span></div>'
         f'{turning}</section>')
 
 
