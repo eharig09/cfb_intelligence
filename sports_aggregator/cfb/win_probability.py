@@ -184,13 +184,20 @@ def score_plays(repository, *, from_season: int | None = None,
         plays=[dict(row) for row in connection.execute(f"""SELECT * FROM cfb_plays {where}
           ORDER BY game_id,period,clock_minutes DESC,clock_seconds DESC,drive_number,play_number""",params).fetchall()]
     if not table: return {"model_version":model_version,"scored":0,"reason":"model_not_fitted"}
-    now=datetime.now(timezone.utc).isoformat(); output=[]; previous_by_game={}
+    now=datetime.now(timezone.utc).isoformat(); output=[]
+    by_game: dict[int,list[dict[str,Any]]] = defaultdict(list)
     for row in plays:
-        probability=_lookup(table,state_key(row))
-        previous=previous_by_game.get(int(row["game_id"]))
-        leverage=abs(probability-previous) if probability is not None and previous is not None else None
-        output.append((row["play_id"],model_version,probability,leverage,now))
-        if probability is not None: previous_by_game[int(row["game_id"])]=probability
+        row["_wp"]=_lookup(table,state_key(row))
+        by_game[int(row["game_id"])].append(row)
+    for game_rows in by_game.values():
+        for index,row in enumerate(game_rows):
+            probability=row.get("_wp")
+            next_probability = game_rows[index+1].get("_wp") if index+1 < len(game_rows) else None
+            # The jump from this pre-play state to the next pre-play state was
+            # caused by this play, so leverage belongs on this play's text.
+            leverage=(abs(float(next_probability)-float(probability))
+                      if probability is not None and next_probability is not None else None)
+            output.append((row["play_id"],model_version,probability,leverage,now))
     with closing(repository._connect()) as connection:
         if output:
             ids=[r[0] for r in output]; placeholders=",".join("?" for _ in ids)
