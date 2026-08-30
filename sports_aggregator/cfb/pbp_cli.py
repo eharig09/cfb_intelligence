@@ -13,6 +13,9 @@ from dotenv import load_dotenv
 
 from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError, FINISHED_WEEK_TTL
 from sports_aggregator.cfb.expected_points import fit_model as fit_edp, score_plays as score_edp
+from sports_aggregator.cfb.expected_points_v2 import fit_model as fit_ep
+from sports_aggregator.cfb.expected_points_v2 import score_plays as score_epa
+from sports_aggregator.cfb.expected_points_v2 import validate_model as validate_ep
 from sports_aggregator.cfb.model_validation import validate_edp, validate_wp
 from sports_aggregator.cfb.pace import game_pace_summary
 from sports_aggregator.cfb.play_by_play import replace_week_plays, derive_week
@@ -26,7 +29,9 @@ from sports_aggregator.cfb.wp_calibration import score_calibrated as score_wp_ca
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="CFB play-by-play analytics")
     p.add_argument("command", choices=(
-        "backfill", "derive", "fit-edp", "score-edp", "validate-edp",
+        "backfill", "derive",
+        "fit-edp", "score-edp", "validate-edp",
+        "fit-ep", "score-epa", "validate-ep",
         "fit-wp", "score-wp", "fit-wp-v2", "score-wp-v2", "validate-wp",
         "fit-wp-calibration", "score-wp-calibrated", "rebuild-values", "pace"))
     p.add_argument("--year", type=int, default=datetime.now().year)
@@ -58,7 +63,7 @@ def _years(args) -> tuple[int, int]:
 
 
 def _model_version(args, family: str) -> str:
-    defaults = {"edp": "edp-v1", "wp": "wp-v1", "wp-v2": "wp-v2"}
+    defaults = {"edp": "edp-v1", "ep": "ep-v1", "wp": "wp-v1", "wp-v2": "wp-v2"}
     return str(args.model_version or defaults[family])
 
 
@@ -134,6 +139,22 @@ def main(argv: list[str] | None = None, *, client=None) -> int:
                                      model_version=version), indent=2))
         return 0
 
+    if args.command == "fit-ep":
+        version = _model_version(args, "ep")
+        print(json.dumps(fit_ep(repository, from_season=first, to_season=last,
+                                model_version=version), indent=2))
+        return 0
+    if args.command == "score-epa":
+        version = _model_version(args, "ep")
+        print(json.dumps(score_epa(repository, from_season=first, to_season=last,
+                                   model_version=version), indent=2))
+        return 0
+    if args.command == "validate-ep":
+        version = _model_version(args, "ep")
+        print(json.dumps(validate_ep(repository, from_season=first, to_season=last,
+                                    model_version=version), indent=2))
+        return 0
+
     if args.command == "fit-wp":
         version = _model_version(args, "wp")
         print(json.dumps(fit_wp(repository, from_season=first, to_season=last,
@@ -179,9 +200,11 @@ def main(argv: list[str] | None = None, *, client=None) -> int:
     if args.command == "rebuild-values":
         edp = score_edp(repository, from_season=first, to_season=last,
                         model_version=_model_version(args, "edp"))
+        ep = score_epa(repository, from_season=first, to_season=last,
+                       model_version=_model_version(args, "ep"))
         wp = score_wp(repository, from_season=first, to_season=last,
                       model_version=_model_version(args, "wp"))
-        print(json.dumps({"edp": edp, "wp": wp}, indent=2))
+        print(json.dumps({"edp": edp, "ep": ep, "wp": wp}, indent=2))
         return 0
 
     client = client or CFBDClient(raw_cache_path=os.getenv("CFBD_RAW_CACHE_PATH", "instance/cfbd_raw"))
