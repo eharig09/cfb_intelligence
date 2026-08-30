@@ -45,28 +45,49 @@ def _detail_state(row: dict[str, Any]) -> str:
     return "trailing_multi_score"
 
 
+def _attach_snap_intervals(items: list[dict[str, Any]]) -> None:
+    """Attach game-clock seconds since the prior offensive snap on a drive.
+
+    Staying within a drive avoids counting the opponent's possession as part of
+    an offense's tempo. Intervals above 60 seconds are ignored as likely period,
+    timeout, review or feed-boundary artifacts. A stopped game clock can yield
+    zero and therefore contributes no denominator time.
+    """
+    previous: dict[str, tuple[int, dict[str, Any]]] = {}
+    for row in items:
+        row["snap_interval_seconds"] = None
+        drive = str(row.get("drive_id") or "")
+        current = _game_seconds_remaining(row)
+        if not drive or current is None:
+            continue
+        prior = previous.get(drive)
+        if prior is not None:
+            prior_clock, _prior_row = prior
+            interval = prior_clock - current
+            if 0 < interval <= 60:
+                row["snap_interval_seconds"] = interval
+        previous[drive] = (current, row)
+
+
 def _rate_packet(rows: list[dict[str, Any]]) -> dict[str, Any]:
     qualifying = [r for r in rows if r.get("rush_pass") in {"rush", "pass"}]
     passes = sum(1 for r in qualifying if r["rush_pass"] == "pass")
     rushes = len(qualifying) - passes
-    clocks = [(_game_seconds_remaining(r), r) for r in qualifying]
-    clocks = [(value, row) for value, row in clocks if value is not None]
-    # Play rate uses elapsed game-clock span represented by the state's snaps.
-    # It is a descriptive tempo proxy, not seconds-to-snap; true snap interval
-    # requires continuous clock/runoff metadata the historical feed may not have.
-    span_minutes = None
-    if len(clocks) >= 2:
-        values = [value for value, _ in clocks]
-        span_seconds = max(values) - min(values)
-        if span_seconds > 0:
-            span_minutes = span_seconds / 60.0
+    intervals = [float(r["snap_interval_seconds"]) for r in qualifying
+                 if r.get("snap_interval_seconds") is not None]
+    minutes = sum(intervals) / 60.0 if intervals else None
+    # Each valid interval represents one subsequent snap. Using intervals rather
+    # than total state span prevents opponent possessions from diluting tempo.
+    play_rate = len(intervals) / minutes if minutes and minutes > 0 else None
+    seconds_per_play = sum(intervals) / len(intervals) if intervals else None
     return {
         "plays": len(qualifying),
         "passes": passes,
         "rushes": rushes,
         "pass_rate": passes / len(qualifying) if qualifying else None,
-        "play_rate": len(qualifying) / span_minutes if span_minutes and span_minutes > 0 else None,
-        "clock_span_minutes": span_minutes,
+        "play_rate": play_rate,
+        "seconds_per_play_clock": seconds_per_play,
+        "tempo_intervals": len(intervals),
     }
 
 
@@ -76,11 +97,11 @@ def game_pace_summary(repository, game_id: int, *, metric_version: str = "pbp-v1
     initialize(repository)
     with closing(repository._connect()) as connection:
         rows = [dict(row) for row in connection.execute("""
-          SELECT p.offense,p.period,p.clock_minutes,p.clock_seconds,
+          SELECT p.offense,p.drive_id,p.play_number,p.period,p.clock_minutes,p.clock_seconds,
                  p.offense_score,p.defense_score,m.rush_pass,m.garbage_time,m.down_type
           FROM cfb_plays p JOIN cfb_play_metrics m USING(play_id)
           WHERE p.game_id=? AND m.metric_version=?
-          ORDER BY p.period,p.clock_minutes DESC,p.clock_seconds DESC
+          ORDER BY p.period,p.clock_minutes DESC,p.clock_seconds DESC,p.drive_number,p.play_number
         """, (int(game_id), metric_version)).fetchall()]
 
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -91,6 +112,7 @@ def game_pace_summary(repository, game_id: int, *, metric_version: str = "pbp-v1
 
     teams: dict[str, Any] = {}
     for team, items in grouped.items():
+        _attach_snap_intervals(items)
         buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in items:
             margin = _margin(row)
@@ -121,7 +143,8 @@ def game_pace_summary(repository, game_id: int, *, metric_version: str = "pbp-v1
         "neutral_definition": "absolute score margin <= 8; garbage time excluded",
         "leading_definition": "offense score margin > 0; overlaps neutral when lead <= 8",
         "trailing_definition": "offense score margin < 0; overlaps neutral when deficit <= 8",
-        "play_rate_definition": "qualifying rush/pass snaps divided by represented game-clock span",
+        "play_rate_definition": "valid same-drive offensive snap intervals per game-clock minute",
+        "seconds_per_play_definition": "mean game-clock seconds between qualifying same-drive offensive snaps",
         "teams": teams,
     }
 
@@ -145,14 +168,16 @@ def season_pace_summary(repository, team: str, season: int, *, metric_version: s
         plays = sum(int(row.get("plays") or 0) for row in packets)
         passes = sum(int(row.get("passes") or 0) for row in packets)
         rushes = sum(int(row.get("rushes") or 0) for row in packets)
-        weighted_play_rate_num = sum((float(row["play_rate"]) * int(row.get("plays") or 0))
-                                     for row in packets if row.get("play_rate") is not None)
-        weighted_play_rate_den = sum(int(row.get("plays") or 0) for row in packets
-                                     if row.get("play_rate") is not None)
+        interval_count = sum(int(row.get("tempo_intervals") or 0) for row in packets)
+        interval_seconds = sum(float(row.get("seconds_per_play_clock") or 0) * int(row.get("tempo_intervals") or 0)
+                               for row in packets if row.get("seconds_per_play_clock") is not None)
+        sec_per_play = interval_seconds / interval_count if interval_count else None
         result[key] = {
             "plays": plays, "passes": passes, "rushes": rushes,
             "pass_rate": passes / plays if plays else None,
-            "play_rate": weighted_play_rate_num / weighted_play_rate_den if weighted_play_rate_den else None,
+            "seconds_per_play_clock": sec_per_play,
+            "play_rate": 60.0 / sec_per_play if sec_per_play and sec_per_play > 0 else None,
+            "tempo_intervals": interval_count,
             "games": len(packets),
         }
     return {"team": str(team), "season": int(season), "pace_version": PACE_VERSION, "states": result}
