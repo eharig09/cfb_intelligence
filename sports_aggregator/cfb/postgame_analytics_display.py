@@ -18,8 +18,8 @@ STYLE = '''<style>
 .pg-analytics{margin:0 0 24px}.pg-section-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-end;margin:18px 0 7px;padding-bottom:6px;border-bottom:1px solid var(--line)}.pg-section-head h3{margin:0;font-size:.8rem}.pg-section-head span{font-size:.51rem;color:var(--muted)}
 .pg-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}.pg-summary-card{border:1px solid var(--line);background:var(--paper);padding:10px 12px}.pg-summary-card h4{margin:0 0 8px;font-size:.68rem}.pg-summary-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.pg-summary-metric span{display:block;font-size:.48rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800}.pg-summary-metric strong{display:block;margin-top:3px;font-family:var(--display-font);font-size:.82rem;font-variant-numeric:tabular-nums}
 .pg-details{border:1px solid var(--line);background:var(--paper);margin:8px 0 5px}.pg-details summary{cursor:pointer;padding:8px 11px;font-size:.56rem;font-weight:800;text-transform:uppercase;letter-spacing:.055em;color:var(--muted)}.pg-details[open] summary{border-bottom:1px solid var(--line)}.pg-detail-grid{display:grid;grid-template-columns:1fr 1fr}.pg-detail-team{padding:9px 11px}.pg-detail-team+.pg-detail-team{border-left:1px solid var(--line)}.pg-detail-team h4{margin:0 0 6px;font-size:.64rem}.pg-row{display:grid;grid-template-columns:1.35fr .72fr .72fr;gap:8px;padding:4px 0;border-top:1px solid var(--line);font-size:.57rem}.pg-row:first-of-type{border-top:0}.pg-num{text-align:right;font-variant-numeric:tabular-nums}.pg-note{color:var(--muted);font-size:.55rem;line-height:1.45;margin:7px 0 0}
-.pg-turning{border:1px solid var(--line);background:var(--paper);margin:8px 0}.pg-turn{display:grid;grid-template-columns:minmax(205px,.72fr) 1.8fr;gap:12px;padding:8px 11px;border-top:1px solid var(--line);align-items:start}.pg-turn:first-child{border-top:0}.pg-turn strong{font-size:.61rem;line-height:1.35}.pg-turn p{margin:0;font-size:.59rem;line-height:1.4}.pg-turn-meta{color:var(--muted);font-size:.48rem;text-transform:uppercase;letter-spacing:.045em;margin-top:2px}
-@media(max-width:720px){.pg-summary-grid,.pg-detail-grid{grid-template-columns:1fr}.pg-detail-team+.pg-detail-team{border-left:0;border-top:1px solid var(--line)}.pg-turn{grid-template-columns:1fr}.pg-section-head span{display:none}}@media(max-width:460px){.pg-summary-metrics{grid-template-columns:1fr 1fr}}
+.pg-turning{border-top:1px solid var(--line);margin:8px 0}.pg-turn{display:grid;grid-template-columns:minmax(235px,.82fr) minmax(0,1.7fr);gap:15px;padding:10px 2px;border-bottom:1px solid var(--line);align-items:start}.pg-turn-state{display:flex;flex-wrap:wrap;gap:4px 7px;align-items:center}.pg-turn strong{font-size:.62rem;line-height:1.35}.pg-turn-chip{display:inline-block;font-size:.48rem;line-height:1;text-transform:uppercase;letter-spacing:.045em;color:var(--muted);padding:3px 5px;border:1px solid var(--line)}.pg-turn-context{margin-top:5px;font-size:.56rem;line-height:1.45;color:var(--muted)}.pg-turn-play{margin:0;font-size:.61rem;line-height:1.45}.pg-turn-meta{margin-top:4px;color:var(--muted);font-size:.49rem;line-height:1.35}
+@media(max-width:720px){.pg-summary-grid,.pg-detail-grid{grid-template-columns:1fr}.pg-detail-team+.pg-detail-team{border-left:0;border-top:1px solid var(--line)}.pg-turn{grid-template-columns:1fr;gap:5px}.pg-section-head span{display:none}}@media(max-width:460px){.pg-summary-metrics{grid-template-columns:1fr 1fr}}
 </style>'''
 
 
@@ -85,6 +85,38 @@ def _detail_team(team: str, states: dict[str, Any]) -> str:
     )
 
 
+def _down_distance(row: dict[str, Any]) -> str:
+    down = row.get("down")
+    distance = row.get("distance")
+    if down is None or distance is None:
+        return ""
+    try:
+        down_i = int(down); distance_i = int(distance)
+    except (TypeError, ValueError):
+        return ""
+    suffix = {1: "st", 2: "nd", 3: "rd"}.get(down_i, "th")
+    return f"{down_i}{suffix} & {distance_i}"
+
+
+def _field_position(row: dict[str, Any]) -> str:
+    offense = str(row.get("offense") or "")
+    defense = str(row.get("defense") or "")
+    ytg = row.get("yards_to_goal")
+    try: ytg = int(ytg)
+    except (TypeError, ValueError): return ""
+    if ytg <= 50:
+        return f"at {defense} {ytg}" if defense else f"{ytg} yards from goal"
+    own = 100 - ytg
+    return f"at {offense} {own}" if offense else f"{ytg} yards from goal"
+
+
+def _scoreline(row: dict[str, Any], game: dict[str, Any]) -> str:
+    home = row.get("home_score"); away = row.get("away_score")
+    if home is None or away is None:
+        return ""
+    return f"{game.get('away_team') or 'Away'} {away} · {game.get('home_team') or 'Home'} {home}"
+
+
 def _render(repository, game: dict[str, Any]) -> Markup:
     game_id = int(game.get("game_id") or 0)
     try: pace = game_pace_summary(repository, game_id)
@@ -108,21 +140,43 @@ def _render(repository, game: dict[str, Any]) -> Markup:
 
     turn_rows = []
     for row in turns:
-        period = int(row.get("period") or 0); minute = int(row.get("clock_minutes") or 0); second = int(row.get("clock_seconds") or 0)
-        leverage = float(row.get("leverage") or 0); wp = row.get("home_win_probability")
-        state = f"Q{period} {minute}:{second:02d} · {100 * leverage:.1f} WP pts"
-        if wp is not None: state += f" · home {100 * float(wp):.1f}%"
-        terminal = '<div class="pg-turn-meta">Final play</div>' if row.get("terminal_outcome") is not None else ''
+        period = int(row.get("period") or 0)
+        minute = int(row.get("clock_minutes") or 0)
+        second = int(row.get("clock_seconds") or 0)
+        leverage = float(row.get("leverage") or 0)
+        wp = row.get("home_win_probability")
+        chips = [f"Q{period} {minute}:{second:02d}", f"WP swing {100 * leverage:.1f} pts"]
+        if wp is not None:
+            chips.append(f"Home WP {100 * float(wp):.1f}%")
+        if row.get("terminal_outcome") is not None:
+            chips.append("Final play")
+        context = []
+        scoreline = _scoreline(row, game)
+        if scoreline: context.append(scoreline)
+        dd = _down_distance(row)
+        if dd: context.append(dd)
+        field = _field_position(row)
+        if field: context.append(field)
+        offense = str(row.get("offense") or "")
+        if offense: context.append(f"{offense} ball")
+        gained = row.get("yards_gained")
+        if gained is not None:
+            try: context.append(f"{int(gained):+d} yds")
+            except (TypeError, ValueError): pass
+        chip_html = ''.join(f'<span class="pg-turn-chip">{escape(chip)}</span>' for chip in chips)
+        context_html = ' · '.join(escape(piece) for piece in context)
         turn_rows.append(
             '<div class="pg-turn">'
-            f'<div><strong>{escape(state)}</strong>{terminal}</div>'
-            f'<p>{escape(str(row.get("play_text") or row.get("play_type") or "Play"))}</p></div>'
+            f'<div><div class="pg-turn-state">{chip_html}</div>'
+            f'<div class="pg-turn-context">{context_html}</div></div>'
+            f'<div><p class="pg-turn-play">{escape(str(row.get("play_text") or row.get("play_type") or "Play"))}</p>'
+            '<div class="pg-turn-meta">Ranked by WP swing, game stage, competitive state and play context.</div></div></div>'
         )
     turning_html = ''.join(turn_rows) or f'<div class="empty">Fit and score {escape(WP_MODEL_VERSION)} to identify leverage and turning points.</div>'
 
     return Markup(
         STYLE + '<section class="section pg-analytics">' + pace_html +
-        f'<div class="pg-section-head"><h3>Turning points</h3><span>{escape(WP_MODEL_VERSION)} leverage</span></div>'
+        f'<div class="pg-section-head"><h3>Turning points</h3><span>{escape(WP_MODEL_VERSION)} · context-aware ranking</span></div>'
         f'<div class="pg-turning">{turning_html}</div></section>'
     )
 
