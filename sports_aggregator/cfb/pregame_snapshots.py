@@ -17,7 +17,6 @@ from sports_aggregator.cfb.player_matchups import player_matchups
 from sports_aggregator.cfb.external import fpi_for_game, weather_for_game
 
 SNAPSHOT_VERSION = "pregame-v1"
-STAGES = ((24.0, "T-24H"), (3.0, "T-3H"), (0.0, "FINAL"))
 
 
 def initialize(repository) -> None:
@@ -47,12 +46,12 @@ def _utc(value: str) -> datetime:
 
 
 def _stage(hours_to_kick: float, existing: set[str]) -> str | None:
-    # Capture the most mature missing stage whose window has been reached. This
-    # means an app that was offline at T-24 can still retain a T-3 snapshot,
-    # without falsely backdating it as a 24-hour observation.
     if hours_to_kick < 0:
         return None
-    if hours_to_kick <= .35 and "FINAL" not in existing:
+    # Production intentionally refreshes on a low-frequency cadence to protect
+    # the 512 MB web host. FINAL therefore means the latest scheduled pregame
+    # state, usually inside ~2 hours, and the exact observed offset is stored.
+    if hours_to_kick <= 2.25 and "FINAL" not in existing:
         return "FINAL"
     if hours_to_kick <= 3.0 and "T-3H" not in existing:
         return "T-3H"
@@ -85,6 +84,8 @@ def build_snapshot(repository, game: dict[str, Any]) -> dict[str, Any]:
     away_metrics = _safe(lambda: repository.team_metrics(game["away_team"], season), {})
     home_quality = _safe(lambda: repository.team_quality_snapshot(home_id, season), {})
     away_quality = _safe(lambda: repository.team_quality_snapshot(away_id, season), {})
+    home_depth = _safe(lambda: repository.team_depth_chart(home_id, season), {})
+    away_depth = _safe(lambda: repository.team_depth_chart(away_id, season), {})
 
     def compact_watch(row: dict[str, Any]) -> dict[str, Any]:
         attacker = row.get("attacker") or {}; defender = row.get("defender") or {}
@@ -114,6 +115,7 @@ def build_snapshot(repository, game: dict[str, Any]) -> dict[str, Any]:
             "home_metrics": home_metrics, "away_metrics": away_metrics,
             "home_quality": home_quality, "away_quality": away_quality,
         },
+        "depth_chart": {"home": home_depth, "away": away_depth},
         "unit_matchups": (unit_report or {}).get("matchups") or [],
         "player_watches": [compact_watch(row) for row in player_watches],
     }
