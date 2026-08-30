@@ -22,6 +22,7 @@ from sports_aggregator.cfb.depth_chart_profiles import install_depth_chart_profi
 from sports_aggregator.cfb.models import normalize_alias
 from sports_aggregator.cfb.postgame_display import install_postgame_display
 from sports_aggregator.cfb.postgame_analytics_display import install_postgame_analytics_display
+from sports_aggregator.cfb.postgame_tendencies_display import install_postgame_tendencies_display
 from sports_aggregator.cfb.production_display import install_production_display
 
 
@@ -216,6 +217,7 @@ def install_cfbdepth_enhancements(app) -> None:
     install_production_display(app)
     install_postgame_display(app)
     install_postgame_analytics_display(app)
+    install_postgame_tendencies_display(app)
     app.jinja_env.globals["cfbdepth_roster_facts"] = (
         lambda school: _roster_facts(repository, str(school))
     )
