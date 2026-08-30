@@ -2,8 +2,9 @@
 
 WP-v2 keeps the auditable, low-memory philosophy of wp-v1 but replaces coarse
 state buckets with a logistic model over continuous game state plus pregame
-strength.  It is intentionally dependency-free so it can be trained on the
-memory-constrained Render host.
+strength. Training uses deterministic, streaming Newton/IRLS updates: only the
+small gradient/Hessian matrices are retained in memory, so the result is not
+sensitive to database row order like the original online-SGD prototype was.
 
 Features are all pre-play / pregame information:
 - home score margin
@@ -11,13 +12,12 @@ Features are all pre-play / pregame information:
 - score-margin x late-game interaction
 - possession
 - field position oriented to the home team
-- down and distance
-- pregame Elo differential
+- possession-oriented down and distance pressure
+- pregame Elo differential when both Elo values are available
 - neutral-site indicator
 
 The model writes predictions into the same cfb_play_win_probability table used
-by wp-v1, so the existing validation and turning-point tooling can compare model
-versions directly.
+by wp-v1, so existing validation and turning-point tooling can compare versions.
 """
 from __future__ import annotations
 
@@ -29,7 +29,8 @@ from typing import Any
 
 MODEL_VERSION = "wp-v2"
 WRITE_BATCH = 1000
-FEATURE_VERSION = "wp-v2-features-1"
+FEATURE_VERSION = "wp-v2-features-2"
+FEATURE_COUNT = 10
 
 
 def initialize(repository) -> None:
@@ -55,22 +56,32 @@ def initialize(repository) -> None:
 
 def _num(value: Any, default: float = 0.0) -> float:
     try:
+        if value is None or value == "":
+            return default
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _optional_num(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _home_state(row: Any) -> tuple[float, bool, float]:
     offense_is_home = str(row["offense"]) == str(row["home_team"])
     offense_score = _num(row["offense_score"])
     defense_score = _num(row["defense_score"])
-    if offense_is_home:
-        home_margin = offense_score - defense_score
-    else:
-        home_margin = defense_score - offense_score
+    home_margin = offense_score - defense_score if offense_is_home else defense_score - offense_score
 
     yards_to_goal = max(1.0, min(100.0, _num(row["yards_to_goal"], 50.0)))
-    # Distance from the home team's attacking goal. Lower = better for home.
+    # Convert the current spot into distance from the HOME attacking goal.
+    # If away has the ball, a large away yards-to-goal means they are backed up
+    # near their own end zone, which is favorable field position for home.
     home_ytg = yards_to_goal if offense_is_home else 100.0 - yards_to_goal
     return home_margin, offense_is_home, home_ytg
 
@@ -86,31 +97,45 @@ def _game_remaining(row: Any) -> float:
     return 0.0
 
 
+def _elo_diff(row: Any) -> tuple[float, bool]:
+    home_elo = _optional_num(row["home_pregame_elo"])
+    away_elo = _optional_num(row["away_pregame_elo"])
+    if home_elo is None or away_elo is None:
+        return 0.0, False
+    return home_elo - away_elo, True
+
+
 def features(row: Any) -> list[float]:
     margin, home_possession, home_ytg = _home_state(row)
     remaining = _game_remaining(row)
     elapsed = 1.0 - min(1.0, max(0.0, remaining / 3600.0))
     down = max(1.0, min(4.0, _num(row["down"], 1.0)))
     distance = max(0.0, min(25.0, _num(row["distance"], 10.0)))
-    home_elo = _num(row["home_pregame_elo"], 1500.0)
-    away_elo = _num(row["away_pregame_elo"], 1500.0)
-    elo_diff = home_elo - away_elo
+    elo_diff, _ = _elo_diff(row)
     neutral = 1.0 if int(row["neutral_site"] or 0) else 0.0
 
-    # Scaled features keep SGD stable without requiring a materialized standardizer.
     margin_scaled = max(-3.0, min(3.0, margin / 21.0))
-    field_scaled = (50.0 - home_ytg) / 50.0  # positive = home nearer scoring goal
+    field_scaled = (50.0 - home_ytg) / 50.0
     time_scaled = remaining / 3600.0
     possession = 1.0 if home_possession else -1.0
+
+    # Down/distance describe the OFFENSE'S burden. Orient them to home so a
+    # difficult situation hurts home when home possesses and helps home when
+    # away possesses.
+    down_pressure = (down - 1.0) / 3.0
+    distance_pressure = distance / 25.0
+    down_advantage = -possession * down_pressure
+    distance_advantage = -possession * distance_pressure
+
     return [
-        1.0,                              # intercept
+        1.0,
         margin_scaled,
         time_scaled,
-        margin_scaled * elapsed,          # margin matters more late
+        margin_scaled * elapsed,
         possession,
         field_scaled,
-        (down - 2.5) / 1.5,
-        (distance - 7.5) / 10.0,
+        down_advantage,
+        distance_advantage,
         max(-3.0, min(3.0, elo_diff / 400.0)),
         neutral,
     ]
@@ -147,39 +172,121 @@ def _training_sql(from_season: int | None, to_season: int | None) -> tuple[str, 
     return sql, params
 
 
+def _solve(matrix: list[list[float]], vector: list[float]) -> list[float]:
+    """Solve a tiny dense system with pivoted Gaussian elimination."""
+    n = len(vector)
+    augmented = [list(matrix[i]) + [float(vector[i])] for i in range(n)]
+    for column in range(n):
+        pivot = max(range(column, n), key=lambda row: abs(augmented[row][column]))
+        if abs(augmented[pivot][column]) < 1e-10:
+            augmented[pivot][column] = 1e-10
+        if pivot != column:
+            augmented[column], augmented[pivot] = augmented[pivot], augmented[column]
+        divisor = augmented[column][column]
+        for j in range(column, n + 1):
+            augmented[column][j] /= divisor
+        for row in range(n):
+            if row == column:
+                continue
+            factor = augmented[row][column]
+            if factor == 0:
+                continue
+            for j in range(column, n + 1):
+                augmented[row][j] -= factor * augmented[column][j]
+    return [augmented[i][n] for i in range(n)]
+
+
 def fit_model(repository, *, from_season: int | None = None,
               to_season: int | None = None, model_version: str = MODEL_VERSION,
-              epochs: int = 5, learning_rate: float = 0.025,
+              epochs: int = 8, learning_rate: float = 1.0,
               l2: float = 0.0005) -> dict[str, Any]:
-    """Fit dependency-free logistic WP with streaming SGD."""
+    """Fit logistic WP with streaming damped Newton/IRLS updates.
+
+    `learning_rate` is a damping multiplier on the Newton step (0 < rate <= 1
+    is normally appropriate), not a per-row SGD rate.
+    """
     initialize(repository)
     epochs = max(1, int(epochs))
-    learning_rate = float(learning_rate)
+    learning_rate = max(0.01, min(1.0, float(learning_rate)))
     l2 = max(0.0, float(l2))
-    weights = [0.0] * 10
+    weights = [0.0] * FEATURE_COUNT
     sql, params = _training_sql(from_season, to_season)
     samples = 0
     final_log_loss = 0.0
+    elo_available = 0
+    neutral_samples = 0
 
     for epoch in range(epochs):
+        gradient = [0.0] * FEATURE_COUNT
+        hessian = [[0.0] * FEATURE_COUNT for _ in range(FEATURE_COUNT)]
         epoch_samples = 0
         epoch_loss = 0.0
-        # A gentle epoch decay keeps later passes from oscillating around the optimum.
-        eta = learning_rate / math.sqrt(epoch + 1.0)
+        epoch_elo_available = 0
+        epoch_neutral = 0
         with closing(repository._connect()) as connection:
             for row in connection.execute(sql, params):
                 x = features(row)
                 y = 1.0 if float(row["home_points"]) > float(row["away_points"]) else 0.0
                 p = _predict(weights, x)
-                error = y - p
-                for index in range(len(weights)):
-                    penalty = 0.0 if index == 0 else l2 * weights[index]
-                    weights[index] += eta * (error * x[index] - penalty)
+                residual = y - p
+                curvature = max(1e-6, p * (1.0 - p))
+                for i in range(FEATURE_COUNT):
+                    gradient[i] += residual * x[i]
+                    for j in range(i, FEATURE_COUNT):
+                        hessian[i][j] += curvature * x[i] * x[j]
                 clipped = min(.999999, max(.000001, p))
                 epoch_loss += -(y * math.log(clipped) + (1.0 - y) * math.log(1.0 - clipped))
                 epoch_samples += 1
+                if _elo_diff(row)[1]:
+                    epoch_elo_available += 1
+                if int(row["neutral_site"] or 0):
+                    epoch_neutral += 1
+
+        if not epoch_samples:
+            break
+        for i in range(FEATURE_COUNT):
+            for j in range(i):
+                hessian[i][j] = hessian[j][i]
+            if i != 0:
+                # Scale ridge penalty by sample count so its meaning is stable.
+                hessian[i][i] += l2 * epoch_samples
+                gradient[i] -= l2 * epoch_samples * weights[i]
+            else:
+                hessian[i][i] += 1e-8
+
+        step = _solve(hessian, gradient)
+        # Clamp very large Newton jumps as an additional guard against a nearly
+        # singular historical feature matrix.
+        max_abs = max((abs(value) for value in step), default=0.0)
+        shrink = min(1.0, 5.0 / max_abs) if max_abs > 0 else 1.0
+        for i in range(FEATURE_COUNT):
+            weights[i] += learning_rate * shrink * step[i]
+
         samples = epoch_samples
-        final_log_loss = epoch_loss / epoch_samples if epoch_samples else 0.0
+        final_log_loss = epoch_loss / epoch_samples
+        elo_available = epoch_elo_available
+        neutral_samples = epoch_neutral
+        if max(abs(learning_rate * shrink * value) for value in step) < 1e-6:
+            break
+
+    # Evaluate once at the FINAL coefficients so the reported training loss is
+    # directly comparable with holdout log loss; the old prototype reported the
+    # loss encountered while weights were still changing within an epoch.
+    evaluation_loss = 0.0
+    evaluation_samples = 0
+    mean_prediction = 0.0
+    actual_home_wins = 0.0
+    with closing(repository._connect()) as connection:
+        for row in connection.execute(sql, params):
+            p = _predict(weights, features(row))
+            y = 1.0 if float(row["home_points"]) > float(row["away_points"]) else 0.0
+            clipped = min(.999999, max(.000001, p))
+            evaluation_loss += -(y * math.log(clipped) + (1.0 - y) * math.log(1.0 - clipped))
+            mean_prediction += p
+            actual_home_wins += y
+            evaluation_samples += 1
+    if evaluation_samples:
+        final_log_loss = evaluation_loss / evaluation_samples
 
     fitted_at = datetime.now(timezone.utc).isoformat()
     with closing(repository._connect()) as connection:
@@ -193,32 +300,44 @@ def fit_model(repository, *, from_season: int | None = None,
         "model_version": model_version,
         "feature_version": FEATURE_VERSION,
         "plays": samples,
-        "epochs": epochs,
-        "training_log_loss_last_epoch": round(final_log_loss, 5),
+        "epochs_requested": epochs,
+        "training_log_loss": round(final_log_loss, 5),
+        "training_mean_prediction": round(mean_prediction / evaluation_samples, 4) if evaluation_samples else None,
+        "training_home_win_rate": round(actual_home_wins / evaluation_samples, 4) if evaluation_samples else None,
+        "elo_coverage": round(elo_available / samples, 4) if samples else 0.0,
+        "neutral_site_share": round(neutral_samples / samples, 4) if samples else 0.0,
         "coefficients": [round(value, 6) for value in weights],
         "from_season": from_season,
         "to_season": to_season,
     }
 
 
-def _load_weights(repository, model_version: str) -> list[float] | None:
+def _load_weights(repository, model_version: str) -> tuple[list[float] | None, str | None]:
     initialize(repository)
     with closing(repository._connect()) as connection:
         row = connection.execute(
-            "SELECT coefficients_json FROM cfb_win_probability_logistic_model WHERE model_version=?",
+            "SELECT coefficients_json,feature_version FROM cfb_win_probability_logistic_model WHERE model_version=?",
             (model_version,)).fetchone()
     if not row:
-        return None
+        return None, None
     values = json.loads(str(row[0]))
-    return [float(value) for value in values]
+    return [float(value) for value in values], str(row[1])
 
 
 def score_plays(repository, *, from_season: int | None = None,
                 to_season: int | None = None, model_version: str = MODEL_VERSION) -> dict[str, Any]:
     """Score stored plays in streaming order and attach leverage to the causing play."""
-    weights = _load_weights(repository, model_version)
+    weights, feature_version = _load_weights(repository, model_version)
     if not weights:
         return {"model_version": model_version, "scored": 0, "reason": "model_not_fitted"}
+    if feature_version != FEATURE_VERSION:
+        return {
+            "model_version": model_version,
+            "scored": 0,
+            "reason": "feature_version_mismatch",
+            "stored_feature_version": feature_version,
+            "required_feature_version": FEATURE_VERSION,
+        }
 
     clauses: list[str] = []
     params: list[Any] = []
@@ -253,6 +372,8 @@ def score_plays(repository, *, from_season: int | None = None,
     scored = 0
     pending: tuple[str, float] | None = None
     current_game: int | None = None
+    elo_available = 0
+    total_rows = 0
 
     def flush() -> None:
         nonlocal batch
@@ -284,6 +405,9 @@ def score_plays(repository, *, from_season: int | None = None,
         for row in cursor:
             game_id = int(row["game_id"])
             probability = _predict(weights, features(row))
+            total_rows += 1
+            if _elo_diff(row)[1]:
+                elo_available += 1
             if current_game is not None and game_id != current_game:
                 if pending is not None:
                     emit(pending[0], pending[1], None)
@@ -295,4 +419,9 @@ def score_plays(repository, *, from_season: int | None = None,
         if pending is not None:
             emit(pending[0], pending[1], None)
     flush()
-    return {"model_version": model_version, "scored": scored}
+    return {
+        "model_version": model_version,
+        "feature_version": feature_version,
+        "scored": scored,
+        "elo_coverage": round(elo_available / total_rows, 4) if total_rows else 0.0,
+    }
