@@ -1,12 +1,15 @@
 """Event-centric turning points reconstructed from valid wp-v2 game states.
 
 Provider PBP mixes real football events with administrative rows, and some major
-scoring/return events do not carry a normal down/distance state.  Turning points
+scoring/return events do not carry a normal down/distance state. Turning points
 therefore use valid pre-play WP states for the before/after probabilities, but
 attribute each transition to the most meaningful football event that occurred
-between those states.  This prevents an ordinary play from inheriting the WP
-swing of a following pick-six/fumble return while keeping the fitted WP model
-untouched.
+between those states.
+
+The report also suppresses obviously implausible *ordinary-play* swings. Those
+rows remain in the stored wp-v2 output for model diagnostics; they simply do not
+masquerade as editorial turning points. Scores, turnovers and fourth-down events
+are never suppressed by this guardrail.
 """
 from __future__ import annotations
 
@@ -17,10 +20,6 @@ from typing import Any
 ADMIN_WORDS = (
     "timeout", "end of quarter", "end of 1st", "end of 2nd", "end of 3rd",
     "end of 4th", "end of half", "end of game", "end of regulation", "no play",
-)
-SPECIAL_WORDS = (
-    "touchdown", "intercept", "fumble", "field goal", "safety", "blocked punt",
-    "blocked field goal", "two point", "2pt",
 )
 
 
@@ -109,7 +108,7 @@ def _choose_event(segment: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _ranking_score(row: dict[str, Any]) -> float:
-    """Largest real WP swings first; context only makes modest adjustments."""
+    """Largest credible WP swings first; context only resolves near-ties."""
     leverage = abs(float(row.get("wp_change") or 0.0))
     period = int(row.get("period") or 0)
     before = row.get("home_wp_before")
@@ -118,8 +117,6 @@ def _ranking_score(row: dict[str, Any]) -> float:
     except (TypeError, ValueError):
         before = 0.5
 
-    # Keep the numerical WP swing dominant. These adjustments mainly resolve
-    # near-ties and elevate unmistakably decisive football events.
     stage = {1: 0.98, 2: 1.00, 3: 1.03, 4: 1.08}.get(period, 1.0)
     closeness = max(0.0, 1.0 - 2.0 * abs(before - 0.5))
     competitive = 0.97 + 0.06 * closeness
@@ -128,9 +125,55 @@ def _ranking_score(row: dict[str, Any]) -> float:
     return leverage * stage * competitive * event
 
 
+def _credible_ordinary_swing(row: dict[str, Any]) -> bool:
+    """Reject state discontinuities that are not believable football events.
+
+    wp-v2 remains stored exactly as scored. This is a report guardrail for cases
+    where provider-state transitions produce a huge probability jump on a routine
+    play. A genuine major event or fourth-down result is always retained.
+    """
+    priority = int(row.get("event_priority") or 0)
+    if priority >= 25:
+        return True
+
+    leverage = abs(float(row.get("wp_change") or 0.0))
+    if leverage <= 0.12:
+        return True
+
+    try:
+        period = int(row.get("period") or 0)
+        minute = int(row.get("clock_minutes") or 0)
+        second = int(row.get("clock_seconds") or 0)
+        down = int(row.get("down") or 0)
+        ytg = int(row.get("yards_to_goal") or 100)
+        home_score = int(row.get("home_score") or 0)
+        away_score = int(row.get("away_score") or 0)
+    except (TypeError, ValueError):
+        return False
+
+    # Ordinary first-half and third-quarter snaps should not move a robust WP
+    # model by 12+ points. Keep those rows available for a future wp-v3 audit,
+    # but do not publish them as decisive plays.
+    if period <= 3:
+        return False
+
+    remaining = minute * 60 + second
+    score_margin = abs(home_score - away_score)
+
+    # In the final five minutes of a one-score game, a red-zone or conversion-
+    # pressure snap can legitimately create a very large shift even without a
+    # turnover or score (e.g. 3rd-and-goal completion to the 2).
+    if remaining <= 300 and score_margin <= 8 and (down >= 3 or ytg <= 10):
+        return True
+
+    # Elsewhere in Q4, ordinary-play swings above 18 points are too unstable to
+    # publish without a stronger event explanation.
+    return leverage <= 0.18
+
+
 def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2",
                         limit: int = 6) -> list[dict[str, Any]]:
-    """Return the largest event-attributed WP changes for one completed game."""
+    """Return the largest event-attributed, report-credible WP changes."""
     from sports_aggregator.cfb.win_probability import initialize
 
     initialize(repository)
@@ -213,10 +256,9 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
         if next_index is None and terminal_outcome is not None:
             event["terminal_outcome"] = terminal_outcome
         event["turning_point_score"] = _ranking_score(event)
-        candidates.append(event)
+        if _credible_ordinary_swing(event):
+            candidates.append(event)
 
-    # Deduplicate event rows in case a provider gives one special event between
-    # closely spaced state records. Keep the largest attributed swing.
     by_event: dict[str, dict[str, Any]] = {}
     for row in candidates:
         key = str(row.get("play_id") or "")
