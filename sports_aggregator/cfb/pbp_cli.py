@@ -38,10 +38,10 @@ def parser() -> argparse.ArgumentParser:
                    help="Optional output/model version. Defaults by model family.")
     p.add_argument("--source-model-version", default=None,
                    help="Source WP version for calibration commands.")
-    p.add_argument("--epochs", type=int, default=5,
-                   help="Training epochs for wp-v2 logistic model.")
-    p.add_argument("--learning-rate", type=float, default=0.025,
-                   help="Initial SGD learning rate for wp-v2.")
+    p.add_argument("--epochs", type=int, default=8,
+                   help="Newton/IRLS iterations for wp-v2 logistic model.")
+    p.add_argument("--learning-rate", type=float, default=1.0,
+                   help="Damping multiplier for wp-v2 Newton steps (0-1).")
     p.add_argument("--l2", type=float, default=0.0005,
                    help="L2 regularization for wp-v2.")
     p.add_argument("--force", action="store_true")
