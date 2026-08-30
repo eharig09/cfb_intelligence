@@ -8,6 +8,7 @@ import os
 
 from dotenv import load_dotenv
 
+from sports_aggregator.cfb.models import normalize_alias
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.wp_turning_points import game_turning_points
 
@@ -23,23 +24,44 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def _matching_games(connection, teams: list[str], season: int | None) -> list:
+    """Resolve matchup using the same normalized-name semantics as the app."""
+    if len(teams) != 2:
+        return []
+    wanted = {normalize_alias(str(team)) for team in teams}
+    clauses = []
+    params: list[object] = []
+    if season is not None:
+        clauses.append("season=?")
+        params.append(int(season))
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = connection.execute(
+        f"""SELECT game_id,season,week,away_team,home_team,away_points,home_points,completed
+            FROM games {where}
+            ORDER BY season DESC,week DESC,game_id DESC""",
+        params,
+    ).fetchall()
+    return [
+        row for row in rows
+        if {normalize_alias(str(row["away_team"])), normalize_alias(str(row["home_team"]))} == wanted
+    ]
+
+
 def _resolve_game(connection, game_id: int | None, teams: list[str], season: int | None):
     if game_id is not None:
         return connection.execute(
             "SELECT game_id,season,week,away_team,home_team,away_points,home_points,completed FROM games WHERE game_id=?",
             (int(game_id),),
-        ).fetchone()
+        ).fetchone(), []
     if len(teams) != 2:
         raise SystemExit("Provide --game-id or exactly two --team arguments")
-    clauses = ["((away_team=? AND home_team=?) OR (away_team=? AND home_team=?))"]
-    params: list[object] = [teams[0], teams[1], teams[1], teams[0]]
-    if season is not None:
-        clauses.append("season=?")
-        params.append(int(season))
-    return connection.execute(
-        f"SELECT game_id,season,week,away_team,home_team,away_points,home_points,completed FROM games WHERE {' AND '.join(clauses)} ORDER BY season DESC,week DESC,game_id DESC LIMIT 1",
-        params,
-    ).fetchone()
+    matches = _matching_games(connection, teams, season)
+    if matches:
+        return matches[0], matches
+    # If the requested season was wrong, surface matching games from other seasons
+    # instead of returning an unhelpful generic failure.
+    alternatives = _matching_games(connection, teams, None) if season is not None else []
+    return None, alternatives
 
 
 def _home_scores(row) -> tuple[int | None, int | None]:
@@ -58,9 +80,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     repository = CFBRepository(args.database or os.getenv("CFB_DATABASE_PATH", "instance/cfb.sqlite3"))
     with closing(repository._connect()) as connection:
-        game = _resolve_game(connection, args.game_id, args.team, args.season)
+        game, alternatives = _resolve_game(connection, args.game_id, args.team, args.season)
         if not game:
-            raise SystemExit("Game not found")
+            if alternatives:
+                options = ", ".join(
+                    f"game_id={row['game_id']} season={row['season']} week={row['week']} "
+                    f"{row['away_team']} at {row['home_team']}"
+                    for row in alternatives[:8]
+                )
+                raise SystemExit(f"Game not found in requested season. Matching games: {options}")
+            raise SystemExit(
+                "Game not found. Team matching is alias-normalized; use --game-id if you know the exact game."
+            )
         game_id = int(game["game_id"])
         rows = [dict(r) for r in connection.execute("""
           SELECT p.play_id,p.period,p.clock_minutes,p.clock_seconds,p.drive_number,p.play_number,
