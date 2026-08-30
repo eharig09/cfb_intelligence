@@ -12,8 +12,9 @@ EPA is then computed as:
     immediate net points + signed EP(next state) - EP(current state)
 
 When possession changes, the next offense's EP is negated. At halftime/end of
-regulation the continuation value is zero. Overtime is intentionally excluded
-from ep-v1 so its different possession rules cannot contaminate regulation EP.
+regulation the continuation value is zero. Overtime rows are retained only as
+transition context so the final regulation score can be observed; OT states are
+never fitted or scored by ep-v1.
 
 All fitting/scoring paths keep only one game in Python memory at a time.
 """
@@ -165,6 +166,15 @@ def _same_half(a: Any, b: Any) -> bool:
     return (pa <= 2 and pb <= 2) or (pa >= 3 and pb >= 3)
 
 
+def _period_segment(row: Any) -> int:
+    period = _int(row["period"]) or 0
+    if 1 <= period <= 2:
+        return 1
+    if 3 <= period <= 4:
+        return 2
+    return 3
+
+
 def _immediate_home_net(row: Any, next_row: Any | None,
                         final_home: int | None, final_away: int | None) -> float | None:
     before = _home_away_scores(row)
@@ -186,8 +196,8 @@ def _immediate_home_net(row: Any, next_row: Any | None,
     return float(dh - da)
 
 
-def _training_rows(repository, from_season: int | None, to_season: int | None):
-    clauses = ["g.completed=1", "g.home_points IS NOT NULL", "g.away_points IS NOT NULL", "p.period BETWEEN 1 AND 4"]
+def _training_rows(repository, from_season: int | None, to_season: int | None) -> tuple[str, list[Any]]:
+    clauses = ["g.completed=1", "g.home_points IS NOT NULL", "g.away_points IS NOT NULL"]
     params: list[Any] = []
     if from_season is not None:
         clauses.append("p.season>=?"); params.append(int(from_season))
@@ -209,7 +219,7 @@ def _iter_games(repository, from_season: int | None, to_season: int | None):
     sql, params = _training_rows(repository, from_season, to_season)
     with closing(repository._connect()) as connection:
         current_game: int | None = None
-        rows: list[Any] = []
+        rows: list[dict[str, Any]] = []
         for row in connection.execute(sql, params):
             game_id = int(row["game_id"])
             if current_game is not None and game_id != current_game:
@@ -224,27 +234,31 @@ def _iter_games(repository, from_season: int | None, to_season: int | None):
 def _targets_for_game(rows: list[dict[str, Any]]) -> list[float | None]:
     targets: list[float | None] = [None] * len(rows)
     next_event_home: float | None = None
-    next_half: int | None = None
+    next_segment: int | None = None
     final_home = _int(rows[-1].get("home_points")) if rows else None
     final_away = _int(rows[-1].get("away_points")) if rows else None
 
     for index in range(len(rows) - 1, -1, -1):
         row = rows[index]
-        period = _int(row.get("period")) or 0
-        half = 1 if period <= 2 else 2
-        if next_half is not None and half != next_half:
+        segment = _period_segment(row)
+        if next_segment is not None and segment != next_segment:
             next_event_home = None
         next_row = rows[index + 1] if index + 1 < len(rows) else None
-        # Do not let the first play of the next half determine a scoring delta for the last play of this half.
-        transition_row = next_row if next_row is not None and _same_half(row, next_row) else None
-        immediate = _immediate_home_net(row, transition_row, final_home if next_row is None else None,
-                                        final_away if next_row is None else None)
+        # Always use the next scoreboard state for immediate points, even across halftime/OT.
+        # Continuation value is reset separately by segment boundaries.
+        immediate = _immediate_home_net(
+            row, next_row,
+            final_home if next_row is None else None,
+            final_away if next_row is None else None,
+        )
         if immediate is not None and abs(immediate) > 1e-9:
             next_event_home = immediate
         home_offense = _is_home_offense(row)
-        if home_offense is not None:
-            targets[index] = 0.0 if next_event_home is None else (next_event_home if home_offense else -next_event_home)
-        next_half = half
+        if home_offense is not None and segment in (1, 2):
+            targets[index] = 0.0 if next_event_home is None else (
+                next_event_home if home_offense else -next_event_home
+            )
+        next_segment = segment
     return targets
 
 
@@ -308,7 +322,10 @@ def _load_model(repository, model_version: str):
         rows = connection.execute("""SELECT down_bucket,distance_bucket,field_bucket,time_bucket,
           expected_points,samples FROM cfb_expected_points_state WHERE model_version=?""",
           (model_version,)).fetchall()
-    return {(int(r[0]), int(r[1]), int(r[2]), int(r[3])): (float(r[4]), int(r[5])) for r in rows}
+    return {
+        (int(r[0]), int(r[1]), int(r[2]), int(r[3])): (float(r[4]), int(r[5]))
+        for r in rows
+    }
 
 
 def _weighted(candidates: list[tuple[float, int]]) -> float | None:
@@ -388,7 +405,7 @@ def score_plays(repository, *, from_season: int | None = None,
             next_row = rows[index + 1] if index + 1 < len(rows) else None
             same_half = next_row is not None and _same_half(row, next_row)
             immediate_home = _immediate_home_net(
-                row, next_row if same_half else None,
+                row, next_row,
                 final_home if next_row is None else None,
                 final_away if next_row is None else None,
             )
@@ -401,16 +418,14 @@ def score_plays(repository, *, from_season: int | None = None,
             scoring_plays += int(abs(immediate) > 1e-9)
 
             changed = False
-            after = 0.0
             signed_after = 0.0
             if same_half and next_row is not None:
                 next_ep = _lookup(table, state_key(next_row))
                 if next_ep is not None:
                     changed = str(next_row.get("offense") or "") != str(row.get("offense") or "")
-                    after = float(next_ep)
-                    signed_after = -after if changed else after
+                    signed_after = -float(next_ep) if changed else float(next_ep)
             epa = float(immediate) + float(signed_after) - float(before)
-            batch.append((row["play_id"], model_version, before, after, immediate,
+            batch.append((row["play_id"], model_version, before, signed_after, immediate,
                           int(changed), epa, now))
             scored += 1
             possession_changes += int(changed)
@@ -477,5 +492,8 @@ def validate_model(repository, *, from_season: int | None = None,
             "bias": round((sum_pred - sum_target) / n, 5) if n else None,
         },
         "by_field_bucket": field_report,
-        "evaluation_note": "Targets are offense-perspective next scoring event before halftime/end regulation; overtime is excluded. Use a separately versioned temporal holdout model for unbiased evaluation.",
+        "evaluation_note": (
+            "Targets are offense-perspective next scoring event before halftime/end regulation; "
+            "overtime states are excluded. Use a separately versioned temporal holdout model for unbiased evaluation."
+        ),
     }
