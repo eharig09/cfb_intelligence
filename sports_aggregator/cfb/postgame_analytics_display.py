@@ -15,8 +15,11 @@ REPLACEMENT=ANCHOR+"\n{{ postgame_pace_and_leverage(game) }}"
 WP_MODEL_VERSION="wp-v2"
 
 STYLE='''<style>
-.pg-analytics{margin:0 0 26px}.pg-analytics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin:10px 0 18px}
-.pg-analytics-card{border:1px solid var(--line);background:var(--paper);padding:11px 12px}.pg-analytics-card h4{margin:0 0 8px;font-size:.76rem}.pg-row{display:grid;grid-template-columns:1.4fr .8fr .8fr;gap:8px;padding:4px 0;border-top:1px solid var(--line);font-size:.66rem}.pg-row:first-of-type{border-top:0}.pg-num{text-align:right;font-variant-numeric:tabular-nums}.pg-note{color:var(--muted);font-size:.61rem;line-height:1.4}.pg-turn{border-left:3px solid var(--line);padding:8px 10px;margin:7px 0}.pg-turn strong{display:block;font-size:.7rem}.pg-turn p{margin:3px 0 0;font-size:.65rem;line-height:1.35}
+.pg-analytics{margin:0 0 30px;padding:0}.pg-analytics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:9px;margin:9px 0 12px}
+.pg-analytics-card{border:1px solid var(--line);background:var(--paper);padding:13px 14px}.pg-analytics-card h4{margin:0 0 9px;font-size:.78rem;font-family:var(--display-font)}
+.pg-row{display:grid;grid-template-columns:1.4fr .8fr .8fr;gap:8px;padding:5px 0;border-top:1px solid color-mix(in srgb,var(--line) 72%,transparent);font-size:.62rem}.pg-row:first-of-type{border-top:0}.pg-row strong{font-size:.52rem;text-transform:uppercase;letter-spacing:.055em;color:var(--muted)}.pg-num{text-align:right;font-variant-numeric:tabular-nums}.pg-note{color:var(--muted);font-size:.58rem;line-height:1.45;margin:5px 0 20px}
+.pg-turn{display:grid;grid-template-columns:minmax(150px,.7fr) minmax(0,1.3fr);gap:14px;border:1px solid var(--line);background:var(--paper);padding:11px 13px;margin:7px 0;position:relative}.pg-turn:before{content:"";position:absolute;left:-1px;top:-1px;bottom:-1px;width:3px;background:color-mix(in srgb,var(--team-light) 70%,var(--line) 30%)}.pg-turn strong{display:block;font-size:.63rem;line-height:1.4}.pg-turn p{margin:0;font-size:.65rem;line-height:1.45}
+@media(max-width:620px){.pg-turn{grid-template-columns:1fr;gap:5px}.pg-analytics-grid{grid-template-columns:1fr}}
 </style>'''
 
 
