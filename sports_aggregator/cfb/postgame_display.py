@@ -24,14 +24,13 @@ STYLE = '''<style>
 .postgame-lede{font-family:var(--display-font);font-size:clamp(.98rem,1.7vw,1.2rem);line-height:1.38;margin:0;max-width:940px}.postgame-meta{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}.postgame-tag{border:1px solid var(--line);padding:4px 7px;font-size:.49rem;text-transform:uppercase;letter-spacing:.07em;font-weight:850}
 .postgame-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:17px 0 7px;padding-bottom:6px;border-bottom:1px solid var(--line)}.postgame-section-head h3{margin:0;font-size:.8rem}.postgame-section-head span{font-size:.51rem;color:var(--muted)}
 .postgame-sub{font-size:.49rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:800}.postgame-coverage,.postgame-model-note{color:var(--muted);font-size:.58rem;line-height:1.5}.postgame-coverage{border-top:1px solid var(--line);padding-top:10px;margin-top:13px}
-.postgame-factor-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0}.postgame-factor{border:1px solid var(--line);background:var(--paper);padding:11px 12px}.postgame-factor .factor-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}.postgame-factor .rank{display:grid;place-items:center;width:23px;height:23px;border:1px solid var(--line);font-family:var(--display-font);font-size:.68rem}.postgame-factor strong{display:block;font-size:.72rem;line-height:1.3;margin-bottom:4px}.postgame-factor p{margin:0;font-size:.62rem;line-height:1.45}
-.postgame-evidence-list{border:1px solid var(--line);background:var(--paper);margin:8px 0 14px}.postgame-evidence-row{display:grid;grid-template-columns:28px minmax(150px,.75fr) 2fr;gap:9px;align-items:start;padding:8px 10px;border-top:1px solid var(--line);font-size:.6rem;line-height:1.4}.postgame-evidence-row:first-child{border-top:0}.postgame-evidence-row .rank{font-family:var(--display-font);color:var(--muted)}.postgame-evidence-row strong{font-size:.64rem}
-.efficiency-table{border:1px solid var(--line);background:var(--paper);margin:8px 0 5px}.efficiency-row{display:grid;grid-template-columns:minmax(180px,1.5fr) minmax(90px,.65fr) minmax(90px,.65fr);align-items:center;border-top:1px solid var(--line)}.efficiency-row:first-child{border-top:0}.efficiency-cell{padding:8px 11px;font-size:.63rem}.efficiency-head .efficiency-cell{font-size:.5rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:850;background:color-mix(in srgb,var(--paper) 95%,var(--ink) 5%)}.efficiency-cell.num{text-align:right;font-family:var(--display-font);font-size:.77rem;font-variant-numeric:tabular-nums}.efficiency-cell.edge{font-weight:900;background:color-mix(in srgb,var(--paper) 94%,var(--team-light) 6%)}.efficiency-label strong{display:block;font-size:.63rem}.efficiency-label small{display:block;color:var(--muted);font-size:.5rem;margin-top:2px}
+.postgame-evidence-list{border-top:1px solid var(--line);margin:8px 0 14px}.postgame-evidence-row{display:grid;grid-template-columns:34px minmax(190px,.8fr) minmax(0,1.8fr);gap:12px;align-items:start;padding:10px 3px;border-bottom:1px solid var(--line);font-size:.62rem;line-height:1.48}.postgame-evidence-row .rank{font-family:var(--display-font);font-size:.72rem;color:var(--muted);font-variant-numeric:tabular-nums}.postgame-evidence-row strong{display:block;font-size:.67rem}.postgame-evidence-row .factor-confidence{display:block;margin-top:3px;color:var(--muted);font-size:.47rem;text-transform:uppercase;letter-spacing:.055em;font-weight:800}
+.efficiency-table{border:1px solid var(--line);background:var(--paper);margin:8px 0 5px}.efficiency-row{display:grid;grid-template-columns:minmax(180px,1.5fr) minmax(110px,.65fr) minmax(110px,.65fr);align-items:center;border-top:1px solid var(--line)}.efficiency-row:first-child{border-top:0}.efficiency-cell{padding:8px 11px;font-size:.63rem}.efficiency-head .efficiency-cell{font-size:.5rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:850;background:color-mix(in srgb,var(--paper) 95%,var(--ink) 5%)}.efficiency-cell.num{text-align:right;font-family:var(--display-font);font-size:.77rem;font-variant-numeric:tabular-nums;display:flex;justify-content:flex-end;align-items:center;gap:7px}.efficiency-cell.edge{font-weight:900}.efficiency-best{font:900 .42rem/1 var(--body-font);letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--team-light);padding:3px 4px;color:var(--ink)}.efficiency-label strong{display:block;font-size:.63rem}.efficiency-label small{display:block;color:var(--muted);font-size:.5rem;margin-top:2px}
 .postgame-expect-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin:8px 0 12px}.postgame-expect{border:1px solid var(--line);background:var(--paper);padding:10px 12px}.postgame-expect strong{display:block;font-size:.7rem;margin-top:4px}
 .player-impact-columns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:8px 0 14px}.player-impact-team{border:1px solid var(--line);background:var(--paper)}.player-impact-team h4{margin:0;padding:8px 11px;border-bottom:1px solid var(--line);font-size:.68rem}.player-impact-row{display:grid;grid-template-columns:minmax(130px,.8fr) 1.6fr;gap:10px;padding:7px 11px;border-top:1px solid var(--line);font-size:.6rem;line-height:1.4}.player-impact-row:first-of-type{border-top:0}.player-impact-row strong{font-size:.63rem}.player-impact-row p{margin:0}.player-impact-row a{font-weight:800}
 .role-signal{border:1px solid var(--line);background:var(--paper);padding:9px 11px;margin:8px 0 12px;font-size:.61rem;line-height:1.45}.role-signal-row{display:grid;grid-template-columns:minmax(160px,.7fr) 1.8fr;gap:10px;padding:5px 0;border-top:1px solid var(--line)}.role-signal-row:first-child{border-top:0}.role-signal-row strong{font-size:.63rem}
-@media(max-width:760px){.postgame-factor-grid{grid-template-columns:1fr}.postgame-evidence-row{grid-template-columns:24px 1fr}.postgame-evidence-row span:last-child{grid-column:2}.player-impact-columns{grid-template-columns:1fr}.postgame-report-head>span:last-child,.postgame-section-head span{display:none}}
-@media(max-width:520px){.efficiency-row{grid-template-columns:1.35fr .7fr .7fr}.efficiency-cell{padding:7px 8px}.player-impact-row,.role-signal-row{grid-template-columns:1fr}}
+@media(max-width:760px){.postgame-evidence-row{grid-template-columns:28px 1fr}.postgame-evidence-row>span:last-child{grid-column:2}.player-impact-columns{grid-template-columns:1fr}.postgame-report-head>span:last-child,.postgame-section-head span{display:none}}
+@media(max-width:520px){.efficiency-row{grid-template-columns:1.25fr .8fr .8fr}.efficiency-cell{padding:7px 7px}.efficiency-best{font-size:.38rem}.player-impact-row,.role-signal-row{grid-template-columns:1fr}}
 </style>'''
 
 
@@ -105,20 +104,22 @@ def _advanced_html(repository, game):
         av, hv = away.get(key), home.get(key)
         if av is None and hv is None:
             continue
-        aedge = hedge = ''
+        aedge = hedge = False
         try:
             if av is not None and hv is not None and float(av) != float(hv):
                 away_better = float(av) < float(hv) if lower_better else float(av) > float(hv)
-                aedge = ' edge' if away_better else ''
-                hedge = '' if away_better else ' edge'
+                aedge = away_better
+                hedge = not away_better
         except (TypeError, ValueError):
             pass
         note_html = f'<small>{escape(note)}</small>' if note else ''
+        abadge = '<span class="efficiency-best">Best</span>' if aedge else ''
+        hbadge = '<span class="efficiency-best">Best</span>' if hedge else ''
         body.append(
             '<div class="efficiency-row">'
             f'<div class="efficiency-cell efficiency-label"><strong>{escape(label)}</strong>{note_html}</div>'
-            f'<div class="efficiency-cell num{aedge}">{fmt(av)}</div>'
-            f'<div class="efficiency-cell num{hedge}">{fmt(hv)}</div>'
+            f'<div class="efficiency-cell num{" edge" if aedge else ""}">{fmt(av)}{abadge}</div>'
+            f'<div class="efficiency-cell num{" edge" if hedge else ""}">{fmt(hv)}{hbadge}</div>'
             '</div>'
         )
     return (
@@ -128,7 +129,7 @@ def _advanced_html(repository, game):
         f'<div class="efficiency-cell" style="text-align:right">{escape(away_name)}</div>'
         f'<div class="efficiency-cell" style="text-align:right">{escape(home_name)}</div>'
         '</div>' + ''.join(body) + '</div>'
-        '<p class="postgame-model-note">EPA is our possession-aware ep-v1 model on qualifying rush/pass snaps. Highlighted values indicate the better result for that metric.</p>'
+        '<p class="postgame-model-note">EPA is our possession-aware ep-v1 model on qualifying rush/pass snaps. “Best” identifies the stronger value in that row; lower is better where explicitly noted.</p>'
     )
 
 
@@ -151,26 +152,19 @@ def _expectation_html(repository, game):
 
 def _factor_html(report):
     factors = list(report.get('factors') or [])
-    featured = []
-    for i, f in enumerate(factors[:3], 1):
-        featured.append(
-            '<article class="postgame-factor"><div class="factor-head">'
-            f'<span class="rank">{i}</span><span class="postgame-sub">{escape(str(f.get("confidence") or ""))} confidence</span></div>'
-            f'<strong>{escape(str(f.get("headline") or f.get("label") or "Factor"))}</strong>'
-            f'<p>{escape(str(f.get("detail") or ""))}</p></article>'
-        )
-    remaining = []
-    for i, f in enumerate(factors[3:], 4):
-        remaining.append(
+    if not factors:
+        return '<div class="empty">No distinct decisive factor is available.</div>'
+    rows = []
+    for i, f in enumerate(factors, 1):
+        confidence = str(f.get('confidence') or '').strip()
+        confidence_html = f'<span class="factor-confidence">{escape(confidence)} confidence</span>' if confidence else ''
+        rows.append(
             '<div class="postgame-evidence-row">'
             f'<span class="rank">{i:02d}</span>'
-            f'<strong>{escape(str(f.get("headline") or f.get("label") or "Factor"))}</strong>'
+            f'<strong>{escape(str(f.get("headline") or f.get("label") or "Factor"))}{confidence_html}</strong>'
             f'<span>{escape(str(f.get("detail") or ""))}</span></div>'
         )
-    html = '<div class="postgame-factor-grid">' + ''.join(featured) + '</div>' if featured else '<div class="empty">No distinct decisive factor is available.</div>'
-    if remaining:
-        html += '<div class="postgame-evidence-list">' + ''.join(remaining) + '</div>'
-    return html
+    return '<div class="postgame-evidence-list">' + ''.join(rows) + '</div>'
 
 
 def _players_html(report, game, season):
@@ -228,7 +222,7 @@ def _render(repository, game, team_stats, player_stats):
         f'<span class="postgame-tag">{escape(str(report["complexion"]))}</span>'
         f'<span class="postgame-tag">Margin {float(report["margin"]):g}</span>'
         f'<span class="postgame-tag">{len(report["factors"])} measurable separators</span></div></div>'
-        '<div class="postgame-section-head"><h3>What decided it</h3><span>Top three featured · remaining evidence condensed</span></div>'
+        '<div class="postgame-section-head"><h3>What decided it</h3><span>Ranked measurable evidence</span></div>'
         f'{factors}'
         '<div class="postgame-section-head"><h3>Efficiency profile</h3><span>Precomputed ep-v1 · rush/pass snaps</span></div>'
         f'{advanced}'
