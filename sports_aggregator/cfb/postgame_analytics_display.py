@@ -8,7 +8,7 @@ from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
 from sports_aggregator.cfb.pace import game_pace_summary
-from sports_aggregator.cfb.win_probability import game_turning_points
+from sports_aggregator.cfb.wp_turning_points import game_turning_points
 
 ANCHOR="{{ postgame_analysis(game, team_stats, player_stats) }}"
 REPLACEMENT=ANCHOR+"\n{{ postgame_pace_and_leverage(game) }}"
@@ -73,6 +73,7 @@ def _render(repository,game:dict[str,Any])->Markup:
         wp=row.get("home_win_probability")
         label=f"Q{period} {minute}:{second:02d} · leverage {100*leverage:.1f} pts"
         if wp is not None: label+=f" · home WP {100*float(wp):.1f}%"
+        if row.get("terminal_outcome") is not None: label+=" · final play"
         turn_html.append('<div class="pg-turn">'
                          f'<strong>{escape(label)}</strong>'
                          f'<p>{escape(str(row.get("play_text") or row.get("play_type") or "Play"))}</p></div>')
