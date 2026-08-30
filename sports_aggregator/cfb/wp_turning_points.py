@@ -1,9 +1,14 @@
-"""Context-aware turning points for the production wp-v2 model.
+"""Context-aware turning points reconstructed from valid wp-v2 game states.
 
-Raw persisted leverage remains the absolute pre-play WP change.  The report uses
-an additional ranking score so routine early-game state changes do not crowd out
-later, more consequential football moments.  The ranking score is presentation
-logic only; it does not modify the underlying WP model or stored leverage.
+The persisted leverage column is useful as a cheap generic diagnostic, but it was
+originally calculated between adjacent provider rows.  Provider PBP includes
+administrative rows (end of period, no-play records, timeouts, etc.), so adjacent
+raw rows are not always adjacent football states.  The postgame report therefore
+reconstructs transitions from valid regulation states and computes a signed
+before->after WP change at read time.
+
+This keeps the fitted WP model untouched while making turning-point semantics
+football-correct and auditable.
 """
 from __future__ import annotations
 
@@ -34,20 +39,16 @@ def _is_routine_kick(row: dict[str, Any]) -> bool:
 
 
 def _ranking_score(row: dict[str, Any]) -> float:
-    """Report score: leverage adjusted for timing, competitiveness and play meaning."""
-    leverage = float(row.get("leverage") or 0.0)
+    """Report score: true valid-state WP swing adjusted for game context."""
+    leverage = abs(float(row.get("wp_change") or 0.0))
     period = int(row.get("period") or 0)
-    wp = row.get("home_win_probability")
+    wp = row.get("home_wp_before")
     try:
         wp = float(wp)
     except (TypeError, ValueError):
         wp = 0.5
 
-    # Later swings deserve modestly more report weight, while still allowing a
-    # genuinely huge first-quarter event to rank.
-    time_weight = {1: 0.82, 2: 0.94, 3: 1.08, 4: 1.25}.get(period, 1.12)
-    # A swing near a competitive 50/50 state is more consequential than an
-    # equal numerical wobble when the game is already almost decided.
+    time_weight = {1: 0.82, 2: 0.94, 3: 1.08, 4: 1.25}.get(period, 1.0)
     closeness = max(0.0, 1.0 - 2.0 * abs(wp - 0.5))
     contest_weight = 0.82 + 0.38 * closeness
 
@@ -66,14 +67,11 @@ def _ranking_score(row: dict[str, Any]) -> float:
 
 
 def _select_diverse(candidates: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
-    """Avoid one short early cluster monopolizing a game report."""
     ranked = sorted(candidates, key=lambda r: float(r.get("turning_point_score") or 0.0), reverse=True)
     chosen: list[dict[str, Any]] = []
     period_counts: dict[int, int] = {}
     used: set[str] = set()
 
-    # First pass: at most two per period. This is deliberately soft; the fill
-    # pass below can add more when a game truly has few meaningful periods.
     for row in ranked:
         period = int(row.get("period") or 0)
         if period_counts.get(period, 0) >= 2:
@@ -96,70 +94,84 @@ def _select_diverse(candidates: list[dict[str, Any]], limit: int) -> list[dict[s
 
 def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2",
                         limit: int = 6) -> list[dict[str, Any]]:
+    """Return report-ready turning points using only valid regulation states."""
     from sports_aggregator.cfb.win_probability import initialize
 
     initialize(repository)
     game_id = int(game_id)
     limit = max(1, int(limit))
-    candidate_limit = max(36, limit * 8)
+
     with closing(repository._connect()) as connection:
+        game = connection.execute(
+            "SELECT completed,home_points,away_points FROM games WHERE game_id=?", (game_id,)
+        ).fetchone()
         rows = [dict(row) for row in connection.execute("""
-          SELECT p.play_id,p.period,p.clock_minutes,p.clock_seconds,p.offense,p.defense,
-                 p.home_team,p.away_team,p.play_type,p.play_text,p.offense_score,p.defense_score,
-                 p.down,p.distance,p.yardline,p.yards_to_goal,p.yards_gained,p.scoring,
-                 p.drive_number,p.play_number,m.rush_pass,m.down_type,
-                 w.home_win_probability,w.leverage
-          FROM cfb_plays p
-          JOIN cfb_play_win_probability w USING(play_id)
-          LEFT JOIN cfb_play_metrics m ON m.play_id=p.play_id AND m.metric_version='pbp-v1'
-          WHERE p.game_id=? AND w.model_version=? AND w.leverage IS NOT NULL
-          ORDER BY w.leverage DESC
-          LIMIT ?
-        """, (game_id, model_version, candidate_limit)).fetchall()]
+          WITH valid_states AS (
+            SELECT p.play_id,p.period,p.clock_minutes,p.clock_seconds,p.offense,p.defense,
+                   p.home_team,p.away_team,p.play_type,p.play_text,p.offense_score,p.defense_score,
+                   p.down,p.distance,p.yardline,p.yards_to_goal,p.yards_gained,p.scoring,
+                   p.drive_number,p.play_number,m.rush_pass,m.down_type,
+                   w.home_win_probability,
+                   LEAD(w.home_win_probability) OVER (
+                     ORDER BY p.period,p.clock_minutes DESC,p.clock_seconds DESC,
+                              COALESCE(p.drive_number,0),COALESCE(p.play_number,0),p.play_id
+                   ) AS next_home_win_probability
+            FROM cfb_plays p
+            JOIN cfb_play_win_probability w USING(play_id)
+            LEFT JOIN cfb_play_metrics m
+              ON m.play_id=p.play_id AND m.metric_version='pbp-v1'
+            WHERE p.game_id=? AND w.model_version=?
+              AND p.period BETWEEN 1 AND 4
+              AND p.down BETWEEN 1 AND 4
+              AND p.distance IS NOT NULL
+              AND p.yards_to_goal BETWEEN 1 AND 100
+              AND p.offense IS NOT NULL AND TRIM(p.offense)<>''
+              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%no play%'
+              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%end of quarter%'
+              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%end of 1st%'
+              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%end of 2nd%'
+              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%end of 3rd%'
+              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%end of 4th%'
+              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%timeout%'
+          )
+          SELECT * FROM valid_states
+          ORDER BY period,clock_minutes DESC,clock_seconds DESC,
+                   COALESCE(drive_number,0),COALESCE(play_number,0),play_id
+        """, (game_id, model_version)).fetchall()]
 
-        terminal = connection.execute("""
-          SELECT p.play_id,p.period,p.clock_minutes,p.clock_seconds,p.offense,p.defense,
-                 p.home_team,p.away_team,p.play_type,p.play_text,p.offense_score,p.defense_score,
-                 p.down,p.distance,p.yardline,p.yards_to_goal,p.yards_gained,p.scoring,
-                 p.drive_number,p.play_number,m.rush_pass,m.down_type,
-                 w.home_win_probability,g.completed,g.home_points,g.away_points
-          FROM cfb_plays p
-          JOIN cfb_play_win_probability w USING(play_id)
-          LEFT JOIN cfb_play_metrics m ON m.play_id=p.play_id AND m.metric_version='pbp-v1'
-          JOIN games g USING(game_id)
-          WHERE p.game_id=? AND w.model_version=?
-          ORDER BY p.period DESC,p.clock_minutes ASC,p.clock_seconds ASC,
-                   p.drive_number DESC,p.play_number DESC
-          LIMIT 1
-        """, (game_id, model_version)).fetchone()
+    if not rows:
+        return []
 
-    by_id = {str(row["play_id"]): row for row in rows}
-    if terminal is not None and int(terminal["completed"] or 0):
-        home_points = terminal["home_points"]
-        away_points = terminal["away_points"]
-        probability = terminal["home_win_probability"]
-        if home_points is not None and away_points is not None and probability is not None:
-            outcome = 1.0 if float(home_points) > float(away_points) else 0.0
-            candidate = dict(terminal)
-            candidate["leverage"] = abs(outcome - float(probability))
-            candidate["terminal_outcome"] = outcome
-            by_id[str(candidate["play_id"])] = candidate
+    completed = bool(game and int(game["completed"] or 0))
+    terminal_outcome: float | None = None
+    if completed and game["home_points"] is not None and game["away_points"] is not None:
+        terminal_outcome = 1.0 if float(game["home_points"]) > float(game["away_points"]) else 0.0
 
-    candidates = list(by_id.values())
-    for row in candidates:
+    candidates: list[dict[str, Any]] = []
+    last_index = len(rows) - 1
+    for index, row in enumerate(rows):
+        before = row.get("home_win_probability")
+        after = row.get("next_home_win_probability")
+        if index == last_index and terminal_outcome is not None:
+            after = terminal_outcome
+            row["terminal_outcome"] = terminal_outcome
+        if before is None or after is None:
+            continue
+        try:
+            before_f = float(before)
+            after_f = float(after)
+        except (TypeError, ValueError):
+            continue
+
+        row["home_wp_before"] = before_f
+        row["home_wp_after"] = after_f
+        row["wp_change"] = after_f - before_f
+        row["leverage"] = abs(row["wp_change"])
+        row["wp_swing_points"] = 100.0 * abs(row["wp_change"])
         home_score, away_score = _home_score(row)
         row["home_score"] = home_score
         row["away_score"] = away_score
         row["turning_point_score"] = _ranking_score(row)
-        probability = row.get("home_win_probability")
-        leverage = float(row.get("leverage") or 0.0)
-        if probability is not None:
-            before = float(probability)
-            row["home_wp_before"] = before
-            # Direction cannot be recovered from absolute stored leverage for
-            # ordinary plays, so expose the magnitude unless terminal outcome
-            # gives us an exact after-state.
-            row["home_wp_after"] = row.get("terminal_outcome")
-            row["wp_swing_points"] = 100.0 * leverage
+        candidates.append(row)
 
     return _select_diverse(candidates, limit)
