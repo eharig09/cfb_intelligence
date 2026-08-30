@@ -6,9 +6,9 @@ therefore use valid pre-play WP states for the before/after probabilities, but
 attribute each transition to the most meaningful football event that occurred
 between those states.
 
-The report also suppresses obviously implausible *ordinary-play* swings and
-requires the WP direction to agree with our possession-aware ep-v1 EPA whenever
-EPA is available. Stored wp-v2 predictions remain untouched for diagnostics.
+The report suppresses implausible ordinary-play swings and applies independent
+direction checks from ep-v1, actual score changes, and third/fourth-down results.
+Stored wp-v2 predictions remain untouched for diagnostics.
 """
 from __future__ import annotations
 
@@ -123,12 +123,7 @@ def _ranking_score(row: dict[str, Any]) -> float:
 
 
 def _directionally_consistent(row: dict[str, Any]) -> bool:
-    """Require a WP move to agree with ep-v1's offense-perspective play value.
-
-    EPA is possession-oriented. Positive EPA should raise home WP when home has
-    the ball and lower home WP when away has the ball; negative EPA does the
-    reverse. Tiny EPA values are too close to neutral to use as a sign test.
-    """
+    """Require a WP move to agree with ep-v1's offense-perspective play value."""
     epa = row.get("epa")
     if epa is None:
         return True
@@ -144,8 +139,54 @@ def _directionally_consistent(row: dict[str, Any]) -> bool:
     return expected_home_sign * wp_change > 0
 
 
+def _score_change_consistent(row: dict[str, Any]) -> bool:
+    """Scoring-event WP direction must agree with the actual scoreboard change."""
+    if int(row.get("event_priority") or 0) < 85:
+        return True
+    before_home = row.get("home_score")
+    before_away = row.get("away_score")
+    after_home = row.get("home_score_after")
+    after_away = row.get("away_score_after")
+    if None in (before_home, before_away, after_home, after_away):
+        return True
+    try:
+        home_delta = int(after_home) - int(before_home)
+        away_delta = int(after_away) - int(before_away)
+        wp_change = float(row.get("wp_change") or 0.0)
+    except (TypeError, ValueError):
+        return True
+    if home_delta == away_delta:
+        return True
+    if home_delta > away_delta:
+        return wp_change > 0
+    return wp_change < 0
+
+
+def _late_down_result_consistent(row: dict[str, Any]) -> bool:
+    """A clear 3rd/4th-down success/failure must move WP toward the beneficiary."""
+    if int(row.get("event_priority") or 0) >= 85:
+        return True
+    try:
+        down = int(row.get("down") or 0)
+        distance = int(row.get("distance") or 0)
+        gained = int(row.get("yards_gained") or 0)
+        wp_change = float(row.get("wp_change") or 0.0)
+    except (TypeError, ValueError):
+        return True
+    if down not in (3, 4) or distance <= 0 or abs(wp_change) < 0.005:
+        return True
+    offense_is_home = str(row.get("offense") or "") == str(row.get("home_team") or "")
+    offense_succeeded = gained >= distance
+    expected_home_positive = offense_succeeded if offense_is_home else not offense_succeeded
+    return wp_change > 0 if expected_home_positive else wp_change < 0
+
+
 def _credible_ordinary_swing(row: dict[str, Any]) -> bool:
     """Reject state discontinuities that are not believable football events."""
+    if not _score_change_consistent(row):
+        return False
+    if not _late_down_result_consistent(row):
+        return False
     if not _directionally_consistent(row):
         return False
 
@@ -227,9 +268,11 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
         next_index = state_indices[position + 1] if position + 1 < len(state_indices) else None
         before = state.get("home_win_probability")
         if next_index is not None:
-            after = rows[next_index].get("home_win_probability")
+            next_state = rows[next_index]
+            after = next_state.get("home_win_probability")
             segment = rows[start_index:next_index]
         else:
+            next_state = None
             if terminal_outcome is None:
                 continue
             after = terminal_outcome
@@ -252,8 +295,6 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
             event[f"event_{key}"] = event.get(key)
             event[key] = state.get(key)
 
-        # If the selected special event lacks its own EPA, use the state play's
-        # EPA as the best available transition-direction signal.
         if event.get("epa") is None:
             event["epa"] = state.get("epa")
 
@@ -267,6 +308,13 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
         home_score, away_score = _home_score(state)
         event["home_score"] = home_score
         event["away_score"] = away_score
+        if next_state is not None:
+            home_after, away_after = _home_score(next_state)
+            event["home_score_after"] = home_after
+            event["away_score_after"] = away_after
+        else:
+            event["home_score_after"] = game["home_points"] if game else None
+            event["away_score_after"] = game["away_points"] if game else None
         if next_index is None and terminal_outcome is not None:
             event["terminal_outcome"] = terminal_outcome
         event["turning_point_score"] = _ranking_score(event)
