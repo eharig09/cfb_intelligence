@@ -11,7 +11,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from typing import Any
 
-MODEL_VERSION = "ep-v1"
+MODEL_VERSION = "ep-v2"
 METRIC_VERSION = "team-game-advanced-v1"
 
 
@@ -131,7 +131,6 @@ def build(repository, *, from_season: int | None = None,
           defensive_epa_allowed_per_play,defensive_competitive_epa_allowed_per_play,built_at
         ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", output)
 
-        # Each team's defensive EPA allowed is simply the opponent offense's EPA for the same game.
         connection.execute("""UPDATE cfb_team_game_advanced AS a
           SET defensive_epa_allowed_per_play=(
                 SELECT b.epa_per_play FROM cfb_team_game_advanced b
