@@ -281,6 +281,12 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
             next_state = rows[next_index]
             after = next_state.get("home_win_probability")
             segment = rows[start_index:next_index]
+            # A provider can encode the event that caused the WP jump as the
+            # next valid row itself (notably TDs/turnovers). Admit only major
+            # endpoint events so a routine next 4th-down state cannot steal the
+            # previous play's transition.
+            if _event_priority(next_state) >= 85:
+                segment = segment + [next_state]
         else:
             next_state = None
             if terminal_outcome is None:
