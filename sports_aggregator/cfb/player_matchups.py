@@ -4,6 +4,11 @@ An individual pairing is only used when the assignment is credible. Linemen
 oppose linemen directly; a receiver is paired with a corner only when that corner
 has a substantial man-coverage sample. Zone-heavy coverage is represented as a
 player against the responsible unit, with the unit's leading members retained.
+
+All matchup candidates are anchored to the requested current roster season. PFF
+history supplies evaluation evidence, but it does not decide current team
+membership: transferred-out and departed players are excluded, while inbound
+transfers can carry their prior-school PFF evidence onto their current team.
 """
 
 from __future__ import annotations
@@ -45,14 +50,14 @@ def player_matchups(repository: CFBRepository, home_team_id: int, away_team_id: 
     with closing(repository._connect()) as connection:
         rows = [dict(row) for row in connection.execute(
             """SELECT p.pff_player_id,p.player_name,p.normalized_name,p.position,
-               p.interest_score,p.cfbd_player_id,p.cfbd_team_id,
+               p.interest_score,p.cfbd_player_id,t.team_id AS cfbd_team_id,
                t.school,t.color,r.class_year,r.jersey
-               FROM pff_players p JOIN teams t ON t.team_id=p.cfbd_team_id
-               LEFT JOIN players r ON r.player_id=p.cfbd_player_id AND r.season=?
-               WHERE p.season=? AND p.cfbd_team_id IN (?,?)
+               FROM pff_players p
+               JOIN players r ON r.player_id=p.cfbd_player_id AND r.season=?
+               JOIN teams t ON t.school=r.team
+               WHERE p.season=? AND t.team_id IN (?,?)
                AND p.interest_score IS NOT NULL""",
             (roster_season, pff_season, home_team_id, away_team_id))]
-        rows = [row for row in rows if row["cfbd_player_id"]]
 
         metrics: dict[tuple[str, str], dict[str, Any]] = {}
         pff_ids = [row["pff_player_id"] for row in rows]
