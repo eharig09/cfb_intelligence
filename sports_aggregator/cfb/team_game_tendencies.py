@@ -1,4 +1,4 @@
-"""Precomputed team-game tendencies from play-detail-v2 joined to in-house EPA.
+"""Precomputed team-game tendencies from play-detail-v3 joined to in-house EPA.
 
 The table is intentionally long/flexible: one row per team/game/dimension/value.
 That keeps report reads tiny while allowing future detail dimensions without a wide
@@ -11,7 +11,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from typing import Any
 
-PARSER_VERSION = "play-detail-v2"
+PARSER_VERSION = "play-detail-v3"
 MODEL_VERSION = "ep-v1"
 METRIC_VERSION = "team-game-tendency-v1"
 DEFAULT_MIN_SEASON = 2025
