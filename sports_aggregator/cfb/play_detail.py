@@ -84,7 +84,7 @@ def parse(play_type: Any, play_text: Any) -> dict[str, Any]:
     rush_direction = direction if is_rush and not is_pass else None
 
     screen = int(bool(re.search(r"\bscreen\b", text, re.I)))
-    scramble = int(bool(re.search(r"\bscrambl(?:e|ed|ing)\b", text, re.I)))
+    scramble = int(bool(re.search(r"\bscrambl(?:e|es|ed|ing)\b", text, re.I)))
     sack = int("sack" in kind or bool(re.search(r"\bsack(?:ed)?\b", text, re.I)))
     play_action = int(bool(re.search(r"\bplay[- ]action\b", text, re.I)))
 
