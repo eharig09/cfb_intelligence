@@ -1,4 +1,4 @@
-"""Render high-confidence 2025+ play-text tendency splits in postgame reports."""
+"""Render high-confidence 2025+ play-detail tendency splits in postgame reports."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -30,7 +30,7 @@ LABELS = {
 ORDER = ("rush_direction", "pass_depth", "pass_location")
 CANONICAL_VALUES = {
     "rush_direction": ("left", "middle", "right"),
-    "pass_depth": ("short", "deep"),
+    "pass_depth": ("behind_line", "short", "intermediate", "deep"),
     "pass_location": ("left", "middle", "right"),
 }
 
@@ -87,8 +87,6 @@ def _dimension_html(dimension: str, rows: list[dict[str, Any]]) -> str:
 
 def _render(repository, game: dict[str, Any]) -> Markup:
     try:
-        # Fetch every observed category so a 1-3 play split is not silently
-        # omitted. Metrics still require MIN_METRIC_SAMPLE before display.
         rows = game_summary(repository, int(game.get("game_id") or 0), min_plays=1, min_coverage=0.30)
     except Exception:
         rows = []
@@ -117,9 +115,9 @@ def _render(repository, game: dict[str, Any]) -> Markup:
 
     return Markup(
         STYLE + '<section class="pg-tendency">'
-        '<div class="pg-tendency-head"><h3>Play tendencies</h3><span>play-detail-v1 × ep-v1 · evidence thresholds applied</span></div>'
+        '<div class="pg-tendency-head"><h3>Play tendencies</h3><span>play-detail-v2 × ep-v1 · measured depth where available</span></div>'
         f'<div class="pg-tendency-teams">{"".join(cards)}</div>'
-        '<p class="pg-tendency-note">All canonical direction/depth categories are shown when the game clears 30% classification coverage. EPA and success are withheld for splits with fewer than 4 classified plays.</p>'
+        '<p class="pg-tendency-note">Pass depth uses measured air yards from catch spots when the field-side interpretation is unambiguous, then falls back to provider short/deep wording. EPA and success are withheld for splits with fewer than 4 classified plays.</p>'
         '</section>'
     )
 
