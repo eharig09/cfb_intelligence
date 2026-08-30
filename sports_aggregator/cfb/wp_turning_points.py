@@ -13,6 +13,7 @@ Stored wp-v2 predictions remain untouched for diagnostics.
 from __future__ import annotations
 
 from contextlib import closing
+import re
 from typing import Any
 
 
@@ -181,6 +182,19 @@ def _late_down_result_consistent(row: dict[str, Any]) -> bool:
     return wp_change > 0 if expected_home_positive else wp_change < 0
 
 
+def _special_teams_return_credible(row: dict[str, Any]) -> bool:
+    """Keep only exceptional non-scoring kick/punt returns as editorial turning points."""
+    if int(row.get("event_priority") or 0) >= 85:
+        return True
+    text = _text(row)
+    if "return" not in text or not ("kickoff" in text or "punt" in text):
+        return True
+    match = re.search(r"\breturn(?:ed)?\s+(\d+)\s+yards?\b", text)
+    if not match:
+        return False
+    return int(match.group(1)) >= 40
+
+
 def _credible_ordinary_swing(row: dict[str, Any]) -> bool:
     """Reject state discontinuities that are not believable football events."""
     if not _score_change_consistent(row):
@@ -188,6 +202,8 @@ def _credible_ordinary_swing(row: dict[str, Any]) -> bool:
     if not _late_down_result_consistent(row):
         return False
     if not _directionally_consistent(row):
+        return False
+    if not _special_teams_return_credible(row):
         return False
 
     priority = int(row.get("event_priority") or 0)
