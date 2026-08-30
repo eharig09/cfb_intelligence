@@ -1,9 +1,10 @@
 """Precomputed quarterback air-yard and passing-efficiency summaries.
 
-The source descriptions commonly identify the passer before the word ``pass``.
-We resolve that token conservatively against rostered quarterbacks for the same
-team/season. Numeric air yards come only from play-detail-v3 catch-spot parsing;
-we never infer a continuous throw depth from short/deep wording alone.
+Passer attribution is deliberately conservative. Provider text commonly uses
+compact names such as ``#12 M.Alejado pass ...``; jersey number, exact/initial
+name matching, and explicit sack/spike grammar are used only when they resolve to
+one rostered quarterback for that team and season. Numeric air yards come only
+from play-detail-v3 catch-spot parsing.
 """
 from __future__ import annotations
 
@@ -16,10 +17,22 @@ from typing import Any
 from sports_aggregator.cfb.models import normalize_alias
 from sports_aggregator.cfb.play_detail import PARSER_VERSION
 
-METRIC_VERSION = "qb-air-yards-v1"
+METRIC_VERSION = "qb-air-yards-v2"
 MODEL_VERSION = "ep-v1"
 
-_PASSER = re.compile(r"(?:^|\s)(?:#\d+\s+)?([A-Za-z][A-Za-z.'’\-]*(?:\s+[A-Za-z][A-Za-z.'’\-]*)?)\s+pass(?:es|ed|ing)?\b", re.I)
+_NAME = r"[A-Za-z][A-Za-z.'’\-]*(?:\s+[A-Za-z][A-Za-z.'’\-]*)?"
+_PASSER = re.compile(
+    rf"(?:^|\s)(?:#(?P<jersey>\d+)\s+)?(?P<name>{_NAME})\s+pass(?:es|ed|ing)?\b",
+    re.I,
+)
+_SACKED = re.compile(
+    rf"(?:^|\s)(?:#(?P<jersey>\d+)\s+)?(?P<name>{_NAME})\s+(?:is\s+)?sacked\b",
+    re.I,
+)
+_SPIKE = re.compile(
+    rf"(?:^|\s)(?:#(?P<jersey>\d+)\s+)?(?P<name>{_NAME})\s+(?:spike|spikes|spiked)\b",
+    re.I,
+)
 
 
 def initialize(repository) -> None:
@@ -64,36 +77,77 @@ def initialize(repository) -> None:
         connection.commit()
 
 
-def _passer_token(text: Any) -> str | None:
-    match = _PASSER.search(str(text or ""))
-    return match.group(1).strip() if match else None
+def _passer_identity(text: Any) -> tuple[str | None, int | None, str | None]:
+    value = str(text or "")
+    for grammar, pattern in (("pass", _PASSER), ("sack", _SACKED), ("spike", _SPIKE)):
+        match = pattern.search(value)
+        if not match:
+            continue
+        jersey = None
+        if match.group("jersey"):
+            try:
+                jersey = int(match.group("jersey"))
+            except (TypeError, ValueError):
+                jersey = None
+        return match.group("name").strip(), jersey, grammar
+    return None, None, None
 
 
 def _name_parts(value: str) -> list[str]:
     return normalize_alias(value).split()
 
 
-def _resolve_qb(token: str | None, qbs: list[dict[str, Any]]) -> dict[str, Any] | None:
-    if not token or not qbs:
-        return None
+def _resolve_qb(token: str | None, jersey: int | None,
+                qbs: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
+    if not qbs:
+        return None, "no_qb_roster"
+
+    if jersey is not None:
+        jersey_matches = []
+        for qb in qbs:
+            try:
+                qb_jersey = int(qb.get("jersey")) if qb.get("jersey") is not None else None
+            except (TypeError, ValueError):
+                qb_jersey = None
+            if qb_jersey == jersey:
+                jersey_matches.append(qb)
+        if len(jersey_matches) == 1:
+            return jersey_matches[0], "jersey"
+        if len(jersey_matches) > 1:
+            # A name can still disambiguate duplicate/legacy jersey rows.
+            qbs = jersey_matches
+
+    if not token:
+        return None, "no_passer_token"
     parts = _name_parts(token)
     if not parts:
-        return None
+        return None, "no_passer_token"
     token_last = parts[-1]
     token_first = parts[0] if len(parts) > 1 else ""
+    normalized_token = normalize_alias(token)
     matches: list[dict[str, Any]] = []
+    exact_matches: list[dict[str, Any]] = []
     for qb in qbs:
         first = normalize_alias(str(qb.get("first_name") or ""))
         last = normalize_alias(str(qb.get("last_name") or ""))
         full = normalize_alias(f"{first} {last}")
-        normalized_token = normalize_alias(token)
-        exact = normalized_token == full
+        if normalized_token == full:
+            exact_matches.append(qb)
+            continue
         last_match = token_last == last
         initial_match = bool(token_first and first and token_first[0] == first[0])
         first_match = bool(token_first and first and (token_first == first or initial_match))
-        if exact or (last_match and (not token_first or first_match)):
+        if last_match and (not token_first or first_match):
             matches.append(qb)
-    return matches[0] if len(matches) == 1 else None
+    if len(exact_matches) == 1:
+        return exact_matches[0], "exact_name"
+    if len(exact_matches) > 1:
+        return None, "ambiguous"
+    if len(matches) == 1:
+        return matches[0], "initial_last"
+    if len(matches) > 1:
+        return None, "ambiguous"
+    return None, "unresolved_name"
 
 
 def build(repository, *, from_season: int = 2025, to_season: int | None = None,
@@ -106,7 +160,7 @@ def build(repository, *, from_season: int = 2025, to_season: int | None = None,
 
     with closing(repository._connect()) as connection:
         roster_rows = [dict(r) for r in connection.execute("""
-          SELECT player_id,season,team,first_name,last_name,position
+          SELECT player_id,season,team,first_name,last_name,position,jersey
           FROM players
           WHERE season BETWEEN ? AND ? AND UPPER(COALESCE(position,''))='QB'
         """, (from_season, to_season)).fetchall()]
@@ -117,6 +171,9 @@ def build(repository, *, from_season: int = 2025, to_season: int | None = None,
     aggregates: dict[tuple[int, int, str, str, str, str], dict[str, Any]] = {}
     unmatched_pass_plays = 0
     attributed_pass_plays = 0
+    audit = defaultdict(int)
+    methods = defaultdict(int)
+    grammars = defaultdict(int)
 
     with closing(repository._connect()) as connection:
         cursor = connection.execute("""
@@ -131,10 +188,21 @@ def build(repository, *, from_season: int = 2025, to_season: int | None = None,
         """, (parser_version, model_version, from_season, to_season))
         for row in cursor:
             team = str(row["team"])
-            qb = _resolve_qb(_passer_token(row["play_text"]), qbs_by_team.get((int(row["season"]), team), []))
+            token, jersey, grammar = _passer_identity(row["play_text"])
+            if grammar:
+                grammars[grammar] += 1
+            if token is None and jersey is None:
+                unmatched_pass_plays += 1
+                audit["no_passer_token"] += 1
+                continue
+            qb, method = _resolve_qb(
+                token, jersey, qbs_by_team.get((int(row["season"]), team), [])
+            )
             if qb is None:
                 unmatched_pass_plays += 1
+                audit[method] += 1
                 continue
+            methods[method] += 1
             attributed_pass_plays += 1
             name = f"{qb.get('first_name') or ''} {qb.get('last_name') or ''}".strip()
             key = (int(row["game_id"]), int(row["season"]), team, str(row["opponent"]), str(qb.get("player_id") or ""), name)
@@ -186,6 +254,7 @@ def build(repository, *, from_season: int = 2025, to_season: int | None = None,
         ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
         connection.commit()
 
+    total_pass_plays = attributed_pass_plays + unmatched_pass_plays
     return {
         "metric_version": metric_version,
         "parser_version": parser_version,
@@ -195,8 +264,11 @@ def build(repository, *, from_season: int = 2025, to_season: int | None = None,
         "quarterback_games": len(rows),
         "attributed_pass_plays": attributed_pass_plays,
         "unmatched_pass_plays": unmatched_pass_plays,
-        "passer_attribution_rate": round(attributed_pass_plays / max(1, attributed_pass_plays + unmatched_pass_plays), 4),
+        "passer_attribution_rate": round(attributed_pass_plays / max(1, total_pass_plays), 4),
         "measured_completions": sum(int(r[10]) for r in rows),
+        "attribution_methods": dict(sorted(methods.items())),
+        "pass_play_grammar": dict(sorted(grammars.items())),
+        "unmatched_reasons": dict(sorted(audit.items())),
     }
 
 
