@@ -19,6 +19,7 @@ DEFENSE_PREFIXES = (
     "DL", "DE", "DT", "NT", "EDGE", "LB", "ILB", "OLB", "MLB",
     "DB", "CB", "S", "FS", "SS", "NB",
 )
+MODEL_VERSION = "ep-v2"
 
 
 def _is_defense(position: str) -> bool:
@@ -56,7 +57,7 @@ def _player_matcher(first: str, last: str, jersey: Any,
 
 
 def annotate_player_epa(repository, game: dict[str, Any], players: list[dict[str, Any]],
-                        *, model_version: str = "ep-v1") -> None:
+                        *, model_version: str = MODEL_VERSION) -> None:
     """Mutate report player rows with team-perspective involved-play EPA fields."""
     if not players:
         return
