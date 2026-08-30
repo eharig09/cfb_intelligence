@@ -10,13 +10,14 @@ from dotenv import load_dotenv
 
 from sports_aggregator.cfb.play_detail import PARSER_VERSION, build
 from sports_aggregator.cfb.play_text_audit import audit
+from sports_aggregator.cfb.qb_air_yards import build as build_qb_air_yards
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.team_game_tendencies import build as build_tendencies
 
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="CFB play text enrichment")
-    p.add_argument("command", choices=("audit", "build", "build-tendencies"))
+    p.add_argument("command", choices=("audit", "build", "build-tendencies", "build-qb-air-yards"))
     p.add_argument("--year", type=int, default=datetime.now().year)
     p.add_argument("--from-year", type=int, default=None)
     p.add_argument("--to-year", type=int, default=None)
@@ -38,8 +39,16 @@ def main(argv: list[str] | None = None) -> int:
         result = audit(repository, from_season=first, to_season=last)
     elif args.command == "build":
         result = build(repository, from_season=first, to_season=last, parser_version=args.parser_version)
-    else:
+    elif args.command == "build-tendencies":
         result = build_tendencies(
+            repository,
+            from_season=first,
+            to_season=last,
+            parser_version=args.parser_version,
+            model_version=args.model_version,
+        )
+    else:
+        result = build_qb_air_yards(
             repository,
             from_season=first,
             to_season=last,
