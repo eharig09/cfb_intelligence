@@ -15,11 +15,13 @@ from sports_aggregator.cfb.play_by_play import game_advanced_summary
 from sports_aggregator.cfb.pregame_snapshots import final_snapshot
 
 
-BOX_ANCHOR = '''
+REPORT_ANCHOR = '<div id="analysis" class="report-chapter"></div>'
+REPORT_INSERT = REPORT_ANCHOR + '\n{{ postgame_analysis(game, team_stats, player_stats) }}'
+LEGACY_ANCHOR = '''
 <section class="section">
     <h2>Team statistics</h2>
 '''
-BOX_INSERT = '''
+LEGACY_INSERT = '''
 {{ postgame_analysis(game, team_stats, player_stats) }}
 
 <section class="section">
@@ -28,13 +30,23 @@ BOX_INSERT = '''
 
 STYLE = '''
 <style>
-.postgame-shell{margin:20px 0 28px}.postgame-lede{font-size:1rem;line-height:1.55;max-width:900px}
-.postgame-meta{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 16px}.postgame-tag{border:1px solid var(--line);padding:4px 7px;font-size:.58rem;text-transform:uppercase;letter-spacing:.06em;font-weight:800}
-.postgame-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:10px 0 18px}
-.postgame-factor,.postgame-player,.postgame-role,.postgame-metric,.postgame-expect{border:1px solid var(--line);background:var(--paper);padding:11px 12px}
-.postgame-factor strong,.postgame-player strong,.postgame-role strong,.postgame-metric strong,.postgame-expect strong{display:block;font-size:.78rem;margin-bottom:4px}.postgame-factor p,.postgame-player p,.postgame-role p,.postgame-metric p,.postgame-expect p{margin:0;font-size:.7rem;line-height:1.4}
-.postgame-factor .factor-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:5px}.postgame-factor .rank{font-family:var(--display-font);font-size:1.15rem}.postgame-sub{color:var(--muted);font-size:.58rem;text-transform:uppercase;letter-spacing:.045em}.postgame-coverage{border-left:3px solid var(--line);padding:8px 11px;color:var(--muted);font-size:.66rem;line-height:1.45;margin-top:12px}
-.postgame-section-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:20px}.postgame-section-head h3{margin:0}.postgame-section-head span{color:var(--muted);font-size:.58rem}.postgame-duel{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:baseline;margin-top:6px}.postgame-duel b{font-variant-numeric:tabular-nums}.postgame-duel .vs{font-size:.52rem;color:var(--muted);text-transform:uppercase}
+.postgame-shell{margin:0 0 34px;padding:0;background:transparent}
+.postgame-report-head{display:grid;grid-template-columns:auto 1fr auto;gap:11px;align-items:center;margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.postgame-report-num{font-family:var(--display-font);font-size:.72rem;color:var(--team-light);font-variant-numeric:tabular-nums}
+.postgame-report-head h2{margin:0;font-size:1rem;letter-spacing:-.01em}.postgame-report-head span{font-size:.59rem;color:var(--muted);text-align:right}
+.postgame-story{border:1px solid var(--line);background:var(--paper);padding:18px 20px;margin-bottom:18px;position:relative}
+.postgame-story:before{content:"";position:absolute;left:-1px;top:-1px;bottom:-1px;width:3px;background:var(--team-light)}
+.postgame-lede{font-family:var(--display-font);font-size:clamp(1.04rem,2vw,1.35rem);line-height:1.35;max-width:930px;margin:0}
+.postgame-meta{display:flex;gap:6px;flex-wrap:wrap;margin:13px 0 0}.postgame-tag{border:1px solid var(--line);padding:5px 8px;font-size:.53rem;text-transform:uppercase;letter-spacing:.075em;font-weight:850;background:color-mix(in srgb,var(--paper) 94%,var(--ink) 6%)}
+.postgame-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:9px;margin:9px 0 20px}
+.postgame-factor,.postgame-player,.postgame-role,.postgame-metric,.postgame-expect{border:1px solid var(--line);background:var(--paper);padding:13px 14px;min-height:100%}
+.postgame-factor strong,.postgame-player strong,.postgame-role strong,.postgame-metric strong,.postgame-expect strong{display:block;font-size:.76rem;line-height:1.25;margin-bottom:5px}.postgame-factor p,.postgame-player p,.postgame-role p,.postgame-metric p,.postgame-expect p{margin:0;font-size:.66rem;line-height:1.48;color:color-mix(in srgb,var(--ink) 82%,var(--muted) 18%)}
+.postgame-factor .factor-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:9px}.postgame-factor .rank{display:grid;place-items:center;width:25px;height:25px;border:1px solid var(--line);font-family:var(--display-font);font-size:.78rem;background:color-mix(in srgb,var(--paper) 90%,var(--team-light) 10%)}
+.postgame-sub{color:var(--muted);font-size:.51rem;text-transform:uppercase;letter-spacing:.07em;font-weight:800}.postgame-coverage{border-top:1px solid var(--line);padding:11px 0 0;color:var(--muted);font-size:.61rem;line-height:1.5;margin-top:10px}
+.postgame-section-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-end;margin:22px 0 7px;padding-bottom:7px;border-bottom:1px solid color-mix(in srgb,var(--line) 76%,transparent)}.postgame-section-head h3{margin:0;font-size:.82rem;letter-spacing:-.005em}.postgame-section-head span{color:var(--muted);font-size:.53rem;text-align:right}
+.postgame-duel{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:end;margin-top:10px}.postgame-duel b{display:inline-block;font-family:var(--display-font);font-size:1.15rem;font-variant-numeric:tabular-nums;margin-top:3px}.postgame-duel .vs{font-size:.48rem;color:var(--muted);text-transform:uppercase;padding-bottom:4px}
+@media(max-width:680px){.postgame-report-head{grid-template-columns:auto 1fr}.postgame-report-head>span:last-child{display:none}.postgame-story{padding:15px 16px}.postgame-grid{grid-template-columns:1fr 1fr}.postgame-section-head span{display:none}}
+@media(max-width:480px){.postgame-grid{grid-template-columns:1fr}}
 </style>
 '''
 
@@ -48,7 +60,10 @@ class _PostgameLoader(BaseLoader):
             raise TemplateNotFound(template)
         source, filename, uptodate = self.wrapped.get_source(environment, template)
         if template == "cfb_box_score.html" and "postgame_analysis(" not in source:
-            source = source.replace(BOX_ANCHOR, BOX_INSERT, 1)
+            if REPORT_ANCHOR in source:
+                source = source.replace(REPORT_ANCHOR, REPORT_INSERT, 1)
+            else:
+                source = source.replace(LEGACY_ANCHOR, LEGACY_INSERT, 1)
         return source, filename, uptodate
 
     def list_templates(self):
@@ -151,7 +166,8 @@ def _expectation_html(repository, game: dict[str, Any]) -> str:
             f'<strong>Spread {_f1(market.get("consensus_spread"))} · Total {_f1(market.get("consensus_total"))}</strong>'
             f'<p>{int(market.get("count") or 0)} stored provider quote(s).</p></article>'
         )
-    home_elo = (elo.get("home") or {}).get("elo"); away_elo = (elo.get("away") or {}).get("elo")
+    home_elo = (elo.get("home") or {}).get("elo")
+    away_elo = (elo.get("away") or {}).get("elo")
     if home_elo is not None or away_elo is not None:
         cards.append(
             '<article class="postgame-expect"><div class="postgame-sub">Pregame Elo</div>'
@@ -195,14 +211,15 @@ def _render(repository, game: dict[str, Any], team_stats, player_stats) -> Marku
             f'<span class="rank">{index}</span><span class="postgame-sub">{escape(str(factor.get("confidence") or ""))} confidence</span></div>'
             f'<strong>{escape(str(factor.get("headline") or factor.get("label") or "Factor"))}</strong>'
             f'<p>{escape(str(factor.get("detail") or ""))}</p>'
-            f'<div class="postgame-sub" style="margin-top:6px">{escape(str(factor.get("source") or ""))}</div></article>'
+            f'<div class="postgame-sub" style="margin-top:7px">{escape(str(factor.get("source") or ""))}</div></article>'
         )
     factors_html = "".join(factor_cards) or '<div class="empty">The stored box score does not yet expose a statistically distinct decisive factor.</div>'
 
     player_cards = []
     for row in report["players"]:
         href = _player_url(row.get("player_id"), season)
-        name = escape(str(row.get("player") or "Player")); name_html = f'<a href="{href}">{name}</a>' if href else name
+        name = escape(str(row.get("player") or "Player"))
+        name_html = f'<a href="{href}">{name}</a>' if href else name
         player_cards.append(
             '<article class="postgame-player">'
             f'<div class="postgame-sub">{escape(str(row.get("team") or ""))}</div><strong>{name_html}</strong>'
@@ -213,8 +230,10 @@ def _render(repository, game: dict[str, Any], team_stats, player_stats) -> Marku
     role_cards = []
     for row in report["roles"]:
         href = _player_url(row.get("player_id"), season)
-        name = escape(str(row.get("player_name") or "Current roster player")); name_html = f'<a href="{href}">{name}</a>' if href else name
-        week = row.get("latest_week"); through = f" through Week {week}" if week is not None else ""
+        name = escape(str(row.get("player_name") or "Current roster player"))
+        name_html = f'<a href="{href}">{name}</a>' if href else name
+        week = row.get("latest_week")
+        through = f" through Week {week}" if week is not None else ""
         role_cards.append(
             '<article class="postgame-role">'
             f'<div class="postgame-sub">{escape(str(row.get("team") or ""))} · {escape(str(row.get("position") or ""))}</div>'
@@ -227,12 +246,13 @@ def _render(repository, game: dict[str, Any], team_stats, player_stats) -> Marku
     advanced_html = _advanced_html(repository, game)
     expectation_html = _expectation_html(repository, game)
     return Markup(
-        STYLE + '<section class="section postgame-shell"><div class="eyebrow">Postgame intelligence</div>'
-        '<h2>Game story & analysis</h2>'
+        STYLE + '<section class="section postgame-shell">'
+        '<div class="postgame-report-head"><span class="postgame-report-num">01</span><h2>Game analysis</h2><span>Evidence-led postgame intelligence</span></div>'
+        '<div class="postgame-story">'
         f'<p class="postgame-lede">{escape(str(report["story"]))}</p><div class="postgame-meta">'
         f'<span class="postgame-tag">{escape(str(report["complexion"]))}</span>'
         f'<span class="postgame-tag">Margin {float(report["margin"]):g}</span>'
-        f'<span class="postgame-tag">{len(report["factors"])} measurable separators</span></div>'
+        f'<span class="postgame-tag">{len(report["factors"])} measurable separators</span></div></div>'
         '<div class="postgame-section-head"><h3>What decided it</h3><span>Ranked from stored evidence</span></div>'
         f'<div class="postgame-grid">{factors_html}</div>'
         '<div class="postgame-section-head"><h3>How the game was played</h3><span>Our pbp-v1 definitions · garbage time excluded</span></div>'
