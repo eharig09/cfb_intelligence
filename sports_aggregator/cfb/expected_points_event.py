@@ -24,10 +24,8 @@ MODEL_VERSION = "ep-v2"
 WRITE_BATCH = 1000
 MIN_CELL = 30
 
-_ADMIN = (
-    "timeout", "end period", "end of quarter", "end of half", "end of game",
-    "end of regulation", "no play",
-)
+_ADMIN_PLAY_TYPES = ("kickoff", "extra point", "two point", "end period", "timeout")
+_ADMIN_TEXT = ("end period", "end of quarter", "end of half", "end of game", "end of regulation")
 
 
 def _int(value: Any) -> int | None:
@@ -59,22 +57,6 @@ def _segment(row: dict[str, Any]) -> int:
 
 def _text(row: dict[str, Any]) -> str:
     return f"{row.get('play_type') or ''} {row.get('play_text') or ''}".casefold()
-
-
-def _usable_state(row: dict[str, Any]) -> bool:
-    """True when row represents a real pre-play football state.
-
-    Kickoffs and administrative/no-play rows frequently carry synthetic
-    down/distance fields and must not become EP continuation states.
-    """
-    text = _text(row)
-    play_type = str(row.get("play_type") or "").casefold()
-    if any(token in text for token in _ADMIN):
-        return False
-    if any(token in play_type for token in ("kickoff", "extra point", "two point", "end period", "timeout")):
-        return False
-    key = state_key(row)
-    return 0 not in key and _segment(row) in (1, 2)
 
 
 def _touchdown_points(text: str) -> int:
@@ -123,6 +105,35 @@ def _scoring_event(row: dict[str, Any]) -> tuple[int, str] | None:
             return 2, "offense"
 
     return None
+
+
+def _usable_state(row: dict[str, Any]) -> bool:
+    """True when row represents a real pre-play football state.
+
+    Provider descriptions sometimes append a timeout, PAT, or conversion to the
+    actual scoring play. A recognized scoring event must therefore remain usable
+    even when its text contains those administrative fragments. True timeout,
+    kickoff, standalone conversion, end-period, and NO PLAY rows remain excluded.
+    """
+    key = state_key(row)
+    if 0 in key or _segment(row) not in (1, 2):
+        return False
+
+    play_type = str(row.get("play_type") or "").casefold()
+    text = _text(row)
+
+    # The event classifier is authoritative for bundled scoring rows. This must
+    # happen before searching the free text for appended timeout/conversion prose.
+    if _scoring_event(row) is not None:
+        return True
+
+    if "no play" in text:
+        return False
+    if any(token in play_type for token in _ADMIN_PLAY_TYPES):
+        return False
+    if any(token in text for token in _ADMIN_TEXT):
+        return False
+    return True
 
 
 def _home_net_event(row: dict[str, Any]) -> float | None:
