@@ -1,8 +1,8 @@
 """Safe discovery and preflight for fresh CFBDepth CSV exports.
 
 The underlying import functions replace snapshot tables, so classification and
-required-column validation happen before any database write.  Header matching
-is case/punctuation insensitive, allowing harmless export changes such as
+required-column validation happen before any database write. Header matching is
+case/punctuation insensitive, allowing harmless export changes such as
 `Active_Players` vs `Active Players` without teaching the importer a new schema.
 """
 
@@ -38,16 +38,12 @@ EXPORT_FIELDS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-# A small identifying subset is enough to classify the export; the complete
-# expected fields are then reported so new provider changes are visible.
 SIGNATURES: dict[str, tuple[str, ...]] = {
     "roster": ("School", "Active Players", "Transfers", "Blue Chip%"),
     "impact": ("School", "Injury Number", "Injury Impact", "Impact PP"),
     "updates": ("Name", "Team", "Status", "Last Update", "Update"),
 }
 
-# Fields required for a useful/safe import. Other known fields may be absent and
-# will simply remain NULL in the database.
 REQUIRED: dict[str, tuple[str, ...]] = {
     "roster": ("School",),
     "impact": ("School",),
@@ -59,11 +55,23 @@ def _key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
 
 
+def _decode(source: str | bytes) -> str:
+    if isinstance(source, bytes):
+        return source.decode("utf-8-sig", errors="replace")
+    return str(source)
+
+
+def _headers_from_text(text: str) -> list[str]:
+    try:
+        return [str(value).strip() for value in next(csv.reader(StringIO(text)), [])]
+    except csv.Error:
+        return []
+
+
 def _headers(path: Path) -> list[str]:
     try:
-        with path.open("r", encoding="utf-8-sig", newline="") as source:
-            return [str(value).strip() for value in next(csv.reader(source), [])]
-    except (OSError, UnicodeError, csv.Error):
+        return _headers_from_text(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError):
         return []
 
 
@@ -76,22 +84,21 @@ def _mapped_headers(headers: list[str], kind: str) -> dict[str, str]:
     }
 
 
-def classify_cfbdepth_csv(path: str | Path) -> str | None:
-    csv_path = Path(path)
-    headers = _headers(csv_path)
+def _classify_headers(headers: list[str]) -> str | None:
     for kind, signature in SIGNATURES.items():
         mapped = _mapped_headers(headers, kind)
         if all(field in mapped for field in signature):
             return kind
-    # Provider exports occasionally omit optional signature columns. Fall back
-    # to the minimal safe identity columns only when that uniquely identifies a
-    # type.
     candidates = []
     for kind, required in REQUIRED.items():
         mapped = _mapped_headers(headers, kind)
         if all(field in mapped for field in required):
             candidates.append(kind)
     return candidates[0] if len(candidates) == 1 else None
+
+
+def classify_cfbdepth_csv(path: str | Path) -> str | None:
+    return _classify_headers(_headers(Path(path)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,38 +120,73 @@ class CFBDepthFileCheck:
         return packet
 
 
-def preflight_cfbdepth_file(path: str | Path) -> CFBDepthFileCheck:
-    csv_path = Path(path)
-    kind = classify_cfbdepth_csv(csv_path)
-    headers = _headers(csv_path)
-    mapped = _mapped_headers(headers, kind) if kind else {}
-    rows = 0
+def _preflight_text(text: str, *, label: str = "upload.csv",
+                    expected_kind: str | None = None) -> CFBDepthFileCheck:
+    headers = _headers_from_text(text)
+    kind = _classify_headers(headers)
+    if expected_kind and kind and kind != expected_kind:
+        # A file in the wrong browser slot is rejected instead of being imported
+        # into an unrelated snapshot table.
+        return CFBDepthFileCheck(
+            path=label, kind=kind, rows=0, mapped_fields=tuple(),
+            missing_required=(f"expected {expected_kind} export",), missing_optional=tuple(),
+        )
+    active_kind = expected_kind or kind
+    mapped = _mapped_headers(headers, active_kind) if active_kind else {}
     try:
-        with csv_path.open("r", encoding="utf-8-sig", newline="") as source:
-            rows = sum(1 for _ in csv.DictReader(source))
-    except (OSError, UnicodeError, csv.Error):
+        rows = sum(1 for _ in csv.DictReader(StringIO(text)))
+    except csv.Error:
         rows = 0
-    required = REQUIRED.get(kind or "", ())
-    expected = EXPORT_FIELDS.get(kind or "", ())
+    required = REQUIRED.get(active_kind or "", ())
+    expected = EXPORT_FIELDS.get(active_kind or "", ())
     missing_required = tuple(field for field in required if field not in mapped)
     missing_optional = tuple(field for field in expected if field not in mapped and field not in required)
     return CFBDepthFileCheck(
-        path=str(csv_path), kind=kind, rows=rows,
+        path=label, kind=active_kind, rows=rows,
         mapped_fields=tuple(mapped), missing_required=missing_required,
         missing_optional=missing_optional,
     )
 
 
-def _canonical_text(path: Path, kind: str) -> str:
-    headers = _headers(path)
-    mapping = _mapped_headers(headers, kind)
+def preflight_cfbdepth_file(path: str | Path) -> CFBDepthFileCheck:
+    csv_path = Path(path)
+    try:
+        text = csv_path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        text = ""
+    return _preflight_text(text, label=str(csv_path))
+
+
+def preflight_cfbdepth_upload(source: str | bytes, *, expected_kind: str,
+                              label: str = "upload.csv") -> CFBDepthFileCheck:
+    return _preflight_text(_decode(source), label=label, expected_kind=expected_kind)
+
+
+def canonicalize_cfbdepth_upload(source: str | bytes, *, expected_kind: str,
+                                 label: str = "upload.csv") -> tuple[CFBDepthFileCheck, str]:
+    """Validate and normalize one uploaded export before snapshot replacement."""
+    text = _decode(source)
+    check = _preflight_text(text, label=label, expected_kind=expected_kind)
+    if not check.ready:
+        raise ValueError(
+            f"CFBDepth preflight failed for {label}: rows={check.rows}, "
+            f"missing_required={list(check.missing_required)}"
+        )
+    headers = _headers_from_text(text)
+    mapping = _mapped_headers(headers, expected_kind)
     output = StringIO()
-    writer = csv.DictWriter(output, fieldnames=list(EXPORT_FIELDS[kind]), extrasaction="ignore")
+    writer = csv.DictWriter(output, fieldnames=list(EXPORT_FIELDS[expected_kind]), extrasaction="ignore")
     writer.writeheader()
-    with path.open("r", encoding="utf-8-sig", newline="") as source:
-        for source_row in csv.DictReader(source):
-            writer.writerow({canonical: source_row.get(original) for canonical, original in mapping.items()})
-    return output.getvalue()
+    for source_row in csv.DictReader(StringIO(text)):
+        writer.writerow({canonical: source_row.get(original) for canonical, original in mapping.items()})
+    return check, output.getvalue()
+
+
+def _canonical_text(path: Path, kind: str) -> str:
+    _check, canonical = canonicalize_cfbdepth_upload(
+        path.read_bytes(), expected_kind=kind, label=str(path)
+    )
+    return canonical
 
 
 def import_cfbdepth_file(repository, path: str | Path) -> dict[str, Any]:
