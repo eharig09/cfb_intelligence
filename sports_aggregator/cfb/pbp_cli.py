@@ -11,6 +11,11 @@ Temporal holdout example (does not overwrite production wp-v1):
   python -m sports_aggregator.cfb.pbp_cli fit-wp --from-year 2022 --to-year 2024 --model-version wp-v1-holdout-2025
   python -m sports_aggregator.cfb.pbp_cli score-wp --year 2025 --model-version wp-v1-holdout-2025
   python -m sports_aggregator.cfb.pbp_cli validate-wp --year 2025 --model-version wp-v1-holdout-2025
+
+Calibration holdout example:
+  python -m sports_aggregator.cfb.pbp_cli fit-wp-calibration --from-year 2022 --to-year 2024 --source-model-version wp-v1-holdout-2025 --model-version wp-v1-cal-holdout-2025
+  python -m sports_aggregator.cfb.pbp_cli score-wp-calibrated --year 2025 --source-model-version wp-v1-holdout-2025 --model-version wp-v1-cal-holdout-2025
+  python -m sports_aggregator.cfb.pbp_cli validate-wp --year 2025 --model-version wp-v1-cal-holdout-2025
 """
 from __future__ import annotations
 
@@ -31,20 +36,25 @@ from sports_aggregator.cfb.pace import game_pace_summary
 from sports_aggregator.cfb.play_by_play import replace_week_plays, derive_week
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb.win_probability import fit_model as fit_wp, score_plays as score_wp
+from sports_aggregator.cfb.wp_calibration import fit_calibration as fit_wp_calibration
+from sports_aggregator.cfb.wp_calibration import score_calibrated as score_wp_calibrated
 
 
 def parser() -> argparse.ArgumentParser:
     p=argparse.ArgumentParser(description="CFB play-by-play analytics")
     p.add_argument("command",choices=(
         "backfill","derive","fit-edp","score-edp","validate-edp",
-        "fit-wp","score-wp","validate-wp","rebuild-values","pace"))
+        "fit-wp","score-wp","validate-wp","fit-wp-calibration",
+        "score-wp-calibrated","rebuild-values","pace"))
     p.add_argument("--year",type=int,default=datetime.now().year)
     p.add_argument("--from-year",type=int,default=None)
     p.add_argument("--to-year",type=int,default=None)
     p.add_argument("--week",type=int,default=None)
     p.add_argument("--game-id",type=int,default=None)
     p.add_argument("--model-version",default=None,
-                   help="Optional model version. Defaults to edp-v1 or wp-v1 for model commands.")
+                   help="Optional output/model version. Defaults to edp-v1 or wp-v1 for model commands.")
+    p.add_argument("--source-model-version",default=None,
+                   help="Source WP version for calibration commands.")
     p.add_argument("--force",action="store_true")
     p.add_argument("--database",default=None)
     return p
@@ -136,6 +146,18 @@ def main(argv:list[str]|None=None,*,client=None)->int:
     if args.command=="validate-wp":
         version=_model_version(args,"wp")
         print(json.dumps(validate_wp(repository,from_season=first,to_season=last,model_version=version),indent=2)); return 0
+    if args.command=="fit-wp-calibration":
+        source=str(args.source_model_version or "wp-v1")
+        version=str(args.model_version or f"{source}-calibrated")
+        print(json.dumps(fit_wp_calibration(
+            repository,source_model_version=source,calibration_version=version,
+            from_season=first,to_season=last),indent=2)); return 0
+    if args.command=="score-wp-calibrated":
+        source=str(args.source_model_version or "wp-v1")
+        version=str(args.model_version or f"{source}-calibrated")
+        print(json.dumps(score_wp_calibrated(
+            repository,source_model_version=source,calibration_version=version,
+            output_model_version=version,from_season=first,to_season=last),indent=2)); return 0
     if args.command=="rebuild-values":
         edp=score_edp(repository,from_season=first,to_season=last,model_version=_model_version(args,"edp"))
         wp=score_wp(repository,from_season=first,to_season=last,model_version=_model_version(args,"wp"))
