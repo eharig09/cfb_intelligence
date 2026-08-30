@@ -21,6 +21,7 @@ from sports_aggregator.cfb.model_validation import validate_edp, validate_wp
 from sports_aggregator.cfb.pace import game_pace_summary
 from sports_aggregator.cfb.play_by_play import replace_week_plays, derive_week
 from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb.team_game_advanced import build as build_team_game_advanced
 from sports_aggregator.cfb.win_probability import fit_model as fit_wp, score_plays as score_wp
 from sports_aggregator.cfb.win_probability_v2 import fit_model as fit_wp_v2, score_plays as score_wp_v2
 from sports_aggregator.cfb.wp_calibration import fit_calibration as fit_wp_calibration
@@ -32,7 +33,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("command", choices=(
         "backfill", "derive",
         "fit-edp", "score-edp", "validate-edp",
-        "fit-ep", "score-epa", "validate-ep", "validate-epa",
+        "fit-ep", "score-epa", "validate-ep", "validate-epa", "build-team-advanced",
         "fit-wp", "score-wp", "fit-wp-v2", "score-wp-v2", "validate-wp",
         "fit-wp-calibration", "score-wp-calibrated", "rebuild-values", "pace"))
     p.add_argument("--year", type=int, default=datetime.now().year)
@@ -159,6 +160,11 @@ def main(argv: list[str] | None = None, *, client=None) -> int:
         version = _model_version(args, "ep")
         print(json.dumps(validate_epa(repository, from_season=first, to_season=last,
                                      model_version=version), indent=2))
+        return 0
+    if args.command == "build-team-advanced":
+        version = _model_version(args, "ep")
+        print(json.dumps(build_team_game_advanced(
+            repository, from_season=first, to_season=last, model_version=version), indent=2))
         return 0
 
     if args.command == "fit-wp":
