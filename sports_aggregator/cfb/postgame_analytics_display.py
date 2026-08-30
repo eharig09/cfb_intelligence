@@ -108,8 +108,12 @@ def _humanize_field_codes(text,game):
 
 def _clean_play_text(text,game):
     human=_humanize_field_codes(text,game); human=re.sub(r"^\(\d{1,2}:\d{2}\)\s*","",human).strip(); human=re.sub(r",?\s*clock\s+\d{1,2}:\d{2}","",human,flags=re.I)
-    td=re.search(r"\bTOUCHDOWN\b",human,flags=re.I)
-    if td and any(t in human[td.end():].casefold() for t in ("kick attempt","pass attempt","two-point","two point","extra point")):human=human[:td.end()]
+    # Providers use both literal TOUCHDOWN and older "for a TD (...)" grammar.
+    # Strip appended PAT/two-point/timeout material from either form while
+    # preserving the actual scoring play sentence.
+    td=re.search(r"\bTOUCHDOWN\b|\bfor a TD\b",human,flags=re.I)
+    if td and any(t in human[td.end():].casefold() for t in ("kick attempt","pass attempt","two-point","two point","extra point","timeout")):
+        human=human[:td.end()]
     catch=re.search(r"caught at (.+?),\s*for (-?\d+) yards to (?:the )?(.+?)(?=,|$)",human,flags=re.I)
     if catch:
         a=catch.group(1).strip(); y=int(catch.group(2)); b=catch.group(3).strip(); repl=f"caught at {a} — {y}-yard {'gain' if y>=0 else 'loss'}" if a.casefold()==b.casefold() else f"caught at {a}, advanced to {b} — {y}-yard {'gain' if y>=0 else 'loss'}"; human=human[:catch.start()]+repl+human[catch.end():]
@@ -126,14 +130,17 @@ def _team_colors(repository,game):
         except Exception:colors[team]="var(--team-light)"
     return colors
 
-_PLAYER=re.compile(r"(#\d+\s+[A-Z][A-Za-z.'’\-]*(?:\s+[A-Z][A-Za-z.'’\-]*)?)")
+# Highlight provider player tokens with or without jersey numbers. The compact
+# no-jersey form (e.g. "S. Mikaele") is common in older/summary scoring rows.
+_PLAYER=re.compile(r"(#\d+\s+[A-Z][A-Za-z.'’\-]*(?:\s+[A-Z][A-Za-z.'’\-]*)?|(?<![#\w])[A-Z]\.\s*[A-Z][A-Za-z.'’\-]*(?:\s+(?:Jr\.|II|III|IV))?)")
 _DEFENSE_CUES=("broken up by","tackled by","sacked by","intercepted by","forced by","recovered by","blocked by","hurried by")
+_DEFENSE_CONTEXT=re.compile(r"(?:broken up by|tackled by|sacked by|intercepted by|forced by|recovered by|blocked by|hurried by)(?:\s+[a-z][a-z.'’\-]*){0,2}\s*$",re.I)
 
 
 def _play_html(text,game,colors,offense,defense):
     human=_clean_play_text(text,game); pieces=[]; last=0
     for match in _PLAYER.finditer(human):
-        pieces.append(escape(human[last:match.start()])); before=human[max(0,match.start()-45):match.start()].casefold().rstrip(); defender=(match.start()>0 and human[match.start()-1]=="(") or any(before.endswith(cue) for cue in _DEFENSE_CUES); team=defense if defender else offense; color=colors.get(team,"var(--team-light)"); pieces.append(f'<span class="pg-turn-player" style="color:{escape(color,quote=True)}">{escape(match.group(1))}</span>'); last=match.end()
+        pieces.append(escape(human[last:match.start()])); before=human[max(0,match.start()-70):match.start()].rstrip(); defender=(match.start()>0 and human[match.start()-1]=="(") or bool(_DEFENSE_CONTEXT.search(before)) or any(before.casefold().endswith(cue) for cue in _DEFENSE_CUES); team=defense if defender else offense; color=colors.get(team,"var(--team-light)"); pieces.append(f'<span class="pg-turn-player" style="color:{escape(color,quote=True)}">{escape(match.group(1))}</span>'); last=match.end()
     pieces.append(escape(human[last:])); return "".join(pieces)
 
 
