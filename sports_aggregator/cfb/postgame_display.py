@@ -10,6 +10,7 @@ from flask import url_for
 from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
+from sports_aggregator.cfb.player_game_epa import annotate_player_epa
 from sports_aggregator.cfb.postgame import postgame_report
 from sports_aggregator.cfb.pregame_snapshots import final_snapshot
 from sports_aggregator.cfb.team_game_advanced import game_summary
@@ -27,10 +28,10 @@ STYLE = '''<style>
 .postgame-evidence-list{border-top:1px solid var(--line);margin:8px 0 14px}.postgame-evidence-row{display:grid;grid-template-columns:34px minmax(190px,.8fr) minmax(0,1.8fr);gap:12px;align-items:start;padding:10px 3px;border-bottom:1px solid var(--line);font-size:.62rem;line-height:1.48}.postgame-evidence-row .rank{font-family:var(--display-font);font-size:.72rem;color:var(--muted);font-variant-numeric:tabular-nums}.postgame-evidence-row strong{display:block;font-size:.67rem}.postgame-evidence-row .factor-confidence{display:block;margin-top:3px;color:var(--muted);font-size:.47rem;text-transform:uppercase;letter-spacing:.055em;font-weight:800}
 .efficiency-table{border:1px solid var(--line);background:var(--paper);margin:8px 0 5px}.efficiency-row{display:grid;grid-template-columns:minmax(180px,1.5fr) minmax(110px,.65fr) minmax(110px,.65fr);align-items:center;border-top:1px solid var(--line)}.efficiency-row:first-child{border-top:0}.efficiency-cell{padding:8px 11px;font-size:.63rem}.efficiency-head .efficiency-cell{font-size:.5rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:850;background:color-mix(in srgb,var(--paper) 95%,var(--ink) 5%)}.efficiency-cell.num{text-align:right;font-family:var(--display-font);font-size:.77rem;font-variant-numeric:tabular-nums;display:flex;justify-content:flex-end;align-items:center;gap:7px}.efficiency-cell.edge{font-weight:900}.efficiency-best{font:900 .42rem/1 var(--body-font);letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--team-light);padding:3px 4px;color:var(--ink)}.efficiency-label strong{display:block;font-size:.63rem}.efficiency-label small{display:block;color:var(--muted);font-size:.5rem;margin-top:2px}
 .postgame-expect-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin:8px 0 12px}.postgame-expect{border:1px solid var(--line);background:var(--paper);padding:10px 12px}.postgame-expect strong{display:block;font-size:.7rem;margin-top:4px}
-.player-impact-columns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:8px 0 14px}.player-impact-team{border:1px solid var(--line);background:var(--paper)}.player-impact-team h4{margin:0;padding:8px 11px;border-bottom:1px solid var(--line);font-size:.68rem}.player-impact-row{display:grid;grid-template-columns:minmax(130px,.8fr) 1.6fr;gap:10px;padding:7px 11px;border-top:1px solid var(--line);font-size:.6rem;line-height:1.4}.player-impact-row:first-of-type{border-top:0}.player-impact-row strong{font-size:.63rem}.player-impact-row p{margin:0}.player-impact-row a{font-weight:800}
+.player-impact-columns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:8px 0 14px}.player-impact-team{border:1px solid var(--line);background:var(--paper)}.player-impact-team h4{margin:0;padding:8px 11px;border-bottom:1px solid var(--line);font-size:.68rem}.player-impact-row{display:grid;grid-template-columns:minmax(130px,.8fr) 1.6fr auto;gap:10px;padding:7px 11px;border-top:1px solid var(--line);font-size:.6rem;line-height:1.4;align-items:center}.player-impact-row:first-of-type{border-top:0}.player-impact-row strong{font-size:.63rem}.player-impact-row p{margin:0}.player-impact-row a{font-weight:800}.player-impact-epa{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.player-impact-epa strong{display:block;font-family:var(--display-font);font-size:.72rem}.player-impact-epa span{display:block;color:var(--muted);font-size:.43rem;text-transform:uppercase;letter-spacing:.045em}
 .role-signal{border:1px solid var(--line);background:var(--paper);padding:9px 11px;margin:8px 0 12px;font-size:.61rem;line-height:1.45}.role-signal-row{display:grid;grid-template-columns:minmax(160px,.7fr) 1.8fr;gap:10px;padding:5px 0;border-top:1px solid var(--line)}.role-signal-row:first-child{border-top:0}.role-signal-row strong{font-size:.63rem}
 @media(max-width:760px){.postgame-evidence-row{grid-template-columns:28px 1fr}.postgame-evidence-row>span:last-child{grid-column:2}.player-impact-columns{grid-template-columns:1fr}.postgame-report-head>span:last-child,.postgame-section-head span{display:none}}
-@media(max-width:520px){.efficiency-row{grid-template-columns:1.25fr .8fr .8fr}.efficiency-cell{padding:7px 7px}.efficiency-best{font-size:.38rem}.player-impact-row,.role-signal-row{grid-template-columns:1fr}}
+@media(max-width:520px){.efficiency-row{grid-template-columns:1.25fr .8fr .8fr}.efficiency-cell{padding:7px 7px}.efficiency-best{font-size:.38rem}.player-impact-row{grid-template-columns:1fr auto}.player-impact-row p{grid-column:1}.player-impact-epa{grid-column:2;grid-row:1 / span 2}.role-signal-row{grid-template-columns:1fr}}
 </style>'''
 
 
@@ -129,7 +130,7 @@ def _advanced_html(repository, game):
         f'<div class="efficiency-cell" style="text-align:right">{escape(away_name)}</div>'
         f'<div class="efficiency-cell" style="text-align:right">{escape(home_name)}</div>'
         '</div>' + ''.join(body) + '</div>'
-        '<p class="postgame-model-note">EPA is our possession-aware ep-v1 model on qualifying rush/pass snaps. “Best” identifies the stronger value in that row; lower is better where explicitly noted.</p>'
+        '<p class="postgame-model-note">EPA is our possession-aware ep-v1 model on qualifying rush/pass snaps. The stronger value is highlighted in that team’s color; lower is better where explicitly noted.</p>'
     )
 
 
@@ -179,15 +180,25 @@ def _players_html(report, game, season):
             name = escape(str(r.get('player') or 'Player'))
             href = url_for('cfb.player_preview', player_id=r.get('player_id'), season=season) if r.get('player_id') else None
             shown = f'<a href="{href}">{name}</a>' if href else name
+            epa_html = ''
+            if r.get('involved_epa') is not None:
+                epa_html = (
+                    '<div class="player-impact-epa">'
+                    f'<strong>{_f2(r.get("involved_epa"))}</strong>'
+                    f'<span>EPA · {int(r.get("epa_plays") or 0)} involved plays</span></div>'
+                )
             rows.append(
                 '<div class="player-impact-row">'
-                f'<strong>{shown}</strong><p>{escape(str(r.get("summary") or "Recorded game impact"))}</p></div>'
+                f'<strong>{shown}</strong><p>{escape(str(r.get("summary") or "Recorded game impact"))}</p>{epa_html}</div>'
             )
         columns.append(
             '<section class="player-impact-team">'
             f'<h4>{escape(team)}</h4>' + (''.join(rows) or '<div class="player-impact-row"><span>—</span><p>No impact rows stored.</p></div>') + '</section>'
         )
-    return '<div class="player-impact-columns">' + ''.join(columns) + '</div>'
+    return (
+        '<div class="player-impact-columns">' + ''.join(columns) + '</div>'
+        '<p class="postgame-model-note">Player EPA is team-perspective EPA on plays where the player is explicitly identified in the stored description. It is involvement credit, not additive individual EPA; a QB and receiver can share the same play EPA.</p>'
+    )
 
 
 def _roles_html(report, season):
@@ -208,6 +219,10 @@ def _render(repository, game, team_stats, player_stats):
     report = postgame_report(repository, game, team_stats or (), player_stats or ())
     season = int(game.get('season') or 0)
     _role_names(repository, season, report['roles'])
+    try:
+        annotate_player_epa(repository, game, report['players'], model_version='ep-v1')
+    except Exception:
+        pass
     advanced = _advanced_html(repository, game)
     expectations = _expectation_html(repository, game)
     factors = _factor_html(report)
@@ -228,7 +243,7 @@ def _render(repository, game, team_stats, player_stats):
         f'{advanced}'
         '<div class="postgame-section-head"><h3>Expectation vs reality</h3><span>Frozen before kickoff</span></div>'
         f'{expectations}'
-        '<div class="postgame-section-head"><h3>Player impact</h3><span>Team-by-team production leaders</span></div>'
+        '<div class="postgame-section-head"><h3>Player impact</h3><span>Production + involved-play ep-v1</span></div>'
         f'{players}'
         '<div class="postgame-section-head"><h3>What may have changed</h3><span>Observed role signal</span></div>'
         f'{roles}'
