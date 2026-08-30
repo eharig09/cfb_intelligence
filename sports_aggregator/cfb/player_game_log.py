@@ -1,4 +1,4 @@
-"""Player-page game log with opponent and ranking context."""
+"""Player-page career game log with opponent and position-aware stat context."""
 
 from __future__ import annotations
 
@@ -37,20 +37,62 @@ FALLBACK_STATS = (
 
 YARDAGE_CONTEXT = {"passing", "rushing", "receiving"}
 
+# Each display column accepts several common stat-type spellings. CFBD and
+# historical providers have not always used exactly the same abbreviation, so
+# the game log resolves the first value present rather than assuming one schema.
+STAT_SPECS = {
+    "pass_cmp": ("Cmp", "passing", ("CMP", "COM", "COMPLETIONS"), "int"),
+    "pass_att": ("Att", "passing", ("ATT", "ATTEMPTS"), "int"),
+    "pass_yds": ("Pass yds", "passing", ("YDS", "YARDS"), "num"),
+    "pass_td": ("Pass TD", "passing", ("TD", "TDS", "TOUCHDOWNS"), "int"),
+    "pass_int": ("INT", "passing", ("INT", "INTERCEPTIONS"), "int"),
+    "rush_att": ("Rush", "rushing", ("CAR", "ATT", "ATTEMPTS", "CARRIES"), "int"),
+    "rush_yds": ("Rush yds", "rushing", ("YDS", "YARDS"), "num"),
+    "rush_td": ("Rush TD", "rushing", ("TD", "TDS", "TOUCHDOWNS"), "int"),
+    "rec": ("Rec", "receiving", ("REC", "RECEPTIONS"), "int"),
+    "rec_yds": ("Rec yds", "receiving", ("YDS", "YARDS"), "num"),
+    "rec_td": ("Rec TD", "receiving", ("TD", "TDS", "TOUCHDOWNS"), "int"),
+    "tackles": ("Tkl", "defensive", ("TOT", "TOTAL", "TACKLES"), "num"),
+    "solo": ("Solo", "defensive", ("SOLO", "SOLO_TACKLES"), "num"),
+    "tfl": ("TFL", "defensive", ("TFL", "TACKLES_FOR_LOSS"), "num"),
+    "sacks": ("Sack", "defensive", ("SACKS", "SACK"), "num"),
+    "pd": ("PD", "defensive", ("PD", "PBU", "PASSES_DEFENDED"), "num"),
+    "def_int": ("INT", "interceptions", ("INT", "INTERCEPTIONS"), "num"),
+    "ff": ("FF", "fumbles", ("FF", "FORCED", "FORCED_FUMBLES"), "num"),
+    "fr": ("FR", "fumbles", ("FR", "REC", "FUMBLE_RECOVERIES"), "num"),
+    "fgm": ("FGM", "kicking", ("FGM", "FG_MADE"), "int"),
+    "fga": ("FGA", "kicking", ("FGA", "FG_ATTEMPTS"), "int"),
+    "xpm": ("XP", "kicking", ("XPM", "XP", "PAT"), "int"),
+    "xpa": ("XPA", "kicking", ("XPA", "PAT_ATTEMPTS"), "int"),
+    "kick_pts": ("Pts", "kicking", ("PTS", "POINTS"), "num"),
+    "punts": ("Punts", "punting", ("NO", "PUNTS", "ATT"), "int"),
+    "punt_yds": ("Punt yds", "punting", ("YDS", "YARDS"), "num"),
+    "punt_avg": ("Avg", "punting", ("AVG", "AVERAGE"), "f1"),
+    "punt_long": ("Long", "punting", ("LONG", "LNG"), "num"),
+    "punt_in20": ("In 20", "punting", ("IN20", "INSIDE20", "I20"), "int"),
+}
+
+POSITION_COLUMNS = {
+    "QB": ("pass_cmp", "pass_att", "pass_yds", "pass_td", "pass_int",
+           "rush_att", "rush_yds", "rush_td"),
+    "RB": ("rush_att", "rush_yds", "rush_td", "rec", "rec_yds", "rec_td"),
+    "FB": ("rush_att", "rush_yds", "rush_td", "rec", "rec_yds", "rec_td"),
+    "WR": ("rec", "rec_yds", "rec_td", "rush_att", "rush_yds", "rush_td"),
+    "TE": ("rec", "rec_yds", "rec_td", "rush_att", "rush_yds", "rush_td"),
+    "K": ("fgm", "fga", "xpm", "xpa", "kick_pts"),
+    "P": ("punts", "punt_yds", "punt_avg", "punt_long", "punt_in20"),
+}
+
+DEFENSIVE_COLUMNS = ("tackles", "solo", "tfl", "sacks", "pd", "def_int", "ff", "fr")
+GENERIC_COLUMNS = ("pass_yds", "rush_yds", "rec_yds", "tackles", "def_int")
+
 
 def _placeholders(values: list[str]) -> str:
     return ",".join("?" for _ in values)
 
 
 def _career_identity(connection, player: dict[str, Any]) -> tuple[list[str], list[str]]:
-    """Resolve a bounded set of IDs for one stored player career.
-
-    Do not scan the historical game-player table by name here. That table can
-    contain decades of box-score rows; request-time full scans made some player
-    pages appear to hang. Instead, resolve aliases from the much smaller roster
-    and season-stat stores, then use the indexed player_id -> game_id path for
-    per-game production.
-    """
+    """Resolve a bounded set of IDs for one stored player career."""
     current_id = str(player.get("player_id") or "").strip()
     name = str(player.get("name") or "").strip()
     normalized = str(player.get("normalized_name") or "").strip()
@@ -124,45 +166,9 @@ def _primary_stat(connection, player_ids: list[str], position: str | None):
     return preferred or ("defensive", "TOT", "Tackles")
 
 
-def _conference_rank(connection, player_id: str, season: int, conference: str | None,
-                     category: str, stat_type: str) -> tuple[int | None, float | None]:
-    row = connection.execute(
-        """SELECT numeric_value FROM player_season_stats
-           WHERE season=? AND player_id=? AND category=? AND stat_type=?
-           LIMIT 1""",
-        (season, player_id, category, stat_type),
-    ).fetchone()
-    if not row or row[0] is None or not conference:
-        return None, None
-    value = float(row[0])
-    better = connection.execute(
-        """SELECT COUNT(*) FROM player_season_stats
-           WHERE season=? AND conference=? AND category=? AND stat_type=?
-             AND numeric_value IS NOT NULL AND numeric_value>?""",
-        (season, conference, category, stat_type, value),
-    ).fetchone()[0]
-    return int(better) + 1, value
-
-
-def _game_rank(connection, game_id: int, category: str, stat_type: str, value: float) -> int:
-    better = connection.execute(
-        """SELECT COUNT(DISTINCT player_id) FROM game_player_box_stats
-           WHERE game_id=? AND category=? AND stat_type=?
-             AND numeric_value IS NOT NULL AND numeric_value>?""",
-        (game_id, category, stat_type, value),
-    ).fetchone()[0]
-    return int(better) + 1
-
-
 def _defense_allowed_before(connection, seasons: set[int], category: str,
                             stat_type: str) -> dict[tuple[int, str], float | None]:
-    """Opponent defense's average yards allowed entering each game.
-
-    This uses only games before the target game in the same season. For passing,
-    rushing and receiving YDS, player box rows are summed to a team-game total,
-    then attributed to the opposing defense. No season-end hindsight leaks into
-    the number shown beside a historical performance.
-    """
+    """Opponent defense's average yards allowed entering each game."""
     if category not in YARDAGE_CONTEXT or stat_type != "YDS":
         return {}
 
@@ -190,9 +196,7 @@ def _defense_allowed_before(connection, seasons: set[int], category: str,
             else:
                 continue
             prior = running.setdefault(defense, [0.0, 0.0])
-            context[(int(item["game_id"]), defense)] = (
-                prior[0] / prior[1] if prior[1] else None
-            )
+            context[(int(item["game_id"]), defense)] = prior[0] / prior[1] if prior[1] else None
             yards = item.get("yards")
             if yards is not None:
                 prior[0] += float(yards)
@@ -209,51 +213,89 @@ def _date_label(value: str | None) -> str:
         return str(value)[:10]
 
 
+def _stat_key(category: str | None, stat_type: str | None) -> tuple[str, str]:
+    return str(category or "").casefold(), str(stat_type or "").strip().upper()
+
+
+def _game_stat(stats: dict[tuple[str, str], Any], key: str) -> Any:
+    _label, category, aliases, _format = STAT_SPECS[key]
+    normalized_category = category.casefold()
+    for alias in aliases:
+        value = stats.get((normalized_category, alias.upper()))
+        if value is not None:
+            return value
+    return None
+
+
+def _stat_columns(position: str | None, available: set[tuple[str, str]]) -> list[str]:
+    pos = str(position or "").strip().upper()
+    desired = DEFENSIVE_COLUMNS if pos in DEFENSIVE_POSITIONS else POSITION_COLUMNS.get(pos, GENERIC_COLUMNS)
+    present = []
+    for key in desired:
+        _label, category, aliases, _format = STAT_SPECS[key]
+        if any((category.casefold(), alias.upper()) in available for alias in aliases):
+            present.append(key)
+    # Sparse historical data should still display something useful rather than
+    # collapsing the game log to metadata only.
+    if not present:
+        for key in GENERIC_COLUMNS:
+            _label, category, aliases, _format = STAT_SPECS[key]
+            if any((category.casefold(), alias.upper()) in available for alias in aliases):
+                present.append(key)
+    return present
+
+
 def player_game_log_table(repository, player: dict[str, Any], season: int) -> Table:
     """Career game log from stored per-game player box scores."""
+    del season  # Career log intentionally spans every stored season for this identity.
     position = player.get("position")
     repository.initialize()
     with closing(repository._connect()) as connection:
-        player_ids, career_teams = _career_identity(connection, player)
+        player_ids, _career_teams = _career_identity(connection, player)
         category, stat_type, stat_label = _primary_stat(connection, player_ids, position)
-        rows = []
+        raw_rows = []
         if player_ids:
             placeholders = _placeholders(player_ids)
-            rows = connection.execute(
+            raw_rows = connection.execute(
                 f"""SELECT gp.game_id,g.season,g.week,g.start_date,
                           g.home_team_id,g.home_team,g.home_points,g.home_pregame_elo,
                           g.away_team_id,g.away_team,g.away_points,g.away_pregame_elo,
                           gp.player_id AS box_player_id,gp.team,gp.conference,
-                          gp.numeric_value,gp.stat_value
+                          gp.category,gp.stat_type,gp.numeric_value,gp.stat_value
                    FROM game_player_box_stats gp
                    JOIN games g USING(game_id)
                    WHERE gp.player_id IN ({placeholders})
-                     AND gp.category=? AND gp.stat_type=?
                    ORDER BY g.start_date DESC,g.game_id DESC""",
-                [*player_ids, category, stat_type],
+                player_ids,
             ).fetchall()
 
-        chronological: list[int] = []
-        chronological_seen: set[int] = set()
-        for raw in sorted(rows, key=lambda item: (item["start_date"], item["game_id"])):
-            game_id = int(raw["game_id"])
-            if game_id not in chronological_seen:
-                chronological_seen.add(game_id)
-                chronological.append(game_id)
-        career_game_number = {game_id: index + 1 for index, game_id in enumerate(chronological)}
-
-        seasons = {int(row["season"]) for row in rows}
-        defense_allowed = _defense_allowed_before(connection, seasons, category, stat_type)
-        elo_by_season: dict[int, dict[int, dict[str, Any]]] = {}
-        rank_cache: dict[tuple[str, int, str | None], tuple[int | None, float | None]] = {}
-        output: list[dict[str, Any]] = []
-        seen_games: set[int] = set()
-        for raw in rows:
+        games: dict[int, dict[str, Any]] = {}
+        available_stats: set[tuple[str, str]] = set()
+        for raw in raw_rows:
             item = dict(raw)
             game_id = int(item["game_id"])
-            if game_id in seen_games:
-                continue
-            seen_games.add(game_id)
+            game = games.setdefault(game_id, {**item, "stats": {}})
+            key = _stat_key(item.get("category"), item.get("stat_type"))
+            available_stats.add(key)
+            value = item.get("numeric_value")
+            if value is None:
+                value = item.get("stat_value")
+            # Multiple historical IDs can reconcile to the same player career.
+            # Prefer the first non-null value instead of duplicating a game.
+            game["stats"].setdefault(key, value)
+
+        game_rows = sorted(games.values(), key=lambda item: (item["start_date"], item["game_id"]), reverse=True)
+        chronological = sorted(games.values(), key=lambda item: (item["start_date"], item["game_id"]))
+        career_game_number = {int(item["game_id"]): index + 1 for index, item in enumerate(chronological)}
+
+        seasons = {int(row["season"]) for row in game_rows}
+        defense_allowed = _defense_allowed_before(connection, seasons, category, stat_type)
+        stat_columns = _stat_columns(position, available_stats)
+        elo_by_season: dict[int, dict[int, dict[str, Any]]] = {}
+        output: list[dict[str, Any]] = []
+
+        for item in game_rows:
+            game_id = int(item["game_id"])
             row_season = int(item["season"])
             player_is_home = item["team"] == item["home_team"]
             opponent = item["away_team"] if player_is_home else item["home_team"]
@@ -265,73 +307,60 @@ def player_game_log_table(repository, player: dict[str, Any], season: int) -> Ta
             if player_points is not None and opp_points is not None:
                 result = ("W" if player_points > opp_points else "L" if player_points < opp_points else "T") + f" {player_points}-{opp_points}"
 
-            numeric = item["numeric_value"]
-            display_value = numeric if numeric is not None else item["stat_value"]
-            game_rank = _game_rank(connection, game_id, category, stat_type, float(numeric)) if numeric is not None else None
-
-            conference = item.get("conference")
-            historical_id = str(item.get("box_player_id") or "")
-            rank_key = (historical_id, row_season, conference)
-            if rank_key not in rank_cache:
-                rank_cache[rank_key] = _conference_rank(
-                    connection, historical_id, row_season, conference, category, stat_type
-                )
-            conference_rank, _season_value = rank_cache[rank_key]
-
             if row_season not in elo_by_season:
                 elo_by_season[row_season] = repository.team_elo(row_season)
             current_for_season = (elo_by_season[row_season].get(opponent_id) or {}).get("elo")
             opponent_rating = current_for_season if current_for_season is not None else pregame_elo
 
-            output.append({
+            row = {
                 "career_game": career_game_number.get(game_id),
                 "season": row_season,
                 "week": item["week"],
                 "date": _date_label(item["start_date"]),
-                "date_sort": item["start_date"],
                 "opponent": opponent,
                 "opponent_elo": opponent_rating,
                 "defense_avg_allowed": defense_allowed.get((game_id, str(opponent))),
                 "result": result,
-                "primary_stat": display_value,
-                "game_rank": game_rank,
-                "conf_rank": conference_rank,
                 "game_url": f"/college-football/games/{game_id}/box-score/",
-            })
+            }
+            for key in stat_columns:
+                row[key] = _game_stat(item["stats"], key)
+            output.append(row)
 
-    identity_note = ""
-    if len(player_ids) > 1:
-        identity_note = f" · reconciled {len(player_ids)} historical player IDs"
+    identity_note = f" · reconciled {len(player_ids)} historical player IDs" if len(player_ids) > 1 else ""
     defense_note = ""
     if category in YARDAGE_CONTEXT and stat_type == "YDS":
         defense_note = (
-            f" · Def avg allowed is the opponent's per-game {stat_label.lower()} allowed "
-            "before that game"
+            f" · Def avg allowed is the opponent's per-game {stat_label.lower()} allowed before that game"
         )
     note = (
-        f"Career primary context: {stat_label.lower()} · # counts games oldest to newest · "
+        "Career game log · stat columns adapt to the player's position · # counts games oldest to newest · "
         "opponent Elo uses the stored season rating when available, with pregame Elo as fallback"
         f"{defense_note}{identity_note}"
     )
+
+    columns = [
+        Column("career_game", "#", format="int", align="right",
+               title="Career game number, oldest game = 1"),
+        Column("season", "Season", format="int", align="right"),
+        Column("week", "Wk", format="int", align="right"),
+        Column("date", "Date", sort="text"),
+        Column("opponent", "Opponent"),
+        Column("result", "Result"),
+    ]
+    for key in stat_columns:
+        label, _category, _aliases, format_name = STAT_SPECS[key]
+        columns.append(Column(key, label, format=format_name, align="right", emphasis=key in {
+            "pass_yds", "rush_yds", "rec_yds", "tackles", "kick_pts", "punt_avg"
+        }))
+    columns.extend([
+        Column("opponent_elo", "Opp Elo", format="int", align="right"),
+        Column("defense_avg_allowed", "Def avg allowed", format="f1", align="right",
+               title=f"Opponent defense's average {stat_label.lower()} allowed per game before this matchup"),
+    ])
+
     return Table(
-        columns=[
-            Column("career_game", "#", format="int", align="right",
-                   title="Career game number, oldest game = 1"),
-            Column("season", "Season", format="int", align="right"),
-            Column("week", "Wk", format="int", align="right"),
-            Column("date", "Date", sort="text",
-                   title="Game date; sorting uses the full stored timestamp"),
-            Column("opponent", "Opponent"),
-            Column("opponent_elo", "Opp Elo", format="int", align="right"),
-            Column("defense_avg_allowed", "Def avg allowed", format="f1", align="right",
-                   title=f"Opponent defense's average {stat_label.lower()} allowed per game before this matchup"),
-            Column("result", "Result"),
-            Column("primary_stat", stat_label, format="num", align="right", emphasis=True),
-            Column("game_rank", "Game rank", format="rank", align="right",
-                   title="Rank in this game for the same stat category"),
-            Column("conf_rank", "Conf rank", format="rank", align="right",
-                   title="Season conference rank for the same stat"),
-        ],
+        columns=columns,
         rows=[{**row, "opponent_url": row["game_url"], "result_url": row["game_url"]} for row in output],
         caption="Career game log",
         note=note,
