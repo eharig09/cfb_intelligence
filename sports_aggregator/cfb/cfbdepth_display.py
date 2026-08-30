@@ -18,6 +18,7 @@ from sports_aggregator.cfb.cfbdepth_data import (
     roster_breakdown,
     team_impact,
 )
+from sports_aggregator.cfb.cfbdepth_flexible import canonicalize_cfbdepth_upload
 from sports_aggregator.page_cache import cache
 
 
@@ -146,14 +147,14 @@ IMPORT_PAGE = """
 <section class="section" style="max-width:760px;margin:auto">
   <div class="eyebrow">Private data admin</div>
   <h1>Import CFBDepth exports</h1>
-  <div class="section-note">The files are parsed into the persistent CFB SQLite database. They are not written into the Git repository.</div>
+  <div class="section-note">Files are preflighted and header-normalized before any snapshot table is replaced. The files are parsed into the persistent CFB SQLite database and are not written into the Git repository.</div>
   {% if message %}<article class="card"><strong>{{ message }}</strong></article>{% endif %}
   <form method="post" enctype="multipart/form-data" style="display:grid;gap:12px">
     <label>Admin PIN or refresh token<br><input type="password" name="token" required style="width:100%"></label>
     <label>Roster Breakdown CSV<br><input type="file" name="roster" accept=".csv,text/csv"></label>
     <label>Team Impact Report CSV<br><input type="file" name="impact" accept=".csv,text/csv"></label>
     <label>Player Updates CSV<br><input type="file" name="updates" accept=".csv,text/csv"></label>
-    <button type="submit">Import selected exports</button>
+    <button type="submit">Validate and import selected exports</button>
   </form>
 </section>
 {% endblock %}
@@ -171,6 +172,20 @@ def _authorized() -> bool:
         if expected and secrets.compare_digest(supplied, expected):
             return True
     return False
+
+
+def _safe_upload(file_storage, expected_kind: str) -> tuple[str, str] | None:
+    if not file_storage or not file_storage.filename:
+        return None
+    raw = file_storage.read()
+    check, canonical = canonicalize_cfbdepth_upload(
+        raw, expected_kind=expected_kind, label=file_storage.filename
+    )
+    optional_note = (
+        f"; optional columns absent: {', '.join(check.missing_optional)}"
+        if check.missing_optional else ""
+    )
+    return canonical, optional_note
 
 
 def install_cfbdepth_display(app) -> None:
@@ -191,18 +206,40 @@ def install_cfbdepth_display(app) -> None:
         if request.method == "POST":
             if not _authorized():
                 return render_template_string(IMPORT_PAGE, message="Authorization failed."), 401
+            try:
+                prepared = {
+                    "roster": _safe_upload(request.files.get("roster"), "roster"),
+                    "impact": _safe_upload(request.files.get("impact"), "impact"),
+                    "updates": _safe_upload(request.files.get("updates"), "updates"),
+                }
+            except ValueError as exc:
+                # Crucially, no importer has been called yet, so the current
+                # production snapshots remain untouched when preflight fails.
+                return render_template_string(
+                    IMPORT_PAGE, message=f"Validation failed — existing data was not changed. {exc}"
+                ), 400
+
             counts = []
-            roster = request.files.get("roster")
-            impact = request.files.get("impact")
-            updates = request.files.get("updates")
-            if roster and roster.filename:
-                counts.append(f"roster={import_roster_breakdown(repository, roster.read())}")
-            if impact and impact.filename:
-                counts.append(f"impact={import_team_impact(repository, impact.read())}")
-            if updates and updates.filename:
-                counts.append(f"updates={import_player_updates(repository, updates.read())}")
+            warnings = []
+            if prepared["roster"]:
+                canonical, note = prepared["roster"]
+                counts.append(f"roster={import_roster_breakdown(repository, canonical)}")
+                if note:
+                    warnings.append("roster" + note)
+            if prepared["impact"]:
+                canonical, note = prepared["impact"]
+                counts.append(f"impact={import_team_impact(repository, canonical)}")
+                if note:
+                    warnings.append("impact" + note)
+            if prepared["updates"]:
+                canonical, note = prepared["updates"]
+                counts.append(f"updates={import_player_updates(repository, canonical)}")
+                if note:
+                    warnings.append("updates" + note)
             cache.clear()
             message = "Imported " + ", ".join(counts) if counts else "No CSV files selected."
+            if warnings:
+                message += " Warnings: " + " | ".join(warnings)
         return render_template_string(IMPORT_PAGE, message=message)
 
     app.register_blueprint(blueprint)
