@@ -48,54 +48,31 @@ def _rate(value: Any) -> str:
 
 
 def _summary_card(team: str, states: dict[str, Any]) -> str:
-    overall = states.get("overall") or {}
-    neutral = states.get("neutral") or {}
-    passing = states.get("passing_downs") or {}
+    overall = states.get("overall") or {}; neutral = states.get("neutral") or {}; passing = states.get("passing_downs") or {}
     return (
         '<article class="pg-summary-card">'
         f'<h4>{escape(team)}</h4><div class="pg-summary-metrics">'
-        '<div class="pg-summary-metric"><span>Overall tempo</span>'
-        f'<strong>{escape(_rate(overall.get("play_rate")))}</strong></div>'
-        '<div class="pg-summary-metric"><span>Neutral pass rate</span>'
-        f'<strong>{escape(_pct(neutral.get("pass_rate")))}</strong></div>'
-        '<div class="pg-summary-metric"><span>Passing-down pass</span>'
-        f'<strong>{escape(_pct(passing.get("pass_rate")))}</strong></div>'
+        f'<div class="pg-summary-metric"><span>Overall tempo</span><strong>{escape(_rate(overall.get("play_rate")))}</strong></div>'
+        f'<div class="pg-summary-metric"><span>Neutral pass rate</span><strong>{escape(_pct(neutral.get("pass_rate")))}</strong></div>'
+        f'<div class="pg-summary-metric"><span>Passing-down pass</span><strong>{escape(_pct(passing.get("pass_rate")))}</strong></div>'
         '</div></article>'
     )
 
 
 def _detail_team(team: str, states: dict[str, Any]) -> str:
-    labels = (
-        ("overall", "Overall"), ("neutral", "Neutral"), ("leading", "Leading"), ("trailing", "Trailing"),
-        ("leading_one_score", "Lead ≤8"), ("leading_multi_score", "Lead 9+"),
-        ("trailing_one_score", "Trail ≤8"), ("trailing_multi_score", "Trail 9+"),
-        ("standard_downs", "Standard downs"), ("passing_downs", "Passing downs"),
-    )
+    labels = (("overall","Overall"),("neutral","Neutral"),("leading","Leading"),("trailing","Trailing"),("leading_one_score","Lead ≤8"),("leading_multi_score","Lead 9+"),("trailing_one_score","Trail ≤8"),("trailing_multi_score","Trail 9+"),("standard_downs","Standard downs"),("passing_downs","Passing downs"))
     rows = []
     for key, label in labels:
         row = states.get(key)
         if not row or not row.get("plays"): continue
-        rows.append(
-            '<div class="pg-row">'
-            f'<span>{escape(label)} <small>({int(row.get("plays") or 0)})</small></span>'
-            f'<span class="pg-num">{escape(_rate(row.get("play_rate")))}</span>'
-            f'<span class="pg-num">{escape(_pct(row.get("pass_rate")))}</span></div>'
-        )
-    return (
-        '<section class="pg-detail-team">'
-        f'<h4>{escape(team)}</h4>'
-        '<div class="pg-row"><strong>Situation</strong><strong class="pg-num">Tempo</strong><strong class="pg-num">Pass</strong></div>'
-        + ''.join(rows) + '</section>'
-    )
+        rows.append(f'<div class="pg-row"><span>{escape(label)} <small>({int(row.get("plays") or 0)})</small></span><span class="pg-num">{escape(_rate(row.get("play_rate")))}</span><span class="pg-num">{escape(_pct(row.get("pass_rate")))}</span></div>')
+    return f'<section class="pg-detail-team"><h4>{escape(team)}</h4><div class="pg-row"><strong>Situation</strong><strong class="pg-num">Tempo</strong><strong class="pg-num">Pass</strong></div>{"".join(rows)}</section>'
 
 
 def _down_distance(row: dict[str, Any]) -> str:
-    down = row.get("down"); distance = row.get("distance")
-    if down is None or distance is None: return ""
-    try: down_i = int(down); distance_i = int(distance)
+    try: down = int(row.get("down")); distance = int(row.get("distance"))
     except (TypeError, ValueError): return ""
-    suffix = {1: "st", 2: "nd", 3: "rd"}.get(down_i, "th")
-    return f"{down_i}{suffix} & {distance_i}"
+    return f"{down}{ {1:'st',2:'nd',3:'rd'}.get(down,'th') } & {distance}"
 
 
 def _field_position(row: dict[str, Any]) -> str:
@@ -103,14 +80,12 @@ def _field_position(row: dict[str, Any]) -> str:
     try: ytg = int(row.get("yards_to_goal"))
     except (TypeError, ValueError): return ""
     if ytg <= 50: return f"at the {defense} {ytg}" if defense else f"{ytg} yards from goal"
-    own = 100 - ytg
-    return f"at the {offense} {own}" if offense else f"{ytg} yards from goal"
+    return f"at the {offense} {100-ytg}" if offense else f"{ytg} yards from goal"
 
 
 def _scoreline(row: dict[str, Any], game: dict[str, Any]) -> str:
-    home = row.get("home_score"); away = row.get("away_score")
-    if home is None or away is None: return ""
-    return f"{game.get('away_team') or 'Away'} {away} · {game.get('home_team') or 'Home'} {home}"
+    if row.get("home_score") is None or row.get("away_score") is None: return ""
+    return f"{game.get('away_team') or 'Away'} {row.get('away_score')} · {game.get('home_team') or 'Home'} {row.get('home_score')}"
 
 
 def _event_label(row: dict[str, Any]) -> str:
@@ -135,41 +110,54 @@ def _event_clock(row: dict[str, Any]) -> tuple[int, int, int]:
 
 
 def _team_codes(team: str) -> set[str]:
-    letters = re.sub(r"[^A-Z]", "", team.upper())
-    words = re.findall(r"[A-Za-z]+", team)
-    codes = {letters[:size] for size in range(2, min(6, len(letters) + 1))}
+    letters = re.sub(r"[^A-Z]", "", team.upper()); words = re.findall(r"[A-Za-z]+", team)
+    codes = {letters[:size] for size in range(2, min(6, len(letters)+1))}
     if len(words) > 1: codes.add("".join(word[0] for word in words).upper())
-    return {code for code in codes if len(code) >= 2}
+    return {c for c in codes if len(c) >= 2}
 
 
 def _humanize_field_codes(text: str, game: dict[str, Any]) -> str:
-    teams = (str(game.get("away_team") or "Away"), str(game.get("home_team") or "Home"))
-    code_map: dict[str, str] = {}
-    for team in teams:
+    code_map: dict[str,str] = {}
+    for team in (str(game.get("away_team") or "Away"), str(game.get("home_team") or "Home")):
         for code in _team_codes(team): code_map[code] = team
-    def replace(match: re.Match[str]) -> str:
-        code = match.group(1).upper(); yard = int(match.group(2)); team = code_map.get(code)
+    def repl(match: re.Match[str]) -> str:
+        team = code_map.get(match.group(1).upper()); yard = int(match.group(2))
         if not team: return match.group(0)
         return f"{team} goal line" if yard == 0 else f"{team} {yard}"
-    return re.sub(r"\b([A-Z]{2,6})(\d{2})\b", replace, text)
+    return re.sub(r"\b([A-Z]{2,6})(\d{2})\b", repl, text)
 
 
 def _clean_play_text(text: str, game: dict[str, Any]) -> str:
     human = _humanize_field_codes(text, game)
     human = re.sub(r"^\(\d{1,2}:\d{2}\)\s*", "", human).strip()
-    # Provider completions often repeat the catch/end spot when there was no YAC.
-    human = re.sub(
-        r"caught at ([A-Za-zÀ-žʻ'’ .\-]+(?:goal line|\d{1,2})),\s*for (-?\d+) yards to (?:the )?\1",
-        lambda m: f"caught at {m.group(1)} — {m.group(2)} yards",
-        human,
-        flags=re.I,
+    human = re.sub(r",?\s*clock\s+\d{1,2}:\d{2}", "", human, flags=re.I)
+
+    # Keep the touchdown itself, but drop an appended PAT/two-point try when the
+    # provider concatenates the conversion onto the scoring play description.
+    td = re.search(r"\bTOUCHDOWN\b", human, flags=re.I)
+    if td:
+        remainder = human[td.end():].casefold()
+        if any(token in remainder for token in ("kick attempt", "pass attempt", "two-point", "two point", "extra point")):
+            human = human[:td.end()]
+
+    # Make catch point versus end point explicit. Total gain includes air yards
+    # plus YAC, so catch-at 32 / end-at 34 can still be a 7-yard play.
+    catch = re.search(
+        r"caught at (.+?),\s*for (-?\d+) yards to (?:the )?(.+?)(?=,|$)", human, flags=re.I
     )
-    return human
+    if catch:
+        catch_spot = catch.group(1).strip(); yards = int(catch.group(2)); end_spot = catch.group(3).strip()
+        if catch_spot.casefold() == end_spot.casefold():
+            replacement = f"caught at {catch_spot} — {yards}-yard {'gain' if yards >= 0 else 'loss'}"
+        else:
+            replacement = f"caught at {catch_spot}, advanced to {end_spot} — {yards}-yard {'gain' if yards >= 0 else 'loss'}"
+        human = human[:catch.start()] + replacement + human[catch.end():]
+    return re.sub(r"\s{2,}", " ", human).strip(" ,")
 
 
 def _team_colors(repository, game: dict[str, Any]) -> dict[str, str]:
-    colors: dict[str, str] = {}
-    for side in ("away", "home"):
+    colors: dict[str,str] = {}
+    for side in ("away","home"):
         team = str(game.get(f"{side}_team") or ""); team_id = game.get(f"{side}_team_id")
         if not team or team_id is None: continue
         try:
@@ -179,69 +167,60 @@ def _team_colors(repository, game: dict[str, Any]) -> dict[str, str]:
     return colors
 
 
-_PLAYER = re.compile(r"#\d+\s+([A-Z][A-Za-z.'’\-]*(?:\s+[A-Z][A-Za-z.'’\-]*)?)")
-_DEFENSE_CUES = ("broken up by", "tackled by", "sacked by", "intercepted by", "forced by", "recovered by", "blocked by", "hurried by")
+_PLAYER = re.compile(r"(#\d+\s+[A-Z][A-Za-z.'’\-]*(?:\s+[A-Z][A-Za-z.'’\-]*)?)")
+_DEFENSE_CUES = ("broken up by","tackled by","sacked by","intercepted by","forced by","recovered by","blocked by","hurried by")
 
 
-def _play_html(text: str, game: dict[str, Any], colors: dict[str, str], offense: str, defense: str) -> str:
-    human = _clean_play_text(text, game)
-    pieces: list[str] = []
-    last = 0
+def _play_html(text: str, game: dict[str, Any], colors: dict[str,str], offense: str, defense: str) -> str:
+    human = _clean_play_text(text, game); pieces: list[str] = []; last = 0
     for match in _PLAYER.finditer(human):
         pieces.append(escape(human[last:match.start()]))
-        before = human[max(0, match.start() - 40):match.start()].casefold().rstrip()
-        parenthetical = match.start() > 0 and human[match.start() - 1] == "("
+        before = human[max(0, match.start()-45):match.start()].casefold().rstrip()
+        parenthetical = match.start() > 0 and human[match.start()-1] == "("
         defender = parenthetical or any(before.endswith(cue) for cue in _DEFENSE_CUES)
         team = defense if defender else offense
         color = colors.get(team, "var(--team-light)")
-        prefix = human[match.start():match.start(1)]
-        pieces.append(escape(prefix))
-        pieces.append(
-            f'<span class="pg-turn-player" style="color:{escape(color, quote=True)}">'
-            f'{escape(match.group(1))}</span>'
-        )
+        pieces.append(f'<span class="pg-turn-player" style="color:{escape(color, quote=True)}">{escape(match.group(1))}</span>')
         last = match.end()
     pieces.append(escape(human[last:]))
     return "".join(pieces)
+
+
+def _routine_kick_return(row: dict[str, Any]) -> bool:
+    text = f"{row.get('play_type') or ''} {row.get('play_text') or ''}".casefold()
+    if "kickoff" not in text or "return" not in text or "touchdown" in text:
+        return False
+    try: yards = int(row.get("yards_gained") or 0)
+    except (TypeError, ValueError): yards = 0
+    return yards < 45
 
 
 def _render(repository, game: dict[str, Any]) -> Markup:
     game_id = int(game.get("game_id") or 0)
     try: pace = game_pace_summary(repository, game_id)
     except Exception: pace = {"teams": {}}
-    try: turns = game_turning_points(repository, game_id, model_version=WP_MODEL_VERSION)
+    try: turns = game_turning_points(repository, game_id, model_version=WP_MODEL_VERSION, limit=12)
     except Exception: turns = []
+    turns = [row for row in turns if not _routine_kick_return(row)][:6]
     teams = pace.get("teams") or {}
     if not teams and not turns: return Markup("")
 
     colors = _team_colors(repository, game)
     away_team = str(game.get("away_team") or "Away"); home_team = str(game.get("home_team") or "Home")
     away_color = colors.get(away_team, "var(--team-light)"); home_color = colors.get(home_team, "var(--team-light)")
-    efficiency_override = (
-        '<style>'
-        f'.box-report .efficiency-row .efficiency-cell:nth-child(2).edge{{color:{escape(away_color, quote=True)}!important}}'
-        f'.box-report .efficiency-row .efficiency-cell:nth-child(3).edge{{color:{escape(home_color, quote=True)}!important}}'
-        '</style>'
-    )
+    efficiency_override = '<style>' + f'.box-report .efficiency-row .efficiency-cell:nth-child(2).edge{{color:{escape(away_color, quote=True)}!important}}' + f'.box-report .efficiency-row .efficiency-cell:nth-child(3).edge{{color:{escape(home_color, quote=True)}!important}}' + '</style>'
 
     pace_html = ""
     if teams:
         summaries = ''.join(_summary_card(team, states) for team, states in teams.items())
         details = ''.join(_detail_team(team, states) for team, states in teams.items())
-        pace_html = (
-            '<div class="pg-section-head"><h3>Pace & game state</h3><span>pace-v1 · situational detail on demand</span></div>'
-            f'<div class="pg-summary-grid">{summaries}</div>'
-            '<details class="pg-details"><summary>View full pace splits</summary>'
-            f'<div class="pg-detail-grid">{details}</div></details>'
-            '<p class="pg-note">Tempo uses represented same-drive game-clock intervals between qualifying rush/pass snaps; it is a comparison proxy, not wall-clock seconds to snap.</p>'
-        )
+        pace_html = f'<div class="pg-section-head"><h3>Pace & game state</h3><span>pace-v1 · situational detail on demand</span></div><div class="pg-summary-grid">{summaries}</div><details class="pg-details"><summary>View full pace splits</summary><div class="pg-detail-grid">{details}</div></details><p class="pg-note">Tempo uses represented same-drive game-clock intervals between qualifying rush/pass snaps; it is a comparison proxy, not wall-clock seconds to snap.</p>'
 
     turn_rows = []
     for rank, row in enumerate(turns, 1):
-        period, minute, second = _event_clock(row)
-        leverage = float(row.get("leverage") or 0); before = row.get("home_wp_before"); after = row.get("home_wp_after")
-        event_label = _event_label(row); context = []
-        scoreline = _scoreline(row, game)
+        period, minute, second = _event_clock(row); leverage = float(row.get("leverage") or 0)
+        before = row.get("home_wp_before"); after = row.get("home_wp_after"); event_label = _event_label(row)
+        context = []; scoreline = _scoreline(row, game)
         if scoreline: context.append(scoreline)
         dd = _down_distance(row)
         if dd: context.append(dd)
@@ -249,41 +228,22 @@ def _render(repository, game: dict[str, Any]) -> Markup:
         if field: context.append(field)
         offense = str(row.get("offense") or ""); defense = str(row.get("defense") or "")
         if offense: context.append(f"{offense} ball")
-        gained = row.get("yards_gained")
-        if gained is not None:
+        if row.get("yards_gained") is not None:
             try:
-                yards = int(gained)
-                context.append(f"gain of {yards} yards" if yards >= 0 else f"loss of {abs(yards)} yards")
+                yards = int(row.get("yards_gained")); context.append(f"gain of {yards} yards" if yards >= 0 else f"loss of {abs(yards)} yards")
             except (TypeError, ValueError): pass
-
         wp_html = ""
         if before is not None and after is not None:
             direction = "↑" if float(after) > float(before) else "↓" if float(after) < float(before) else "→"
-            wp_html = f'<div class="pg-turn-wp">{escape(home_team)} WP&nbsp; {100 * float(before):.1f}% {direction} {100 * float(after):.1f}%</div>'
+            wp_html = f'<div class="pg-turn-wp">{escape(home_team)} WP&nbsp; {100*float(before):.1f}% {direction} {100*float(after):.1f}%</div>'
         label_html = f'<span class="pg-turn-event">{escape(event_label)}</span>' if event_label else ""
         attribution = "Major event matched to surrounding valid WP states." if row.get("attribution") == "special_event" else "WP transition attributed to this pre-play state."
         play_html = _play_html(str(row.get("play_text") or row.get("play_type") or "Play"), game, colors, offense, defense)
         turn_rows.append(
-            '<article class="pg-turn">'
-            f'<div class="pg-turn-rank">{rank:02d}</div>'
-            '<div class="pg-turn-main">'
-            f'<div class="pg-turn-head"><span class="pg-turn-clock">Q{period} · {minute}:{second:02d}</span>{label_html}</div>'
-            f'<div class="pg-turn-swing"><strong>{100 * leverage:.1f}</strong> win-probability points</div>'
-            f'{wp_html}<div class="pg-turn-context">{" · ".join(escape(piece) for piece in context)}</div>'
-            '</div>'
-            '<div class="pg-turn-detail">'
-            f'<p class="pg-turn-play">{play_html}</p>'
-            f'<div class="pg-turn-attribution">{escape(attribution)}</div>'
-            '<div class="pg-turn-meta">WP direction is checked against ep-v1 play value; large unsupported state discontinuities are suppressed.</div>'
-            '</div></article>'
+            f'<article class="pg-turn"><div class="pg-turn-rank">{rank:02d}</div><div class="pg-turn-main"><div class="pg-turn-head"><span class="pg-turn-clock">Q{period} · {minute}:{second:02d}</span>{label_html}</div><div class="pg-turn-swing"><strong>{100*leverage:.1f}</strong> win-probability points</div>{wp_html}<div class="pg-turn-context">{" · ".join(escape(piece) for piece in context)}</div></div><div class="pg-turn-detail"><p class="pg-turn-play">{play_html}</p><div class="pg-turn-attribution">{escape(attribution)}</div><div class="pg-turn-meta">WP direction is checked against ep-v1 play value and scoreboard/down-result sanity rules; routine kick returns and large unsupported state discontinuities are suppressed.</div></div></article>'
         )
     turning_html = ''.join(turn_rows) or f'<div class="empty">Fit and score {escape(WP_MODEL_VERSION)} to identify leverage and turning points.</div>'
-
-    return Markup(
-        STYLE + efficiency_override + '<section class="section pg-analytics">' + pace_html +
-        f'<div class="pg-section-head"><h3>Turning points</h3><span>{escape(WP_MODEL_VERSION)} · EPA-checked event swings</span></div>'
-        f'<div class="pg-turning">{turning_html}</div></section>'
-    )
+    return Markup(STYLE + efficiency_override + '<section class="section pg-analytics">' + pace_html + f'<div class="pg-section-head"><h3>Turning points</h3><span>{escape(WP_MODEL_VERSION)} · EPA-checked event swings</span></div><div class="pg-turning">{turning_html}</div></section>')
 
 
 def install_postgame_analytics_display(app) -> None:
