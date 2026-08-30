@@ -65,7 +65,6 @@ def _valid_state(row: dict[str, Any]) -> bool:
 
 
 def _event_priority(row: dict[str, Any]) -> int:
-    """Higher means this row should own a state transition when present."""
     if _administrative(row):
         return -1
     text = _text(row)
@@ -90,7 +89,6 @@ def _event_priority(row: dict[str, Any]) -> int:
 
 
 def _choose_event(segment: list[dict[str, Any]]) -> dict[str, Any]:
-    """Choose the football event responsible for a valid-state transition."""
     if not segment:
         return {}
     best = segment[0]
@@ -106,15 +104,12 @@ def _choose_event(segment: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _ranking_score(row: dict[str, Any]) -> float:
-    """Largest credible WP swings first; context only resolves near-ties."""
     leverage = abs(float(row.get("wp_change") or 0.0))
     period = int(row.get("period") or 0)
-    before = row.get("home_wp_before")
     try:
-        before = float(before)
+        before = float(row.get("home_wp_before"))
     except (TypeError, ValueError):
         before = 0.5
-
     stage = {1: 0.98, 2: 1.00, 3: 1.03, 4: 1.08}.get(period, 1.0)
     closeness = max(0.0, 1.0 - 2.0 * abs(before - 0.5))
     competitive = 0.97 + 0.06 * closeness
@@ -124,7 +119,6 @@ def _ranking_score(row: dict[str, Any]) -> float:
 
 
 def _directionally_consistent(row: dict[str, Any]) -> bool:
-    """Require a WP move to agree with ep-v1's offense-perspective play value."""
     epa = row.get("epa")
     if epa is None:
         return True
@@ -140,31 +134,33 @@ def _directionally_consistent(row: dict[str, Any]) -> bool:
     return expected_home_sign * wp_change > 0
 
 
+def _actual_score_change(row: dict[str, Any]) -> tuple[int, int] | None:
+    values = (row.get("home_score"), row.get("away_score"), row.get("home_score_after"), row.get("away_score_after"))
+    if any(value is None for value in values):
+        return None
+    try:
+        return int(values[2]) - int(values[0]), int(values[3]) - int(values[1])
+    except (TypeError, ValueError):
+        return None
+
+
 def _score_change_consistent(row: dict[str, Any]) -> bool:
-    """Scoring-event WP direction must agree with the actual scoreboard change."""
     if int(row.get("event_priority") or 0) < 85:
         return True
-    before_home = row.get("home_score")
-    before_away = row.get("away_score")
-    after_home = row.get("home_score_after")
-    after_away = row.get("away_score_after")
-    if None in (before_home, before_away, after_home, after_away):
+    delta = _actual_score_change(row)
+    if delta is None:
         return True
+    home_delta, away_delta = delta
     try:
-        home_delta = int(after_home) - int(before_home)
-        away_delta = int(after_away) - int(before_away)
         wp_change = float(row.get("wp_change") or 0.0)
     except (TypeError, ValueError):
         return True
     if home_delta == away_delta:
         return True
-    if home_delta > away_delta:
-        return wp_change > 0
-    return wp_change < 0
+    return wp_change > 0 if home_delta > away_delta else wp_change < 0
 
 
 def _late_down_result_consistent(row: dict[str, Any]) -> bool:
-    """A clear 3rd/4th-down success/failure must move WP toward the beneficiary."""
     if int(row.get("event_priority") or 0) >= 85:
         return True
     try:
@@ -183,7 +179,6 @@ def _late_down_result_consistent(row: dict[str, Any]) -> bool:
 
 
 def _special_teams_return_credible(row: dict[str, Any]) -> bool:
-    """Keep only exceptional non-scoring kick/punt returns as editorial turning points."""
     if int(row.get("event_priority") or 0) >= 85:
         return True
     text = _text(row)
@@ -196,24 +191,29 @@ def _special_teams_return_credible(row: dict[str, Any]) -> bool:
 
 
 def _credible_ordinary_swing(row: dict[str, Any]) -> bool:
-    """Reject state discontinuities that are not believable football events."""
     if not _score_change_consistent(row):
         return False
+
+    priority = int(row.get("event_priority") or 0)
+    score_delta = _actual_score_change(row)
+    # For a real scoring event, the scoreboard is authoritative. Special rows
+    # often lack their own EPA and may inherit the surrounding offensive state's
+    # EPA, which must not veto a correctly identified defensive score.
+    if priority >= 85 and score_delta is not None and score_delta != (0, 0):
+        return True
+
     if not _late_down_result_consistent(row):
         return False
     if not _directionally_consistent(row):
         return False
     if not _special_teams_return_credible(row):
         return False
-
-    priority = int(row.get("event_priority") or 0)
     if priority >= 25:
         return True
 
     leverage = abs(float(row.get("wp_change") or 0.0))
     if leverage <= 0.12:
         return True
-
     try:
         period = int(row.get("period") or 0)
         minute = int(row.get("clock_minutes") or 0)
@@ -224,10 +224,8 @@ def _credible_ordinary_swing(row: dict[str, Any]) -> bool:
         away_score = int(row.get("away_score") or 0)
     except (TypeError, ValueError):
         return False
-
     if period <= 3:
         return False
-
     remaining = minute * 60 + second
     score_margin = abs(home_score - away_score)
     if remaining <= 300 and score_margin <= 8 and (down >= 3 or ytg <= 10):
@@ -237,7 +235,6 @@ def _credible_ordinary_swing(row: dict[str, Any]) -> bool:
 
 def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2",
                         limit: int = 6) -> list[dict[str, Any]]:
-    """Return the largest event-attributed, report-credible WP changes."""
     from sports_aggregator.cfb.win_probability import initialize
     from sports_aggregator.cfb.expected_points_v2 import initialize as initialize_ep
 
@@ -258,10 +255,8 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
                  w.home_win_probability,e.epa
           FROM cfb_plays p
           JOIN cfb_play_win_probability w USING(play_id)
-          LEFT JOIN cfb_play_metrics m
-            ON m.play_id=p.play_id AND m.metric_version='pbp-v1'
-          LEFT JOIN cfb_play_epa e
-            ON e.play_id=p.play_id AND e.model_version='ep-v1'
+          LEFT JOIN cfb_play_metrics m ON m.play_id=p.play_id AND m.metric_version='pbp-v1'
+          LEFT JOIN cfb_play_epa e ON e.play_id=p.play_id AND e.model_version='ep-v1'
           WHERE p.game_id=? AND w.model_version=? AND p.period BETWEEN 1 AND 4
           ORDER BY p.period,p.clock_minutes DESC,p.clock_seconds DESC,
                    COALESCE(p.drive_number,0),COALESCE(p.play_number,0),p.play_id
@@ -269,7 +264,6 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
 
     if not rows:
         return []
-
     terminal_outcome: float | None = None
     if game and int(game["completed"] or 0) and game["home_points"] is not None and game["away_points"] is not None:
         terminal_outcome = 1.0 if float(game["home_points"]) > float(game["away_points"]) else 0.0
@@ -293,12 +287,10 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
                 continue
             after = terminal_outcome
             segment = rows[start_index:]
-
         if before is None or after is None:
             continue
         try:
-            before_f = float(before)
-            after_f = float(after)
+            before_f = float(before); after_f = float(after)
         except (TypeError, ValueError):
             continue
 
@@ -310,10 +302,8 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
         ):
             event[f"event_{key}"] = event.get(key)
             event[key] = state.get(key)
-
         if event.get("epa") is None:
             event["epa"] = state.get("epa")
-
         event["home_wp_before"] = before_f
         event["home_wp_after"] = after_f
         event["wp_change"] = after_f - before_f
@@ -322,12 +312,10 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
         event["event_priority"] = _event_priority(event)
         event["attribution"] = "special_event" if event.get("play_id") != state.get("play_id") else "state_play"
         home_score, away_score = _home_score(state)
-        event["home_score"] = home_score
-        event["away_score"] = away_score
+        event["home_score"] = home_score; event["away_score"] = away_score
         if next_state is not None:
             home_after, away_after = _home_score(next_state)
-            event["home_score_after"] = home_after
-            event["away_score_after"] = away_after
+            event["home_score_after"] = home_after; event["away_score_after"] = away_after
         else:
             event["home_score_after"] = game["home_points"] if game else None
             event["away_score_after"] = game["away_points"] if game else None
@@ -343,10 +331,35 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
         existing = by_event.get(key)
         if existing is None or float(row.get("leverage") or 0) > float(existing.get("leverage") or 0):
             by_event[key] = row
-
     ranked = sorted(
         by_event.values(),
         key=lambda row: (float(row.get("turning_point_score") or 0.0), float(row.get("leverage") or 0.0)),
         reverse=True,
     )
     return ranked[:limit]
+
+
+def scoring_event_diagnostics(repository, game_id: int, *, wp_model_version: str = "wp-v2",
+                              ep_model_version: str = "ep-v1") -> list[dict[str, Any]]:
+    """Return raw scoring/turnover rows with EPA and stored WP for audit use."""
+    from sports_aggregator.cfb.win_probability import initialize
+    from sports_aggregator.cfb.expected_points_v2 import initialize as initialize_ep
+    initialize(repository); initialize_ep(repository)
+    with closing(repository._connect()) as connection:
+        rows = connection.execute("""
+          SELECT p.play_id,p.period,p.clock_minutes,p.clock_seconds,p.offense,p.defense,
+                 p.home_team,p.away_team,p.play_type,p.play_text,p.offense_score,p.defense_score,
+                 p.down,p.distance,p.yards_to_goal,p.yards_gained,p.scoring,
+                 e.epa,e.immediate_net_points,e.possession_changed,w.home_win_probability
+          FROM cfb_plays p
+          LEFT JOIN cfb_play_epa e ON e.play_id=p.play_id AND e.model_version=?
+          LEFT JOIN cfb_play_win_probability w ON w.play_id=p.play_id AND w.model_version=?
+          WHERE p.game_id=? AND p.period BETWEEN 1 AND 4
+            AND (COALESCE(p.scoring,0)=1 OR LOWER(COALESCE(p.play_text,'')) LIKE '%touchdown%'
+                 OR LOWER(COALESCE(p.play_text,'')) LIKE '%intercept%'
+                 OR LOWER(COALESCE(p.play_text,'')) LIKE '%fumble%'
+                 OR LOWER(COALESCE(p.play_text,'')) LIKE '%safety%')
+          ORDER BY p.period,p.clock_minutes DESC,p.clock_seconds DESC,
+                   COALESCE(p.drive_number,0),COALESCE(p.play_number,0),p.play_id
+        """, (ep_model_version, wp_model_version, int(game_id))).fetchall()
+    return [dict(row) for row in rows]
