@@ -12,86 +12,92 @@
 
 {% block content %}
 <style>
-.box-report-page main{max-width:1180px}
-.box-report{--report-ink:var(--ink);--report-muted:var(--muted);--report-rule:var(--line);--report-paper:var(--paper)}
+.box-report-page main{max-width:1210px}
+.box-report-page{background:color-mix(in srgb,var(--paper) 92%,#000 8%)}
+.box-report{--report-ink:var(--ink);--report-muted:var(--muted);--report-rule:var(--line);--report-paper:var(--paper);max-width:1180px;margin:0 auto}
 .box-report *{box-sizing:border-box}
-.report-cover{position:relative;margin:2px 0 20px;border:1px solid var(--report-rule);background:var(--report-paper);overflow:hidden}
-.report-cover:before{content:"";position:absolute;inset:0 0 auto;height:3px;background:var(--team-light)}
-.report-kicker{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:12px 18px 9px;border-bottom:1px solid var(--report-rule);font-size:.58rem;text-transform:uppercase;letter-spacing:.095em;font-weight:800;color:var(--report-muted)}
-.report-kicker strong{color:var(--report-ink);letter-spacing:.12em}
-.report-scoreboard{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:stretch;min-height:128px}
-.report-team{display:flex;flex-direction:column;justify-content:center;padding:15px 22px}
+.report-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:2px 0 10px;padding:0 2px;color:var(--report-muted)}
+.report-toolbar-copy{min-width:0}.report-toolbar-copy strong{display:block;color:var(--report-ink);font-size:.68rem;letter-spacing:.02em}.report-toolbar-copy span{display:block;margin-top:2px;font-size:.54rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.report-actions{display:flex;gap:6px;flex-wrap:wrap}.report-action{appearance:none;border:1px solid var(--report-rule);background:var(--report-paper);color:var(--report-ink);padding:6px 9px;font:800 .54rem/1 var(--body-font);text-transform:uppercase;letter-spacing:.055em;cursor:pointer;text-decoration:none}.report-action:hover{border-color:var(--team-light)}.report-action.is-done{border-color:var(--team-light)}
+.report-cover{position:relative;margin:0 0 17px;background:var(--report-paper);overflow:hidden;border-top:3px solid var(--team-light);box-shadow:0 12px 32px rgba(0,0,0,.12)}
+.report-kicker{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:11px 20px 8px;border-bottom:1px solid var(--report-rule);font-size:.56rem;text-transform:uppercase;letter-spacing:.105em;font-weight:850;color:var(--report-muted)}
+.report-kicker strong{color:var(--report-ink);letter-spacing:.14em}
+.report-scoreboard{display:grid;grid-template-columns:minmax(0,1fr) 60px minmax(0,1fr);align-items:center;min-height:118px;padding:3px 0}
+.report-team{display:flex;flex-direction:column;justify-content:center;padding:13px 24px}
 .report-team.home{text-align:right;align-items:flex-end}
-.report-team-label{font-size:.54rem;text-transform:uppercase;letter-spacing:.11em;color:var(--report-muted);font-weight:800;margin-bottom:5px}
-.report-team-name{font-family:var(--display-font);font-size:clamp(1.2rem,2.4vw,1.85rem);line-height:.98;letter-spacing:-.02em;max-width:390px}
-.report-team-score{font-family:var(--display-font);font-size:clamp(2.7rem,5.7vw,4.45rem);line-height:.86;margin-top:9px;font-variant-numeric:tabular-nums}
-.report-score-divider{width:1px;background:var(--report-rule);position:relative}
-.report-score-divider span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--report-paper);padding:6px 5px;font-size:.49rem;font-weight:900;letter-spacing:.12em;color:var(--report-muted);writing-mode:vertical-rl;text-transform:uppercase}
-.report-result-bar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--report-rule);background:color-mix(in srgb,var(--paper) 94%,var(--ink) 6%)}
-.report-result-item{padding:9px 14px;border-right:1px solid var(--report-rule);min-width:0}
+.report-team-label{font-size:.5rem;text-transform:uppercase;letter-spacing:.12em;color:var(--report-muted);font-weight:850;margin-bottom:4px}
+.report-team-name{font-family:var(--display-font);font-size:clamp(1.16rem,2.2vw,1.72rem);line-height:1;letter-spacing:-.015em;max-width:390px}
+.report-team-score{font-family:var(--display-font);font-size:clamp(2.6rem,5.1vw,4rem);line-height:.88;margin-top:7px;font-variant-numeric:tabular-nums}
+.report-score-divider{display:grid;place-items:center;align-self:stretch;position:relative;color:var(--report-muted)}
+.report-score-divider:before{content:"";position:absolute;top:17px;bottom:17px;left:50%;width:1px;background:var(--report-rule)}
+.report-score-divider span{position:relative;background:var(--report-paper);padding:7px 4px;font-size:.47rem;font-weight:900;letter-spacing:.13em;text-transform:uppercase}
+.report-result-bar{display:grid;grid-template-columns:1.05fr 1fr .95fr;border-top:1px solid var(--report-rule);background:color-mix(in srgb,var(--paper) 96%,var(--ink) 4%)}
+.report-result-item{padding:8px 15px;border-right:1px solid var(--report-rule);min-width:0}
 .report-result-item:last-child{border-right:0}
-.report-result-label{display:block;font-size:.49rem;line-height:1;text-transform:uppercase;letter-spacing:.09em;font-weight:800;color:var(--report-muted);margin-bottom:4px}
-.report-result-value{display:block;font-size:.67rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.report-jump{display:flex;gap:6px;flex-wrap:wrap;margin:-9px 0 18px}
-.report-jump a{border:1px solid var(--report-rule);padding:5px 8px;font-size:.54rem;text-transform:uppercase;letter-spacing:.055em;font-weight:800;text-decoration:none;background:var(--report-paper)}
-.report-jump a:hover{border-color:var(--team-light)}
+.report-result-label{display:block;font-size:.47rem;line-height:1;text-transform:uppercase;letter-spacing:.095em;font-weight:850;color:var(--report-muted);margin-bottom:4px}
+.report-result-value{display:block;font-size:.64rem;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.report-jump{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 18px;padding-bottom:9px;border-bottom:1px solid var(--report-rule)}
+.report-jump a{padding:5px 8px;font-size:.52rem;text-transform:uppercase;letter-spacing:.06em;font-weight:850;text-decoration:none;color:var(--report-muted);border-bottom:2px solid transparent}.report-jump a:hover{color:var(--report-ink);border-bottom-color:var(--team-light)}
 .report-chapter{scroll-margin-top:88px}
-.report-chapter-head{display:grid;grid-template-columns:auto 1fr auto;gap:11px;align-items:center;margin:26px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--report-rule)}
-.report-chapter-num{font-family:var(--display-font);font-size:.68rem;color:var(--team-light);font-variant-numeric:tabular-nums}
-.report-chapter-head h2{margin:0;font-size:.96rem;letter-spacing:-.01em}
-.report-chapter-head p{margin:0;color:var(--report-muted);font-size:.56rem;text-align:right}
-.report-team-stats .table-wrap,.report-player-stats .table-wrap{border:1px solid var(--report-rule);background:var(--report-paper)}
-.report-team-stats table.data,.report-player-stats table.data{font-size:.67rem}
-.report-team-stats table.data thead th,.report-player-stats table.data thead th{font-size:.54rem;letter-spacing:.045em;text-transform:uppercase}
-.report-player-team{margin:18px 0 8px;display:flex;align-items:center;gap:10px;font-family:var(--display-font);font-size:.9rem}
-.report-player-team:after{content:"";height:1px;background:var(--report-rule);flex:1}
-.report-note{font-size:.58rem;color:var(--report-muted);margin:4px 0 10px;line-height:1.45}
-.box-report .section{border-top:0;margin-top:0}
-.box-report .section>h2{font-size:1rem}
-@media(max-width:680px){
-  .report-kicker{padding:11px 13px 8px}.report-scoreboard{min-height:118px}.report-team{padding:14px 12px}.report-team-name{font-size:1.18rem}.report-team-score{font-size:2.9rem}.report-result-bar{grid-template-columns:1fr}.report-result-item{border-right:0;border-bottom:1px solid var(--report-rule)}.report-result-item:last-child{border-bottom:0}.report-chapter-head{grid-template-columns:auto 1fr}.report-chapter-head p{display:none}
-}
+.report-chapter-head{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:28px 0 9px;padding-bottom:7px;border-bottom:1px solid var(--report-rule)}
+.report-chapter-num{font-family:var(--display-font);font-size:.64rem;color:var(--team-light);font-variant-numeric:tabular-nums}
+.report-chapter-head h2{margin:0;font-size:.94rem;letter-spacing:-.006em}
+.report-chapter-head p{margin:0;color:var(--report-muted);font-size:.54rem;text-align:right}
+.report-team-stats .table-wrap,.report-player-stats .table-wrap{background:var(--report-paper);border:1px solid var(--report-rule);box-shadow:0 7px 20px rgba(0,0,0,.06)}
+.report-team-stats table.data,.report-player-stats table.data{font-size:.66rem}
+.report-team-stats table.data thead th,.report-player-stats table.data thead th{font-size:.52rem;letter-spacing:.05em;text-transform:uppercase}
+.report-player-team{margin:18px 0 7px;display:flex;align-items:center;gap:10px;font-family:var(--display-font);font-size:.88rem}.report-player-team:after{content:"";height:1px;background:var(--report-rule);flex:1}
+.report-note{font-size:.56rem;color:var(--report-muted);margin:4px 0 9px;line-height:1.45}.box-report .section{border-top:0;margin-top:0}.box-report .section>h2{font-size:1rem}
+.report-footer{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:end;margin:34px 0 8px;padding-top:10px;border-top:1px solid var(--report-rule);font-size:.53rem;color:var(--report-muted);line-height:1.45}.report-footer strong{display:block;color:var(--report-ink);font-size:.57rem;margin-bottom:2px}.report-footer-mark{text-align:right;text-transform:uppercase;letter-spacing:.09em;font-weight:850}
+@media(max-width:680px){.report-toolbar{align-items:flex-start}.report-toolbar-copy span{white-space:normal}.report-scoreboard{grid-template-columns:minmax(0,1fr) 38px minmax(0,1fr);min-height:110px}.report-team{padding:12px 11px}.report-team-name{font-size:1.08rem}.report-team-score{font-size:2.75rem}.report-result-bar{grid-template-columns:1fr}.report-result-item{border-right:0;border-bottom:1px solid var(--report-rule)}.report-result-item:last-child{border-bottom:0}.report-chapter-head{grid-template-columns:auto 1fr}.report-chapter-head p{display:none}.report-footer{grid-template-columns:1fr}.report-footer-mark{text-align:left}}
+@media(max-width:480px){.report-toolbar{display:block}.report-actions{margin-top:7px}.report-action{flex:1}.report-kicker{padding:9px 11px 7px}.report-kicker strong{letter-spacing:.08em}.report-kicker span{font-size:.5rem}}
 @media print{
-  .report-jump{display:none}.report-cover{break-inside:avoid}.report-chapter{break-inside:auto}.report-team-stats .table-wrap,.report-player-stats .table-wrap{overflow:visible}
+  @page{margin:.48in;size:auto}
+  body.box-report-page{background:#fff!important;color:#111!important}
+  body.box-report-page .site-header,body.box-report-page .scroll-context,body.box-report-page .report-toolbar,body.box-report-page .report-jump{display:none!important}
+  body.box-report-page main{max-width:none!important;padding:0!important;margin:0!important}
+  .box-report{max-width:none!important;--report-ink:#111;--report-muted:#555;--report-rule:#c9c9c9;--report-paper:#fff}
+  .report-cover{box-shadow:none!important;border:1px solid #bbb!important;border-top:3px solid #333!important;break-inside:avoid}
+  .report-score-divider span,.report-cover,.report-result-bar,.postgame-story,.efficiency-table,.player-impact-team,.pg-summary-card,.pg-turn,.report-team-stats .table-wrap,.report-player-stats .table-wrap{background:#fff!important;color:#111!important}
+  .report-chapter{break-inside:auto}.postgame-factor,.postgame-evidence-list,.efficiency-table,.player-impact-team,.pg-summary-grid,.pg-turn{break-inside:avoid}
+  .report-team-stats .table-wrap,.report-player-stats .table-wrap{overflow:visible!important;box-shadow:none!important}
+  a{color:#111!important;text-decoration:none!important}
+  .report-footer{margin-top:24px}
 }
 </style>
 
 <div class="box-report">
-<header class="report-cover">
-    <div class="report-kicker">
-        <strong>College Football Intelligence</strong>
-        <span>{{ game.season }} &middot; Week {{ game.week }} &middot; Postgame</span>
+<div class="report-toolbar" aria-label="Report actions">
+    <div class="report-toolbar-copy">
+        <strong>{{ game.away_team }} at {{ game.home_team }} &middot; Postgame intelligence report</strong>
+        <span>Game {{ game.game_id }} &middot; {{ game.season }} Week {{ game.week }} &middot; Share the canonical report URL or save a clean PDF.</span>
     </div>
+    <div class="report-actions">
+        <button class="report-action" type="button" id="copy-report-link">Copy link</button>
+        <button class="report-action" type="button" id="print-report">Print / Save PDF</button>
+    </div>
+</div>
+
+<header class="report-cover">
+    <div class="report-kicker"><strong>College Football Intelligence</strong><span>{{ game.season }} &middot; Week {{ game.week }} &middot; Postgame</span></div>
     <div class="report-scoreboard" aria-label="Final score: {{ game.away_team }} {{ game.away_points | cell('int') }}, {{ game.home_team }} {{ game.home_points | cell('int') }}">
-        <div class="report-team away">
-            <span class="report-team-label">Away</span>
-            <span class="report-team-name">{{ game.away_team }}</span>
-            <span class="report-team-score">{{ game.away_points | cell('int') }}</span>
-        </div>
+        <div class="report-team away"><span class="report-team-label">Away</span><span class="report-team-name">{{ game.away_team }}</span><span class="report-team-score">{{ game.away_points | cell('int') }}</span></div>
         <div class="report-score-divider" aria-hidden="true"><span>Final</span></div>
-        <div class="report-team home">
-            <span class="report-team-label">Home</span>
-            <span class="report-team-name">{{ game.home_team }}</span>
-            <span class="report-team-score">{{ game.home_points | cell('int') }}</span>
-        </div>
+        <div class="report-team home"><span class="report-team-label">Home</span><span class="report-team-name">{{ game.home_team }}</span><span class="report-team-score">{{ game.home_points | cell('int') }}</span></div>
     </div>
     <div class="report-result-bar">
         <div class="report-result-item"><span class="report-result-label">Date / kickoff</span><span class="report-result-value">{{ game.start_label }}</span></div>
         <div class="report-result-item"><span class="report-result-label">Venue</span><span class="report-result-value">{{ game.venue or 'Venue unavailable' }}</span></div>
-        <div class="report-result-item"><span class="report-result-label">Report</span><span class="report-result-value">Stored data &middot; No live provider call</span></div>
+        <div class="report-result-item"><span class="report-result-label">Data basis</span><span class="report-result-value">Stored postgame dataset &middot; No live provider call</span></div>
     </div>
 </header>
 
-<nav class="report-jump" aria-label="Postgame report sections">
-    <a href="#analysis">Analysis</a>
-    <a href="#team-box">Team box</a>
-    <a href="#player-box">Player box</a>
-</nav>
+<nav class="report-jump" aria-label="Postgame report sections"><a href="#analysis">Analysis</a><a href="#team-box">Team box</a><a href="#player-box">Player production</a></nav>
 
 <div id="analysis" class="report-chapter"></div>
 
 <section class="section report-team-stats report-chapter" id="team-box">
-    <div class="report-chapter-head"><span class="report-chapter-num">02</span><h2>Team box score</h2><p>Side-by-side statistical record</p></div>
+    <div class="report-chapter-head"><span class="report-chapter-num">02</span><h2>Team box score</h2><p>Official statistical detail</p></div>
     <div class="report-note">Cached locally from CFBD. Opening this report does not call the provider.</div>
     {{ data_table(team_box_table) }}
 </section>
@@ -103,11 +109,28 @@
         <h3 class="report-player-team">{{ team }}</h3>
         {{ tabbed_tables(groups, 'box-' ~ loop.index) }}
         {% endfor %}
-    {% else %}
-        <div class="empty">No cached player box score is stored for this game.</div>
-    {% endif %}
+    {% else %}<div class="empty">No cached player box score is stored for this game.</div>{% endif %}
 </section>
+
+<footer class="report-footer">
+    <div><strong>College Football Intelligence &middot; Postgame report</strong>Analysis combines stored team/player box scores with in-house play-by-play models where available. Model outputs are identified separately from provider statistics.</div>
+    <div class="report-footer-mark">{{ game.season }} &middot; Week {{ game.week }} &middot; Game {{ game.game_id }}</div>
+</footer>
 </div>
 {% endblock %}
 
-{% block scripts %}{{ tabs_script() }}{% endblock %}
+{% block scripts %}
+{{ tabs_script() }}
+<script>
+(function(){
+  var copy=document.getElementById('copy-report-link');
+  var printButton=document.getElementById('print-report');
+  if(copy){copy.addEventListener('click',function(){
+    var url=document.querySelector('link[rel="canonical"]');url=url?url.href:window.location.href;
+    function done(){var old=copy.textContent;copy.textContent='Copied';copy.classList.add('is-done');setTimeout(function(){copy.textContent=old;copy.classList.remove('is-done');},1400);}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(done).catch(function(){window.prompt('Copy report link',url);});}else{window.prompt('Copy report link',url);}
+  });}
+  if(printButton){printButton.addEventListener('click',function(){window.print();});}
+})();
+</script>
+{% endblock %}
