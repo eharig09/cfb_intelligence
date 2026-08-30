@@ -9,9 +9,12 @@ Examples:
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 from datetime import datetime
 import json
 import os
+import sqlite3
+import time
 
 from dotenv import load_dotenv
 
@@ -40,6 +43,45 @@ def _years(args) -> tuple[int,int]:
     first=args.from_year or args.year; last=args.to_year or args.year
     if first>last: raise ValueError("--from-year must not be after --to-year")
     return first,last
+
+
+def _week_ready(repository: CFBRepository, year: int, week: int) -> tuple[bool,int]:
+    """A resumable checkpoint: raw plays exist and every raw play has pbp-v1 metrics."""
+    try:
+        with closing(repository._connect()) as connection:
+            raw = int(connection.execute(
+                "SELECT COUNT(*) FROM cfb_plays WHERE season=? AND week=?", (int(year),int(week))
+            ).fetchone()[0])
+            if raw <= 0:
+                return False, 0
+            derived = int(connection.execute("""
+                SELECT COUNT(*) FROM cfb_play_metrics m
+                JOIN cfb_plays p ON p.play_id=m.play_id
+                WHERE p.season=? AND p.week=? AND m.metric_version='pbp-v1'
+            """, (int(year),int(week))).fetchone()[0])
+        return derived == raw, raw
+    except sqlite3.Error:
+        return False, 0
+
+
+def _replace_with_lock_retry(repository: CFBRepository, raw, *, year: int, week: int) -> int:
+    """SQLite production DB may briefly be owned by the web/scheduled refresh.
+
+    Repository connections already wait up to CFB_SQLITE_BUSY_TIMEOUT_MS. These
+    outer retries handle a genuinely overlapping long-running writer without
+    requiring an operator to restart a multi-season backfill from scratch.
+    """
+    delays = (15, 30, 60)
+    for attempt in range(len(delays) + 1):
+        try:
+            return replace_week_plays(repository, raw, season=year, week=week)
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).casefold() or attempt >= len(delays):
+                raise
+            delay = delays[attempt]
+            print(f"{year} week {week}: database locked; retrying in {delay}s")
+            time.sleep(delay)
+    raise RuntimeError("unreachable")
 
 
 def main(argv:list[str]|None=None,*,client=None)->int:
@@ -76,21 +118,27 @@ def main(argv:list[str]|None=None,*,client=None)->int:
 
     client=client or CFBDClient(raw_cache_path=os.getenv("CFBD_RAW_CACHE_PATH","instance/cfbd_raw"))
     if not client.configured: raise CFBDConfigurationError("CFBD_API_KEY is required for PBP backfill")
-    failures=[]; total=0
+    failures=[]; total=0; cached_total=0
     for year in range(first,last+1):
         weeks=[args.week] if args.week is not None else repository.completed_weeks(year)
         if not weeks:
             print(f"{year}: no completed weeks stored; sync game history first")
             continue
         for week in weeks:
+            week=int(week)
+            ready,count=_week_ready(repository,year,week)
+            if ready and not args.force:
+                cached_total += count
+                print(f"{year} week {week}: cached ({count} plays)")
+                continue
             try:
-                raw=client.get("/plays",{"year":year,"week":int(week),"seasonType":"both","classification":"fbs"},
+                raw=client.get("/plays",{"year":year,"week":week,"seasonType":"both","classification":"fbs"},
                                cache_ttl_seconds=FINISHED_WEEK_TTL,force=args.force)
-                count=replace_week_plays(repository,raw,season=year,week=int(week)); total+=count
+                count=_replace_with_lock_retry(repository,raw,year=year,week=week); total+=count
                 print(f"{year} week {week}: {count} plays")
             except Exception as exc:
                 failures.append(f"{year} week {week}"); print(f"{year} week {week}: failed ({exc})")
-    print(f"PBP backfill complete: {total} plays, {len(failures)} failures")
+    print(f"PBP backfill complete: {total} new/rebuilt plays, {cached_total} cached plays, {len(failures)} failures")
     return 1 if failures else 0
 
 
