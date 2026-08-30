@@ -94,6 +94,26 @@ class CFBDataSync:
                 results.append(SyncDatasetResult(name, 0, "failed", str(exc)))
                 LOGGER.exception("CFBD sync failed dataset=%s season=%s", name, season)
 
+        # These intelligence layers run after games/lines so their evidence is
+        # timestamped against the freshest canonical state. They remain
+        # independent datasets: failure must never block the core refresh.
+        try:
+            from sports_aggregator.cfb.pregame_snapshots import capture_due
+            packet = capture_due(self.repository, season=season)
+            results.append(SyncDatasetResult("pregame_snapshots", int(packet.get("count") or 0), "success"))
+        except Exception as exc:
+            results.append(SyncDatasetResult("pregame_snapshots", 0, "failed", str(exc)))
+            LOGGER.exception("Pregame snapshot capture failed season=%s", season)
+
+        try:
+            from sports_aggregator.cfb.play_by_play import sync_recent_plays
+            packet = sync_recent_plays(
+                self.repository, self.client, season=season, recent_weeks=2, force=force)
+            results.append(SyncDatasetResult("play_by_play", int(packet.get("plays") or 0), "success"))
+        except Exception as exc:
+            results.append(SyncDatasetResult("play_by_play", 0, "failed", str(exc)))
+            LOGGER.exception("Play-by-play sync failed season=%s", season)
+
         report = SyncReport(season=season, started_at=started_at,
                             finished_at=datetime.now(timezone.utc), datasets=tuple(results))
         self.repository.record_sync(report)
