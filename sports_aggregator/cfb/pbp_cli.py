@@ -6,6 +6,11 @@ Examples:
   python -m sports_aggregator.cfb.pbp_cli fit-wp --from-year 2022 --to-year 2025
   python -m sports_aggregator.cfb.pbp_cli validate-wp --from-year 2022 --to-year 2025
   python -m sports_aggregator.cfb.pbp_cli rebuild-values --from-year 2022 --to-year 2026
+
+Temporal holdout example (does not overwrite production wp-v1):
+  python -m sports_aggregator.cfb.pbp_cli fit-wp --from-year 2022 --to-year 2024 --model-version wp-v1-holdout-2025
+  python -m sports_aggregator.cfb.pbp_cli score-wp --year 2025 --model-version wp-v1-holdout-2025
+  python -m sports_aggregator.cfb.pbp_cli validate-wp --year 2025 --model-version wp-v1-holdout-2025
 """
 from __future__ import annotations
 
@@ -38,6 +43,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--to-year",type=int,default=None)
     p.add_argument("--week",type=int,default=None)
     p.add_argument("--game-id",type=int,default=None)
+    p.add_argument("--model-version",default=None,
+                   help="Optional model version. Defaults to edp-v1 or wp-v1 for model commands.")
     p.add_argument("--force",action="store_true")
     p.add_argument("--database",default=None)
     return p
@@ -47,6 +54,10 @@ def _years(args) -> tuple[int,int]:
     first=args.from_year or args.year; last=args.to_year or args.year
     if first>last: raise ValueError("--from-year must not be after --to-year")
     return first,last
+
+
+def _model_version(args, family: str) -> str:
+    return str(args.model_version or ("edp-v1" if family == "edp" else "wp-v1"))
 
 
 def _week_ready(repository: CFBRepository, year: int, week: int) -> tuple[bool,int]:
@@ -108,20 +119,26 @@ def main(argv:list[str]|None=None,*,client=None)->int:
         print(json.dumps(total)); return 0
 
     if args.command=="fit-edp":
-        print(json.dumps(fit_edp(repository,from_season=first,to_season=last),indent=2)); return 0
+        version=_model_version(args,"edp")
+        print(json.dumps(fit_edp(repository,from_season=first,to_season=last,model_version=version),indent=2)); return 0
     if args.command=="score-edp":
-        print(json.dumps(score_edp(repository,from_season=first,to_season=last),indent=2)); return 0
+        version=_model_version(args,"edp")
+        print(json.dumps(score_edp(repository,from_season=first,to_season=last,model_version=version),indent=2)); return 0
     if args.command=="validate-edp":
-        print(json.dumps(validate_edp(repository,from_season=first,to_season=last),indent=2)); return 0
+        version=_model_version(args,"edp")
+        print(json.dumps(validate_edp(repository,from_season=first,to_season=last,model_version=version),indent=2)); return 0
     if args.command=="fit-wp":
-        print(json.dumps(fit_wp(repository,from_season=first,to_season=last),indent=2)); return 0
+        version=_model_version(args,"wp")
+        print(json.dumps(fit_wp(repository,from_season=first,to_season=last,model_version=version),indent=2)); return 0
     if args.command=="score-wp":
-        print(json.dumps(score_wp(repository,from_season=first,to_season=last),indent=2)); return 0
+        version=_model_version(args,"wp")
+        print(json.dumps(score_wp(repository,from_season=first,to_season=last,model_version=version),indent=2)); return 0
     if args.command=="validate-wp":
-        print(json.dumps(validate_wp(repository,from_season=first,to_season=last),indent=2)); return 0
+        version=_model_version(args,"wp")
+        print(json.dumps(validate_wp(repository,from_season=first,to_season=last,model_version=version),indent=2)); return 0
     if args.command=="rebuild-values":
-        edp=score_edp(repository,from_season=first,to_season=last)
-        wp=score_wp(repository,from_season=first,to_season=last)
+        edp=score_edp(repository,from_season=first,to_season=last,model_version=_model_version(args,"edp"))
+        wp=score_wp(repository,from_season=first,to_season=last,model_version=_model_version(args,"wp"))
         print(json.dumps({"edp":edp,"wp":wp},indent=2)); return 0
 
     client=client or CFBDClient(raw_cache_path=os.getenv("CFBD_RAW_CACHE_PATH","instance/cfbd_raw"))
