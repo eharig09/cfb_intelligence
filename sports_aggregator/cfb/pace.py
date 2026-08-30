@@ -28,19 +28,12 @@ def _game_seconds_remaining(row: dict[str, Any]) -> int | None:
     return max(0, clock)
 
 
-def _state(row: dict[str, Any]) -> str:
-    offense = int(row.get("offense_score") or 0)
-    defense = int(row.get("defense_score") or 0)
-    margin = offense - defense
-    if abs(margin) <= 8:
-        return "neutral"
-    return "leading" if margin > 0 else "trailing"
+def _margin(row: dict[str, Any]) -> int:
+    return int(row.get("offense_score") or 0) - int(row.get("defense_score") or 0)
 
 
 def _detail_state(row: dict[str, Any]) -> str:
-    offense = int(row.get("offense_score") or 0)
-    defense = int(row.get("defense_score") or 0)
-    margin = offense - defense
+    margin = _margin(row)
     if margin == 0:
         return "tied"
     if 0 < margin <= 8:
@@ -78,7 +71,7 @@ def _rate_packet(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def game_pace_summary(repository, game_id: int, *, metric_version: str = "pbp-v1") -> dict[str, Any]:
-    """Return state-specific tempo and pass tendency for both offenses."""
+    """Return overlapping score-state tempo and pass tendency for both offenses."""
     from sports_aggregator.cfb.play_by_play import initialize
     initialize(repository)
     with closing(repository._connect()) as connection:
@@ -100,8 +93,19 @@ def game_pace_summary(repository, game_id: int, *, metric_version: str = "pbp-v1
     for team, items in grouped.items():
         buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in items:
+            margin = _margin(row)
             buckets["overall"].append(row)
-            buckets[_state(row)].append(row)
+            # These are deliberately overlapping lenses: a team leading 7-3 is
+            # both leading and neutral. That lets game script and close-game
+            # tendency be studied independently.
+            if abs(margin) <= 8:
+                buckets["neutral"].append(row)
+            if margin > 0:
+                buckets["leading"].append(row)
+            elif margin < 0:
+                buckets["trailing"].append(row)
+            else:
+                buckets["tied"].append(row)
             buckets[_detail_state(row)].append(row)
             if int(row.get("period") or 0) <= 2:
                 buckets["first_half"].append(row)
@@ -114,7 +118,9 @@ def game_pace_summary(repository, game_id: int, *, metric_version: str = "pbp-v1
         "game_id": int(game_id),
         "pace_version": PACE_VERSION,
         "metric_version": metric_version,
-        "neutral_definition": "score margin within 8 points; garbage time excluded",
+        "neutral_definition": "absolute score margin <= 8; garbage time excluded",
+        "leading_definition": "offense score margin > 0; overlaps neutral when lead <= 8",
+        "trailing_definition": "offense score margin < 0; overlaps neutral when deficit <= 8",
         "play_rate_definition": "qualifying rush/pass snaps divided by represented game-clock span",
         "teams": teams,
     }
