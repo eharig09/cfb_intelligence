@@ -8,6 +8,7 @@ from typing import Any
 from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
+from sports_aggregator.cfb.qb_air_yards_display import install_qb_air_yards_display
 from sports_aggregator.cfb.team_game_tendencies import game_summary
 
 ANCHOR = "{{ postgame_analysis(game, team_stats, player_stats) }}"
@@ -130,3 +131,4 @@ def install_postgame_tendencies_display(app) -> None:
     app.jinja_loader = _Loader(app.jinja_loader)
     app.jinja_env.cache.clear()
     app.extensions["postgame_tendencies_display_installed"] = True
+    install_qb_air_yards_display(app)
