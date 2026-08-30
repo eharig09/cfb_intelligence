@@ -1,18 +1,21 @@
 """Versioned enrichment for CFBD play descriptions.
 
-play-detail-v2 keeps the conservative lexical parser from v1 and adds numeric
-pass depth when a completed-pass catch spot can be reconciled with the stored
-pre-play field position. Raw provider text remains authoritative and every
-numeric estimate carries an explicit source/confidence marker.
+play-detail-v3 keeps the conservative lexical parser and adds numeric pass depth
+when a completed-pass catch spot can be resolved to the offense or defense side
+of the field. Provider field codes such as HAW02 mean the Hawaiʻi 2-yard line:
+the prefix identifies the team defending that goal line. Raw provider text
+remains authoritative and every numeric estimate carries an explicit source and
+confidence marker.
 """
 from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime, timezone
 import re
+import unicodedata
 from typing import Any
 
-PARSER_VERSION = "play-detail-v2"
+PARSER_VERSION = "play-detail-v3"
 WRITE_BATCH = 1000
 
 _DIRECTION = (
@@ -85,14 +88,59 @@ def _depth(text: str) -> str | None:
     return hits[0] if len(hits) == 1 else None
 
 
-def _numeric_depth(play_text: str, yards_to_goal: Any, yards_gained: Any,
-                   lexical_depth: str | None) -> dict[str, Any]:
-    """Infer air yards/YAC from `caught at TEAMNN` only when unambiguous.
+def _ascii_letters(value: Any) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    return "".join(ch for ch in text if not unicodedata.combining(ch) and ch.isalpha()).upper()
 
-    TEAMNN can refer either to the offense's or defense's side of midfield. We
-    deliberately do not maintain a team-abbreviation dictionary. Instead we
-    evaluate both field interpretations against the known pre-play spot and
-    total gain, then accept only a unique football-plausible result.
+
+def _team_code_candidates(team: Any) -> set[str]:
+    """Conservative code candidates for resolving a provider field prefix.
+
+    We only need to distinguish the two teams participating in one play. The
+    candidates intentionally avoid aggressive nickname guessing; an unresolved
+    code yields unknown air yards rather than a fabricated field side.
+    """
+    raw = unicodedata.normalize("NFKD", str(team or ""))
+    raw = "".join(ch for ch in raw if not unicodedata.combining(ch))
+    words = re.findall(r"[A-Za-z]+", raw.upper())
+    compact = "".join(words)
+    candidates: set[str] = set()
+    if compact:
+        for length in (2, 3, 4, 5, 6, 7, 8):
+            if len(compact) >= length:
+                candidates.add(compact[:length])
+    if words:
+        initials = "".join(word[0] for word in words)
+        if len(initials) >= 2:
+            candidates.add(initials)
+        # Many provider codes use the first school's word rather than the full
+        # multi-word name (e.g. STAN for Stanford). Keep its common prefixes.
+        first = words[0]
+        for length in (2, 3, 4, 5):
+            if len(first) >= length:
+                candidates.add(first[:length])
+    return candidates
+
+
+def _field_side(prefix: str, offense: Any, defense: Any) -> str | None:
+    code = _ascii_letters(prefix)
+    offense_codes = _team_code_candidates(offense)
+    defense_codes = _team_code_candidates(defense)
+    offense_match = code in offense_codes
+    defense_match = code in defense_codes
+    if offense_match == defense_match:
+        return None
+    return "offense" if offense_match else "defense"
+
+
+def _numeric_depth(play_text: str, yards_to_goal: Any, yards_gained: Any,
+                   offense: Any, defense: Any) -> dict[str, Any]:
+    """Measure air yards/YAC from a resolved `caught at TEAMNN` field spot.
+
+    TEAMNN names the yard line by the team defending that goal line. Therefore
+    a catch at the DEFENSE's 2 has catch_yards_to_goal=2, while a catch at the
+    OFFENSE's 2 has catch_yards_to_goal=98. The 50-yard line is neutral and is
+    not encoded as a team-side TEAMNN catch spot here.
     """
     match = _CATCH_SPOT.search(play_text or "")
     try:
@@ -102,37 +150,28 @@ def _numeric_depth(play_text: str, yards_to_goal: Any, yards_gained: Any,
         return {}
     if not match or pre_ytg is None or gained is None or not 1 <= pre_ytg <= 100:
         return {}
+
     spot = int(match.group(2))
-    if spot < 0 or spot > 50:
+    if not 0 <= spot < 50:
+        return {}
+    side = _field_side(match.group(1), offense, defense)
+    if side is None:
         return {}
 
-    candidates: list[dict[str, Any]] = []
-    for catch_ytg in {spot, 100 - spot}:
-        air = pre_ytg - catch_ytg
-        yac = gained - air
-        # Broad but football-realistic bounds. Negative YAC can occur on plays
-        # with backward movement after the catch, but large negatives usually
-        # indicate the wrong side-of-field interpretation.
-        if air < -15 or air > 70 or yac < -5 or yac > 90:
-            continue
-        if lexical_depth == "short" and not (-10 <= air < 20):
-            continue
-        if lexical_depth == "deep" and air < 15:
-            continue
-        candidates.append({
-            "air_yards": float(air),
-            "yards_after_catch": float(yac),
-            "catch_spot_yards_to_goal": int(catch_ytg),
-        })
-
-    unique = {(c["air_yards"], c["yards_after_catch"], c["catch_spot_yards_to_goal"]): c for c in candidates}
-    candidates = list(unique.values())
-    if len(candidates) != 1:
+    catch_ytg = spot if side == "defense" else 100 - spot
+    air = pre_ytg - catch_ytg
+    yac = gained - air
+    # These are validation guards, not side-selection heuristics. The provider
+    # prefix has already fixed the field side deterministically.
+    if air < -20 or air > 80 or yac < -10 or yac > 100:
         return {}
-    result = candidates[0]
-    result["air_yards_source"] = "catch_spot"
-    result["air_yards_confidence"] = "high" if lexical_depth else "medium"
-    return result
+    return {
+        "air_yards": float(air),
+        "yards_after_catch": float(yac),
+        "catch_spot_yards_to_goal": int(catch_ytg),
+        "air_yards_source": "catch_spot_team_side",
+        "air_yards_confidence": "high",
+    }
 
 
 def _derived_depth(air_yards: float | None, lexical_depth: str | None) -> str | None:
@@ -148,7 +187,8 @@ def _derived_depth(air_yards: float | None, lexical_depth: str | None) -> str | 
 
 
 def parse(play_type: Any, play_text: Any, *, yards_to_goal: Any = None,
-          yards_gained: Any = None) -> dict[str, Any]:
+          yards_gained: Any = None, offense: Any = None,
+          defense: Any = None) -> dict[str, Any]:
     text = str(play_text or "").strip()
     lower = text.casefold()
     kind = str(play_type or "").casefold()
@@ -165,7 +205,7 @@ def parse(play_type: Any, play_text: Any, *, yards_to_goal: Any = None,
     tempo = "no_huddle" if re.search(r"\bno[ -]?huddle\b", text, re.I) else None
     direction = _direction(text)
     lexical_depth = _depth(text) if is_pass else None
-    numeric = _numeric_depth(text, yards_to_goal, yards_gained, lexical_depth) if is_pass else {}
+    numeric = _numeric_depth(text, yards_to_goal, yards_gained, offense, defense) if is_pass else {}
     air_yards = numeric.get("air_yards")
     pass_depth = _derived_depth(air_yards, lexical_depth) if is_pass else None
     pass_location = direction if is_pass else None
@@ -244,13 +284,14 @@ def build(repository, *, from_season: int | None = None,
     batch: list[tuple[Any, ...]] = []
     with closing(repository._connect()) as reader:
         cursor = reader.execute(
-            f"SELECT p.play_id,p.play_type,p.play_text,p.yards_to_goal,p.yards_gained FROM cfb_plays p WHERE {where} ORDER BY p.season,p.game_id,p.drive_number,p.play_number",
+            f"SELECT p.play_id,p.play_type,p.play_text,p.yards_to_goal,p.yards_gained,p.offense,p.defense FROM cfb_plays p WHERE {where} ORDER BY p.season,p.game_id,p.drive_number,p.play_number",
             params,
         )
         for row in cursor:
             detail = parse(
                 row["play_type"], row["play_text"],
                 yards_to_goal=row["yards_to_goal"], yards_gained=row["yards_gained"],
+                offense=row["offense"], defense=row["defense"],
             )
             totals["parsed"] += 1
             if detail["parser_confidence"] == "high": totals["high_confidence"] += 1
