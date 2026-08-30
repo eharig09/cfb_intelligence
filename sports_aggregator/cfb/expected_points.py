@@ -154,14 +154,19 @@ def _lookup(table: dict[tuple[int,int,int], tuple[float,int]], key: tuple[int,in
 
 def score_plays(repository, *, from_season: int | None = None,
                 to_season: int | None = None, model_version: str = MODEL_VERSION) -> dict[str, Any]:
-    """Attach expected-drive-points-added values to stored plays."""
+    """Attach expected-drive-points-added values to stored plays.
+
+    Scrimmage plays carry the state transition. Terminal scoring plays such as
+    field goals are also retained so realized drive points are not lost merely
+    because the play is not classified as a rush or pass.
+    """
     initialize(repository)
     with closing(repository._connect()) as connection:
         model_rows = connection.execute("""SELECT down_bucket,distance_bucket,field_bucket,
           expected_points,samples FROM cfb_expected_drive_points WHERE model_version=?""",
           (model_version,)).fetchall()
         table = {(int(r[0]),int(r[1]),int(r[2])):(float(r[3]),int(r[4])) for r in model_rows}
-        clauses = ["m.metric_version='pbp-v1'", "m.rush_pass IN ('rush','pass')"]
+        clauses = ["m.metric_version='pbp-v1'", "(m.rush_pass IN ('rush','pass') OR p.scoring=1)"]
         params: list[Any] = []
         if from_season is not None:
             clauses.append("p.season>=?"); params.append(int(from_season))
@@ -169,7 +174,7 @@ def score_plays(repository, *, from_season: int | None = None,
             clauses.append("p.season<=?"); params.append(int(to_season))
         plays = [dict(row) for row in connection.execute(f"""
           SELECT p.play_id,p.game_id,p.drive_id,p.drive_number,p.play_number,p.down,p.distance,
-                 p.yards_to_goal,p.scoring,p.play_type
+                 p.yards_to_goal,p.scoring,p.play_type,m.rush_pass
           FROM cfb_plays p JOIN cfb_play_metrics m USING(play_id)
           WHERE {' AND '.join(clauses)}
           ORDER BY p.game_id,p.drive_number,p.play_number
