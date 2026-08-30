@@ -105,9 +105,8 @@ def build(repository, *, from_season: int | None = DEFAULT_MIN_SEASON,
 
         for dimension, spec in DIMENSIONS.items():
             column = str(spec["column"])
-            base = ["e.model_version=?", "d.parser_version=?", "m.metric_version='pbp-v1'",
-                    "m.rush_pass IN ('rush','pass')"]
-            params: list[Any] = [model_version, parser_version]
+            base = ["e.model_version=?", "m.metric_version='pbp-v1'", "m.rush_pass IN ('rush','pass')"]
+            params: list[Any] = [model_version]
             if spec["rush_pass"]:
                 base.append("m.rush_pass=?")
                 params.append(spec["rush_pass"])
@@ -126,11 +125,9 @@ def build(repository, *, from_season: int | None = DEFAULT_MIN_SEASON,
               WHERE {where}
               GROUP BY p.game_id,p.offense,p.defense
             """
-            # LEFT JOIN needs parser version before WHERE parameters.
-            eligible_params = [parser_version, *params]
             eligible = {
                 (int(r["game_id"]), str(r["team"])): dict(r)
-                for r in connection.execute(eligible_sql, eligible_params).fetchall()
+                for r in connection.execute(eligible_sql, [parser_version, *params]).fetchall()
             }
 
             grouped_sql = f"""
