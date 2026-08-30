@@ -246,7 +246,8 @@ def _render(repository, game: dict[str, Any], team_stats, player_stats) -> Marku
         '<div class="postgame-coverage"><strong>Analysis coverage.</strong> '
         f'{escape(str(coverage.get("coverage_note") or ""))} '
         'A factor is omitted when the underlying field is absent or the difference is too small to support a meaningful claim. '
-        'CFBD PPA is retained only as a benchmark; the app does not label it as its own EPA.'</n        '</div></section>'
+        'CFBD PPA is retained only as a benchmark; the app does not label it as its own EPA.'
+        '</div></section>'
     )
 
 
