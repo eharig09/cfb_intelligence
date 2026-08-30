@@ -12,6 +12,7 @@ import time
 from dotenv import load_dotenv
 
 from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError, FINISHED_WEEK_TTL
+from sports_aggregator.cfb.epa_validation import validate_epa
 from sports_aggregator.cfb.expected_points import fit_model as fit_edp, score_plays as score_edp
 from sports_aggregator.cfb.expected_points_v2 import fit_model as fit_ep
 from sports_aggregator.cfb.expected_points_v2 import score_plays as score_epa
@@ -31,7 +32,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("command", choices=(
         "backfill", "derive",
         "fit-edp", "score-edp", "validate-edp",
-        "fit-ep", "score-epa", "validate-ep",
+        "fit-ep", "score-epa", "validate-ep", "validate-epa",
         "fit-wp", "score-wp", "fit-wp-v2", "score-wp-v2", "validate-wp",
         "fit-wp-calibration", "score-wp-calibrated", "rebuild-values", "pace"))
     p.add_argument("--year", type=int, default=datetime.now().year)
@@ -153,6 +154,11 @@ def main(argv: list[str] | None = None, *, client=None) -> int:
         version = _model_version(args, "ep")
         print(json.dumps(validate_ep(repository, from_season=first, to_season=last,
                                     model_version=version), indent=2))
+        return 0
+    if args.command == "validate-epa":
+        version = _model_version(args, "ep")
+        print(json.dumps(validate_epa(repository, from_season=first, to_season=last,
+                                     model_version=version), indent=2))
         return 0
 
     if args.command == "fit-wp":
