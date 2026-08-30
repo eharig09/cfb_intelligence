@@ -12,12 +12,13 @@ from sports_aggregator.cfb.team_game_tendencies import game_summary
 
 ANCHOR = "{{ postgame_analysis(game, team_stats, player_stats) }}"
 REPLACEMENT = ANCHOR + "\n{{ postgame_tendencies(game) }}"
+MIN_METRIC_SAMPLE = 4
 
 STYLE = '''<style>
 .pg-tendency{margin:0 0 18px}.pg-tendency-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-end;margin:17px 0 7px;padding-bottom:6px;border-bottom:1px solid var(--line)}.pg-tendency-head h3{margin:0;font-size:.8rem}.pg-tendency-head span{font-size:.51rem;color:var(--muted)}
 .pg-tendency-teams{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pg-tendency-team{min-width:0}.pg-tendency-team>h4{margin:0 0 6px;font-size:.69rem}
 .pg-tendency-block{border-top:1px solid var(--line);margin-top:7px;padding-top:6px}.pg-tendency-block:first-of-type{margin-top:0}.pg-tendency-label{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:3px}.pg-tendency-label strong{font-size:.58rem;text-transform:uppercase;letter-spacing:.055em}.pg-tendency-label span{font-size:.48rem;color:var(--muted)}
-.pg-tendency-row{display:grid;grid-template-columns:minmax(72px,1fr) 48px 66px 58px;gap:6px;align-items:center;padding:4px 0;border-top:1px solid color-mix(in srgb,var(--line) 72%,transparent);font-size:.57rem}.pg-tendency-row.header{border-top:0;color:var(--muted);font-size:.47rem;text-transform:uppercase;letter-spacing:.045em;font-weight:800}.pg-tendency-row .num{text-align:right;font-variant-numeric:tabular-nums}.pg-tendency-row .value{font-weight:750;text-transform:capitalize}.pg-tendency-row .epa{font-family:var(--display-font);font-size:.65rem}.pg-tendency-note{margin:7px 0 0;font-size:.53rem;line-height:1.45;color:var(--muted)}
+.pg-tendency-row{display:grid;grid-template-columns:minmax(72px,1fr) 48px 66px 58px;gap:6px;align-items:center;padding:4px 0;border-top:1px solid color-mix(in srgb,var(--line) 72%,transparent);font-size:.57rem}.pg-tendency-row.header{border-top:0;color:var(--muted);font-size:.47rem;text-transform:uppercase;letter-spacing:.045em;font-weight:800}.pg-tendency-row .num{text-align:right;font-variant-numeric:tabular-nums}.pg-tendency-row .value{font-weight:750;text-transform:capitalize}.pg-tendency-row .epa{font-family:var(--display-font);font-size:.65rem}.pg-tendency-row.low-sample{color:var(--muted)}.pg-tendency-row.low-sample .value:after{content:" · small sample";font-size:.45rem;font-weight:500;text-transform:none}.pg-tendency-note{margin:7px 0 0;font-size:.53rem;line-height:1.45;color:var(--muted)}
 @media(max-width:720px){.pg-tendency-teams{grid-template-columns:1fr}.pg-tendency-head span{display:none}}@media(max-width:430px){.pg-tendency-row{grid-template-columns:minmax(68px,1fr) 42px 60px 52px}}
 </style>'''
 
@@ -27,10 +28,10 @@ LABELS = {
     "pass_location": "Pass location",
 }
 ORDER = ("rush_direction", "pass_depth", "pass_location")
-VALUE_ORDER = {
-    "rush_direction": {"left": 0, "middle": 1, "right": 2},
-    "pass_depth": {"short": 0, "deep": 1},
-    "pass_location": {"left": 0, "middle": 1, "right": 2},
+CANONICAL_VALUES = {
+    "rush_direction": ("left", "middle", "right"),
+    "pass_depth": ("short", "deep"),
+    "pass_location": ("left", "middle", "right"),
 }
 
 
@@ -61,15 +62,19 @@ def _dimension_html(dimension: str, rows: list[dict[str, Any]]) -> str:
     if not rows:
         return ""
     coverage = max((float(row.get("coverage") or 0.0) for row in rows), default=0.0)
-    rows = sorted(rows, key=lambda r: VALUE_ORDER.get(dimension, {}).get(str(r.get("value")), 99))
+    by_value = {str(row.get("value") or ""): row for row in rows}
     body = []
-    for row in rows:
+    for value in CANONICAL_VALUES[dimension]:
+        row = by_value.get(value)
+        plays = int((row or {}).get("plays") or 0)
+        enough = plays >= MIN_METRIC_SAMPLE
+        css = "pg-tendency-row" + (" low-sample" if not enough else "")
         body.append(
-            '<div class="pg-tendency-row">'
-            f'<span class="value">{escape(str(row.get("value") or "—").replace("_", " "))}</span>'
-            f'<span class="num">{int(row.get("plays") or 0)}</span>'
-            f'<span class="num epa">{_f2(row.get("epa_per_play"))}</span>'
-            f'<span class="num">{_pct(row.get("success_rate"))}</span>'
+            f'<div class="{css}">'
+            f'<span class="value">{escape(value.replace("_", " "))}</span>'
+            f'<span class="num">{plays}</span>'
+            f'<span class="num epa">{_f2(row.get("epa_per_play")) if row and enough else "—"}</span>'
+            f'<span class="num">{_pct(row.get("success_rate")) if row and enough else "—"}</span>'
             '</div>'
         )
     return (
@@ -82,7 +87,9 @@ def _dimension_html(dimension: str, rows: list[dict[str, Any]]) -> str:
 
 def _render(repository, game: dict[str, Any]) -> Markup:
     try:
-        rows = game_summary(repository, int(game.get("game_id") or 0), min_plays=4, min_coverage=0.30)
+        # Fetch every observed category so a 1-3 play split is not silently
+        # omitted. Metrics still require MIN_METRIC_SAMPLE before display.
+        rows = game_summary(repository, int(game.get("game_id") or 0), min_plays=1, min_coverage=0.30)
     except Exception:
         rows = []
     if not rows:
@@ -102,7 +109,7 @@ def _render(repository, game: dict[str, Any]) -> Markup:
     teams.extend(team for team in grouped if team not in teams)
     cards = []
     for team in teams:
-        dimensions = ''.join(_dimension_html(d, grouped[team].get(d, [])) for d in ORDER)
+        dimensions = ''.join(_dimension_html(d, grouped[team].get(d, [])) for d in ORDER if grouped[team].get(d))
         if dimensions:
             cards.append(f'<article class="pg-tendency-team"><h4>{escape(team)}</h4>{dimensions}</article>')
     if not cards:
@@ -112,7 +119,7 @@ def _render(repository, game: dict[str, Any]) -> Markup:
         STYLE + '<section class="pg-tendency">'
         '<div class="pg-tendency-head"><h3>Play tendencies</h3><span>play-detail-v1 × ep-v1 · evidence thresholds applied</span></div>'
         f'<div class="pg-tendency-teams">{"".join(cards)}</div>'
-        '<p class="pg-tendency-note">Only splits with at least 4 classified plays and at least 30% game-level classification coverage are shown. Older sparse-description seasons are intentionally suppressed.</p>'
+        '<p class="pg-tendency-note">All canonical direction/depth categories are shown when the game clears 30% classification coverage. EPA and success are withheld for splits with fewer than 4 classified plays.</p>'
         '</section>'
     )
 
