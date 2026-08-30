@@ -1,4 +1,4 @@
-"""Render high-confidence 2025+ play-detail tendency splits in postgame reports."""
+"""Render high-confidence 2025+ play-text tendency splits in postgame reports."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -115,9 +115,9 @@ def _render(repository, game: dict[str, Any]) -> Markup:
 
     return Markup(
         STYLE + '<section class="pg-tendency">'
-        '<div class="pg-tendency-head"><h3>Play tendencies</h3><span>play-detail-v2 × ep-v1 · measured depth where available</span></div>'
+        '<div class="pg-tendency-head"><h3>Play tendencies</h3><span>play-detail-v3 × ep-v1 · evidence thresholds applied</span></div>'
         f'<div class="pg-tendency-teams">{"".join(cards)}</div>'
-        '<p class="pg-tendency-note">Pass depth uses measured air yards from catch spots when the field-side interpretation is unambiguous, then falls back to provider short/deep wording. EPA and success are withheld for splits with fewer than 4 classified plays.</p>'
+        '<p class="pg-tendency-note">Pass depth uses measured catch-spot air yards when the provider field-side code resolves cleanly, with lexical depth as fallback. EPA and success are withheld for splits with fewer than 4 classified plays.</p>'
         '</section>'
     )
 
