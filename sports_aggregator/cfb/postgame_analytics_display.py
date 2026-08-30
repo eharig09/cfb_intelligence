@@ -21,7 +21,6 @@ STYLE = '''<style>
 .pg-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}.pg-summary-card{border:1px solid var(--line);background:var(--paper);padding:10px 12px}.pg-summary-card h4{margin:0 0 8px;font-size:.68rem}.pg-summary-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.pg-summary-metric span{display:block;font-size:.48rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800}.pg-summary-metric strong{display:block;margin-top:3px;font-family:var(--display-font);font-size:.82rem;font-variant-numeric:tabular-nums}
 .pg-details{border:1px solid var(--line);background:var(--paper);margin:8px 0 5px}.pg-details summary{cursor:pointer;padding:8px 11px;font-size:.56rem;font-weight:800;text-transform:uppercase;letter-spacing:.055em;color:var(--muted)}.pg-details[open] summary{border-bottom:1px solid var(--line)}.pg-detail-grid{display:grid;grid-template-columns:1fr 1fr}.pg-detail-team{padding:9px 11px}.pg-detail-team+.pg-detail-team{border-left:1px solid var(--line)}.pg-detail-team h4{margin:0 0 6px;font-size:.64rem}.pg-row{display:grid;grid-template-columns:1.35fr .72fr .72fr;gap:8px;padding:4px 0;border-top:1px solid var(--line);font-size:.57rem}.pg-row:first-of-type{border-top:0}.pg-num{text-align:right;font-variant-numeric:tabular-nums}.pg-note{color:var(--muted);font-size:.55rem;line-height:1.45;margin:7px 0 0}
 .pg-turning{border-top:1px solid var(--line);margin:10px 0 4px}.pg-turn{display:grid;grid-template-columns:42px minmax(285px,.9fr) minmax(0,1.45fr);gap:15px;padding:15px 4px;border-bottom:1px solid var(--line);align-items:start}.pg-turn-rank{font-family:var(--display-font);font-size:1.18rem;line-height:1;color:var(--team-light);font-variant-numeric:tabular-nums;padding-top:2px}.pg-turn-main{min-width:0}.pg-turn-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.pg-turn-clock{font-family:var(--display-font);font-size:.78rem;font-weight:850;letter-spacing:-.01em}.pg-turn-event{font-size:.5rem;text-transform:uppercase;letter-spacing:.065em;font-weight:900;color:var(--team-light);border:1px solid color-mix(in srgb,var(--team-light) 55%,var(--line));padding:3px 6px}.pg-turn-swing{margin-top:6px;font-family:var(--display-font);font-size:.9rem;line-height:1.15;font-variant-numeric:tabular-nums}.pg-turn-swing strong{font-size:1rem}.pg-turn-wp{margin-top:4px;font-size:.66rem;font-weight:800}.pg-turn-context{margin-top:8px;font-size:.65rem;line-height:1.5;color:var(--muted)}.pg-turn-play{margin:0;font-size:.72rem;line-height:1.55;font-weight:700}.pg-turn-player{font-weight:950}.pg-turn-meta{margin-top:6px;color:var(--muted);font-size:.54rem;line-height:1.4}.pg-turn-attribution{margin-top:6px;font-size:.54rem;color:var(--muted);font-style:italic}
-/* These overrides intentionally beat the later report-shell editorial CSS. */
 .box-report .efficiency-best{display:none!important}.box-report .efficiency-cell.edge{box-shadow:none!important;background:transparent!important}
 @media(max-width:820px){.pg-turn{grid-template-columns:34px 1fr;gap:10px}.pg-turn-detail{grid-column:2}.pg-summary-grid,.pg-detail-grid{grid-template-columns:1fr}.pg-detail-team+.pg-detail-team{border-left:0;border-top:1px solid var(--line)}.pg-section-head span{display:none}}
 @media(max-width:460px){.pg-summary-metrics{grid-template-columns:1fr 1fr}.pg-turn{grid-template-columns:28px 1fr}.pg-turn-rank{font-size:1rem}.pg-turn-swing{font-size:.8rem}.pg-turn-play{font-size:.68rem}}
@@ -91,34 +90,26 @@ def _detail_team(team: str, states: dict[str, Any]) -> str:
 
 
 def _down_distance(row: dict[str, Any]) -> str:
-    down = row.get("down")
-    distance = row.get("distance")
-    if down is None or distance is None:
-        return ""
-    try:
-        down_i = int(down); distance_i = int(distance)
-    except (TypeError, ValueError):
-        return ""
+    down = row.get("down"); distance = row.get("distance")
+    if down is None or distance is None: return ""
+    try: down_i = int(down); distance_i = int(distance)
+    except (TypeError, ValueError): return ""
     suffix = {1: "st", 2: "nd", 3: "rd"}.get(down_i, "th")
     return f"{down_i}{suffix} & {distance_i}"
 
 
 def _field_position(row: dict[str, Any]) -> str:
-    offense = str(row.get("offense") or "")
-    defense = str(row.get("defense") or "")
-    ytg = row.get("yards_to_goal")
-    try: ytg = int(ytg)
+    offense = str(row.get("offense") or ""); defense = str(row.get("defense") or "")
+    try: ytg = int(row.get("yards_to_goal"))
     except (TypeError, ValueError): return ""
-    if ytg <= 50:
-        return f"at the {defense} {ytg}" if defense else f"{ytg} yards from goal"
+    if ytg <= 50: return f"at the {defense} {ytg}" if defense else f"{ytg} yards from goal"
     own = 100 - ytg
     return f"at the {offense} {own}" if offense else f"{ytg} yards from goal"
 
 
 def _scoreline(row: dict[str, Any], game: dict[str, Any]) -> str:
     home = row.get("home_score"); away = row.get("away_score")
-    if home is None or away is None:
-        return ""
+    if home is None or away is None: return ""
     return f"{game.get('away_team') or 'Away'} {away} · {game.get('home_team') or 'Home'} {home}"
 
 
@@ -147,8 +138,7 @@ def _team_codes(team: str) -> set[str]:
     letters = re.sub(r"[^A-Z]", "", team.upper())
     words = re.findall(r"[A-Za-z]+", team)
     codes = {letters[:size] for size in range(2, min(6, len(letters) + 1))}
-    if len(words) > 1:
-        codes.add("".join(word[0] for word in words).upper())
+    if len(words) > 1: codes.add("".join(word[0] for word in words).upper())
     return {code for code in codes if len(code) >= 2}
 
 
@@ -156,45 +146,63 @@ def _humanize_field_codes(text: str, game: dict[str, Any]) -> str:
     teams = (str(game.get("away_team") or "Away"), str(game.get("home_team") or "Home"))
     code_map: dict[str, str] = {}
     for team in teams:
-        for code in _team_codes(team):
-            code_map[code] = team
-
+        for code in _team_codes(team): code_map[code] = team
     def replace(match: re.Match[str]) -> str:
-        code = match.group(1).upper()
-        yard = int(match.group(2))
-        team = code_map.get(code)
-        if not team:
-            return match.group(0)
+        code = match.group(1).upper(); yard = int(match.group(2)); team = code_map.get(code)
+        if not team: return match.group(0)
         return f"{team} goal line" if yard == 0 else f"{team} {yard}"
-
     return re.sub(r"\b([A-Z]{2,6})(\d{2})\b", replace, text)
+
+
+def _clean_play_text(text: str, game: dict[str, Any]) -> str:
+    human = _humanize_field_codes(text, game)
+    human = re.sub(r"^\(\d{1,2}:\d{2}\)\s*", "", human).strip()
+    # Provider completions often repeat the catch/end spot when there was no YAC.
+    human = re.sub(
+        r"caught at ([A-Za-zÀ-žʻ'’ .\-]+(?:goal line|\d{1,2})),\s*for (-?\d+) yards to (?:the )?\1",
+        lambda m: f"caught at {m.group(1)} — {m.group(2)} yards",
+        human,
+        flags=re.I,
+    )
+    return human
 
 
 def _team_colors(repository, game: dict[str, Any]) -> dict[str, str]:
     colors: dict[str, str] = {}
     for side in ("away", "home"):
-        team = str(game.get(f"{side}_team") or "")
-        team_id = game.get(f"{side}_team_id")
-        if not team or team_id is None:
-            continue
+        team = str(game.get(f"{side}_team") or ""); team_id = game.get(f"{side}_team_id")
+        if not team or team_id is None: continue
         try:
             identity = team_identity(repository.brand_for(int(team_id)))
             colors[team] = str(identity.get("accent_dark") or identity.get("accent") or "var(--team-light)")
-        except Exception:
-            colors[team] = "var(--team-light)"
+        except Exception: colors[team] = "var(--team-light)"
     return colors
 
 
-def _play_html(text: str, game: dict[str, Any], color: str) -> str:
-    human = _humanize_field_codes(text, game)
-    player = re.search(r"#\d+\s+([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)?)", human)
-    escaped = escape(human)
-    if not player:
-        return escaped
-    name = player.group(1)
-    escaped_name = escape(name)
-    styled = f'<span class="pg-turn-player" style="color:{escape(color, quote=True)}">{escaped_name}</span>'
-    return escaped.replace(escaped_name, styled, 1)
+_PLAYER = re.compile(r"#\d+\s+([A-Z][A-Za-z.'’\-]*(?:\s+[A-Z][A-Za-z.'’\-]*)?)")
+_DEFENSE_CUES = ("broken up by", "tackled by", "sacked by", "intercepted by", "forced by", "recovered by", "blocked by", "hurried by")
+
+
+def _play_html(text: str, game: dict[str, Any], colors: dict[str, str], offense: str, defense: str) -> str:
+    human = _clean_play_text(text, game)
+    pieces: list[str] = []
+    last = 0
+    for match in _PLAYER.finditer(human):
+        pieces.append(escape(human[last:match.start()]))
+        before = human[max(0, match.start() - 40):match.start()].casefold().rstrip()
+        parenthetical = match.start() > 0 and human[match.start() - 1] == "("
+        defender = parenthetical or any(before.endswith(cue) for cue in _DEFENSE_CUES)
+        team = defense if defender else offense
+        color = colors.get(team, "var(--team-light)")
+        prefix = human[match.start():match.start(1)]
+        pieces.append(escape(prefix))
+        pieces.append(
+            f'<span class="pg-turn-player" style="color:{escape(color, quote=True)}">'
+            f'{escape(match.group(1))}</span>'
+        )
+        last = match.end()
+    pieces.append(escape(human[last:]))
+    return "".join(pieces)
 
 
 def _render(repository, game: dict[str, Any]) -> Markup:
@@ -207,10 +215,8 @@ def _render(repository, game: dict[str, Any]) -> Markup:
     if not teams and not turns: return Markup("")
 
     colors = _team_colors(repository, game)
-    away_team = str(game.get("away_team") or "Away")
-    home_team = str(game.get("home_team") or "Home")
-    away_color = colors.get(away_team, "var(--team-light)")
-    home_color = colors.get(home_team, "var(--team-light)")
+    away_team = str(game.get("away_team") or "Away"); home_team = str(game.get("home_team") or "Home")
+    away_color = colors.get(away_team, "var(--team-light)"); home_color = colors.get(home_team, "var(--team-light)")
     efficiency_override = (
         '<style>'
         f'.box-report .efficiency-row .efficiency-cell:nth-child(2).edge{{color:{escape(away_color, quote=True)}!important}}'
@@ -233,26 +239,22 @@ def _render(repository, game: dict[str, Any]) -> Markup:
     turn_rows = []
     for rank, row in enumerate(turns, 1):
         period, minute, second = _event_clock(row)
-        leverage = float(row.get("leverage") or 0)
-        before = row.get("home_wp_before")
-        after = row.get("home_wp_after")
-        event_label = _event_label(row)
-        context = []
+        leverage = float(row.get("leverage") or 0); before = row.get("home_wp_before"); after = row.get("home_wp_after")
+        event_label = _event_label(row); context = []
         scoreline = _scoreline(row, game)
         if scoreline: context.append(scoreline)
         dd = _down_distance(row)
         if dd: context.append(dd)
         field = _field_position(row)
         if field: context.append(field)
-        offense = str(row.get("offense") or "")
+        offense = str(row.get("offense") or ""); defense = str(row.get("defense") or "")
         if offense: context.append(f"{offense} ball")
         gained = row.get("yards_gained")
         if gained is not None:
             try:
                 yards = int(gained)
                 context.append(f"gain of {yards} yards" if yards >= 0 else f"loss of {abs(yards)} yards")
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError): pass
 
         wp_html = ""
         if before is not None and after is not None:
@@ -260,8 +262,7 @@ def _render(repository, game: dict[str, Any]) -> Markup:
             wp_html = f'<div class="pg-turn-wp">{escape(home_team)} WP&nbsp; {100 * float(before):.1f}% {direction} {100 * float(after):.1f}%</div>'
         label_html = f'<span class="pg-turn-event">{escape(event_label)}</span>' if event_label else ""
         attribution = "Major event matched to surrounding valid WP states." if row.get("attribution") == "special_event" else "WP transition attributed to this pre-play state."
-        play_color = colors.get(offense, "var(--team-light)")
-        play_html = _play_html(str(row.get("play_text") or row.get("play_type") or "Play"), game, play_color)
+        play_html = _play_html(str(row.get("play_text") or row.get("play_type") or "Play"), game, colors, offense, defense)
         turn_rows.append(
             '<article class="pg-turn">'
             f'<div class="pg-turn-rank">{rank:02d}</div>'
@@ -273,14 +274,14 @@ def _render(repository, game: dict[str, Any]) -> Markup:
             '<div class="pg-turn-detail">'
             f'<p class="pg-turn-play">{play_html}</p>'
             f'<div class="pg-turn-attribution">{escape(attribution)}</div>'
-            '<div class="pg-turn-meta">Large ordinary-play state discontinuities are suppressed; scores, turnovers and fourth-down events remain eligible.</div>'
+            '<div class="pg-turn-meta">WP direction is checked against ep-v1 play value; large unsupported state discontinuities are suppressed.</div>'
             '</div></article>'
         )
     turning_html = ''.join(turn_rows) or f'<div class="empty">Fit and score {escape(WP_MODEL_VERSION)} to identify leverage and turning points.</div>'
 
     return Markup(
         STYLE + efficiency_override + '<section class="section pg-analytics">' + pace_html +
-        f'<div class="pg-section-head"><h3>Turning points</h3><span>{escape(WP_MODEL_VERSION)} · event-attributed WP swings</span></div>'
+        f'<div class="pg-section-head"><h3>Turning points</h3><span>{escape(WP_MODEL_VERSION)} · EPA-checked event swings</span></div>'
         f'<div class="pg-turning">{turning_html}</div></section>'
     )
 
