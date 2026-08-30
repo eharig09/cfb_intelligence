@@ -51,10 +51,32 @@ STAT_WEIGHTS: dict[tuple[str, str], float] = {
 RECENCY_WEIGHTS = (1.00, 0.78, 0.62, 0.50)
 
 
+def _compound_attempts(value: Any) -> float:
+    """Read the attempt side of source strings such as 20/31 or 2/3."""
+    text = str(value or "").strip()
+    if "/" not in text:
+        return 0.0
+    try:
+        return max(0.0, float(text.split("/", 1)[1].strip()))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _weighted_value(category: str | None, stat_type: str | None,
-                    numeric_value: Any) -> float:
-    key = (str(category or ""), str(stat_type or "").strip().upper())
-    weight = STAT_WEIGHTS.get(key)
+                    numeric_value: Any, stat_value: Any = None) -> float:
+    category_key = str(category or "")
+    stat_key = str(stat_type or "").strip().upper()
+
+    # CFBD commonly stores these as formatted made/completed over attempts rather
+    # than separate numeric fields. Attempts are the better role signal.
+    if category_key == "passing" and stat_key in {"C/ATT", "CMP/ATT"}:
+        return _compound_attempts(stat_value) * 1.00
+    if category_key == "kicking" and stat_key == "FG":
+        return _compound_attempts(stat_value) * 1.00
+    if category_key == "kicking" and stat_key in {"XP", "PAT"}:
+        return _compound_attempts(stat_value) * 0.50
+
+    weight = STAT_WEIGHTS.get((category_key, stat_key))
     if weight is None or numeric_value is None:
         return 0.0
     try:
@@ -87,7 +109,7 @@ def observed_depth_roles(repository, team: str, season: int,
             return {}
         placeholders = ",".join("?" for _ in player_ids)
         rows = [dict(row) for row in connection.execute(
-            f"""SELECT gp.player_id,gp.category,gp.stat_type,gp.numeric_value,
+            f"""SELECT gp.player_id,gp.category,gp.stat_type,gp.numeric_value,gp.stat_value,
                        g.game_id,g.week,g.start_date
                 FROM game_player_box_stats gp
                 JOIN games g USING(game_id)
@@ -124,7 +146,8 @@ def observed_depth_roles(repository, team: str, season: int,
             continue
         player_id = str(row["player_id"])
         contribution = _weighted_value(
-            row.get("category"), row.get("stat_type"), row.get("numeric_value")
+            row.get("category"), row.get("stat_type"), row.get("numeric_value"),
+            row.get("stat_value"),
         )
         if contribution <= 0:
             continue
