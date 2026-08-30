@@ -28,6 +28,15 @@ _TOKEN_PATTERNS = {
     "screen": re.compile(r"\bscreen\b", re.I),
     "scramble": re.compile(r"\bscrambl(?:e|ed|ing)\b", re.I),
     "play_action": re.compile(r"\bplay[- ]action\b", re.I),
+    "shotgun": re.compile(r"\bshotgun\b", re.I),
+    "no_huddle": re.compile(r"\bno[ -]?huddle\b", re.I),
+    "pistol": re.compile(r"\bpistol\b", re.I),
+}
+
+_RUSH_TYPES = {"rush", "rushing touchdown", "two point rush"}
+_PASS_TYPES = {
+    "pass reception", "pass incompletion", "passing touchdown", "pass completion",
+    "pass interception return", "interception", "sack", "two point pass",
 }
 
 
@@ -43,6 +52,20 @@ def _normalize(text: str) -> str:
     value = re.sub(r"\b(?:at|to)\s+[a-z]{2,6}\d{1,2}\b", "at FIELD", value)
     value = re.sub(r"\s+", " ", value).strip()
     return value[:220]
+
+
+def _family(play_type: str, text: str) -> str | None:
+    kind = play_type.casefold()
+    if kind in _RUSH_TYPES:
+        return "rush"
+    if kind in _PASS_TYPES:
+        return "pass"
+    lower = text.casefold()
+    if "pass " in lower or "sacked" in lower or "sack" in lower:
+        return "pass"
+    if " rush " in f" {lower} " or " run " in f" {lower} ":
+        return "rush"
+    return None
 
 
 def audit(repository, *, from_season: int | None = None,
@@ -62,6 +85,7 @@ def audit(repository, *, from_season: int | None = None,
     by_play_type: dict[str, Counter] = defaultdict(Counter)
     phrases = Counter()
     normalized = Counter()
+    family_season: dict[tuple[int, str], Counter] = defaultdict(Counter)
 
     with closing(repository._connect()) as connection:
         cursor = connection.execute(
@@ -86,6 +110,16 @@ def audit(repository, *, from_season: int | None = None,
                 if pattern.search(text):
                     phrases[name] += 1
 
+            family = _family(play_type, text)
+            if family:
+                counter = family_season[(season, family)]
+                counter["plays"] += 1
+                counter["with_text"] += 1
+                counter["text_chars"] += len(text)
+                for name, pattern in _TOKEN_PATTERNS.items():
+                    if pattern.search(text):
+                        counter[name] += 1
+
     def packet(counter: Counter) -> dict[str, Any]:
         plays = int(counter["plays"])
         with_text = int(counter["with_text"])
@@ -94,6 +128,29 @@ def audit(repository, *, from_season: int | None = None,
             "with_text": with_text,
             "coverage": _pct(with_text, plays),
             "avg_text_chars": round(counter["text_chars"] / with_text, 1) if with_text else 0.0,
+        }
+
+    family_detail: dict[str, dict[str, Any]] = {}
+    detail_keys = ("left", "middle", "right", "short", "deep", "screen", "scramble", "play_action", "shotgun", "no_huddle", "pistol")
+    for (season, family), counter in sorted(family_season.items()):
+        base = int(counter["plays"])
+        family_detail.setdefault(str(season), {})[family] = {
+            "plays": base,
+            "avg_text_chars": round(counter["text_chars"] / base, 1) if base else 0.0,
+            "detail_coverage": {
+                key: {"plays": int(counter[key]), "share": _pct(int(counter[key]), base)}
+                for key in detail_keys
+            },
+            "direction_any": {
+                "plays": int(counter["left"] + counter["middle"] + counter["right"]),
+                "share": _pct(int(counter["left"] + counter["middle"] + counter["right"]), base),
+                "note": "Counts can overlap if a description contains multiple direction words.",
+            },
+            "depth_any": {
+                "plays": int(counter["short"] + counter["deep"]),
+                "share": _pct(int(counter["short"] + counter["deep"]), base),
+                "note": "Relevant primarily to pass plays; short/deep counts are usually mutually exclusive.",
+            },
         }
 
     with_text = int(overall["with_text"])
@@ -106,6 +163,7 @@ def audit(repository, *, from_season: int | None = None,
             key: packet(value)
             for key, value in sorted(by_play_type.items(), key=lambda item: (-item[1]["plays"], item[0]))
         },
+        "rush_pass_detail_by_season": family_detail,
         "phrase_coverage_among_text_plays": {
             key: {"plays": int(value), "share": _pct(int(value), with_text)}
             for key, value in sorted(phrases.items())
@@ -115,7 +173,7 @@ def audit(repository, *, from_season: int | None = None,
             for pattern, count in normalized.most_common(max(1, int(sample_patterns)))
         ],
         "interpretation_note": (
-            "Phrase counts overlap. Direction/depth fields should only be parsed on relevant rush/pass plays; "
-            "this audit measures raw text consistency before a parser is introduced."
+            "Phrase counts overlap. rush_pass_detail_by_season is the preferred view for parser viability because "
+            "direction/depth/formation phrases are measured only against relevant rush/pass families."
         ),
     }
