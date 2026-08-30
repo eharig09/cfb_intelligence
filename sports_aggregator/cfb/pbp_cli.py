@@ -4,6 +4,7 @@ Examples:
   python -m sports_aggregator.cfb.pbp_cli backfill --from-year 2022 --to-year 2025
   python -m sports_aggregator.cfb.pbp_cli fit-edp --from-year 2022 --to-year 2025
   python -m sports_aggregator.cfb.pbp_cli fit-wp --from-year 2022 --to-year 2025
+  python -m sports_aggregator.cfb.pbp_cli validate-wp --from-year 2022 --to-year 2025
   python -m sports_aggregator.cfb.pbp_cli rebuild-values --from-year 2022 --to-year 2026
 """
 from __future__ import annotations
@@ -20,6 +21,7 @@ from dotenv import load_dotenv
 
 from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError, FINISHED_WEEK_TTL
 from sports_aggregator.cfb.expected_points import fit_model as fit_edp, score_plays as score_edp
+from sports_aggregator.cfb.model_validation import validate_edp, validate_wp
 from sports_aggregator.cfb.pace import game_pace_summary
 from sports_aggregator.cfb.play_by_play import replace_week_plays, derive_week
 from sports_aggregator.cfb.repository import CFBRepository
@@ -28,7 +30,9 @@ from sports_aggregator.cfb.win_probability import fit_model as fit_wp, score_pla
 
 def parser() -> argparse.ArgumentParser:
     p=argparse.ArgumentParser(description="CFB play-by-play analytics")
-    p.add_argument("command",choices=("backfill","derive","fit-edp","score-edp","fit-wp","score-wp","rebuild-values","pace"))
+    p.add_argument("command",choices=(
+        "backfill","derive","fit-edp","score-edp","validate-edp",
+        "fit-wp","score-wp","validate-wp","rebuild-values","pace"))
     p.add_argument("--year",type=int,default=datetime.now().year)
     p.add_argument("--from-year",type=int,default=None)
     p.add_argument("--to-year",type=int,default=None)
@@ -107,10 +111,14 @@ def main(argv:list[str]|None=None,*,client=None)->int:
         print(json.dumps(fit_edp(repository,from_season=first,to_season=last),indent=2)); return 0
     if args.command=="score-edp":
         print(json.dumps(score_edp(repository,from_season=first,to_season=last),indent=2)); return 0
+    if args.command=="validate-edp":
+        print(json.dumps(validate_edp(repository,from_season=first,to_season=last),indent=2)); return 0
     if args.command=="fit-wp":
         print(json.dumps(fit_wp(repository,from_season=first,to_season=last),indent=2)); return 0
     if args.command=="score-wp":
         print(json.dumps(score_wp(repository,from_season=first,to_season=last),indent=2)); return 0
+    if args.command=="validate-wp":
+        print(json.dumps(validate_wp(repository,from_season=first,to_season=last),indent=2)); return 0
     if args.command=="rebuild-values":
         edp=score_edp(repository,from_season=first,to_season=last)
         wp=score_wp(repository,from_season=first,to_season=last)
