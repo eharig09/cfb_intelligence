@@ -1,37 +1,113 @@
 {% extends "_layout.html" %}
 {% from "_tables.html" import data_table, tabbed_tables, tabs_script %}
 
-{% block title %}{{ game.away_team }} at {{ game.home_team }} | Box Score{% endblock %}
+{% block title %}{{ game.away_team }} at {{ game.home_team }} | Postgame Report{% endblock %}
 
-{% block body_attrs %} style="--team-light:{{ home_brand.accent }};--team-dark:{{ home_brand.accent_dark }};--conference-light:{{ home_brand.conference_color }};--conference-dark:{{ home_brand.conference_color_dark }}"{% endblock %}
+{% block body_attrs %} class="box-report-page" style="--team-light:{{ home_brand.accent }};--team-dark:{{ home_brand.accent_dark }};--conference-light:{{ home_brand.conference_color }};--conference-dark:{{ home_brand.conference_color_dark }}"{% endblock %}
 
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.game_preview', game_id=game.game_id) }}">&larr; Full game page</a>
-<span class="tagline">Stored box score</span>
+<span class="tagline">Postgame report</span>
 {% endblock %}
 
 {% block content %}
-<div class="eyebrow">{{ game.season }} &middot; Week {{ game.week }}</div>
-<h1>{{ game.away_team }} {{ game.away_points | cell('int') }} at {{ game.home_team }} {{ game.home_points | cell('int') }}</h1>
-<p class="meta">{{ game.start_label }} &middot; {{ game.venue or 'Venue unavailable' }}</p>
+<style>
+.box-report-page main{max-width:1180px}
+.box-report{--report-ink:var(--ink);--report-muted:var(--muted);--report-rule:var(--line);--report-paper:var(--paper)}
+.box-report *{box-sizing:border-box}
+.report-cover{position:relative;margin:2px 0 28px;border:1px solid var(--report-rule);background:var(--report-paper);overflow:hidden}
+.report-cover:before{content:"";position:absolute;inset:0 0 auto;height:4px;background:var(--team-light)}
+.report-kicker{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:18px 22px 13px;border-bottom:1px solid var(--report-rule);font-size:.61rem;text-transform:uppercase;letter-spacing:.095em;font-weight:800;color:var(--report-muted)}
+.report-kicker strong{color:var(--report-ink);letter-spacing:.12em}
+.report-scoreboard{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:stretch;min-height:178px}
+.report-team{display:flex;flex-direction:column;justify-content:center;padding:24px 28px}
+.report-team.home{text-align:right;align-items:flex-end}
+.report-team-label{font-size:.58rem;text-transform:uppercase;letter-spacing:.11em;color:var(--report-muted);font-weight:800;margin-bottom:7px}
+.report-team-name{font-family:var(--display-font);font-size:clamp(1.35rem,3vw,2.35rem);line-height:.96;letter-spacing:-.025em;max-width:390px}
+.report-team-score{font-family:var(--display-font);font-size:clamp(3.15rem,8vw,6rem);line-height:.82;margin-top:17px;font-variant-numeric:tabular-nums}
+.report-score-divider{width:1px;background:var(--report-rule);position:relative}
+.report-score-divider span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--report-paper);padding:8px 6px;font-size:.53rem;font-weight:900;letter-spacing:.12em;color:var(--report-muted);writing-mode:vertical-rl;text-transform:uppercase}
+.report-result-bar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--report-rule);background:color-mix(in srgb,var(--paper) 94%,var(--ink) 6%)}
+.report-result-item{padding:12px 18px;border-right:1px solid var(--report-rule);min-width:0}
+.report-result-item:last-child{border-right:0}
+.report-result-label{display:block;font-size:.52rem;line-height:1;text-transform:uppercase;letter-spacing:.09em;font-weight:800;color:var(--report-muted);margin-bottom:5px}
+.report-result-value{display:block;font-size:.72rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.report-jump{display:flex;gap:6px;flex-wrap:wrap;margin:-14px 0 24px}
+.report-jump a{border:1px solid var(--report-rule);padding:6px 9px;font-size:.57rem;text-transform:uppercase;letter-spacing:.055em;font-weight:800;text-decoration:none;background:var(--report-paper)}
+.report-jump a:hover{border-color:var(--team-light)}
+.report-chapter{scroll-margin-top:88px}
+.report-chapter-head{display:grid;grid-template-columns:auto 1fr auto;gap:11px;align-items:center;margin:30px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--report-rule)}
+.report-chapter-num{font-family:var(--display-font);font-size:.72rem;color:var(--team-light);font-variant-numeric:tabular-nums}
+.report-chapter-head h2{margin:0;font-size:1rem;letter-spacing:-.01em}
+.report-chapter-head p{margin:0;color:var(--report-muted);font-size:.59rem;text-align:right}
+.report-team-stats .table-wrap,.report-player-stats .table-wrap{border:1px solid var(--report-rule);background:var(--report-paper)}
+.report-team-stats table.data,.report-player-stats table.data{font-size:.67rem}
+.report-team-stats table.data thead th,.report-player-stats table.data thead th{font-size:.54rem;letter-spacing:.045em;text-transform:uppercase}
+.report-player-team{margin:20px 0 8px;display:flex;align-items:center;gap:10px;font-family:var(--display-font);font-size:.94rem}
+.report-player-team:after{content:"";height:1px;background:var(--report-rule);flex:1}
+.report-note{font-size:.6rem;color:var(--report-muted);margin:5px 0 12px;line-height:1.45}
+.box-report .section{border-top:0;margin-top:0}
+.box-report .section>h2{font-size:1rem}
+@media(max-width:680px){
+  .report-kicker{padding:15px 16px 11px}.report-scoreboard{min-height:148px}.report-team{padding:20px 14px}.report-team-name{font-size:1.3rem}.report-team-score{font-size:3.3rem}.report-result-bar{grid-template-columns:1fr}.report-result-item{border-right:0;border-bottom:1px solid var(--report-rule)}.report-result-item:last-child{border-bottom:0}.report-chapter-head{grid-template-columns:auto 1fr}.report-chapter-head p{display:none}
+}
+@media print{
+  .report-jump{display:none}.report-cover{break-inside:avoid}.report-chapter{break-inside:auto}.report-team-stats .table-wrap,.report-player-stats .table-wrap{overflow:visible}
+}
+</style>
 
-<section class="section">
-    <h2>Team statistics</h2>
-    <div class="section-note">Cached locally from CFBD. Opening this page does not call the provider.</div>
+<div class="box-report">
+<header class="report-cover">
+    <div class="report-kicker">
+        <strong>College Football Intelligence</strong>
+        <span>{{ game.season }} &middot; Week {{ game.week }} &middot; Postgame</span>
+    </div>
+    <div class="report-scoreboard" aria-label="Final score: {{ game.away_team }} {{ game.away_points | cell('int') }}, {{ game.home_team }} {{ game.home_points | cell('int') }}">
+        <div class="report-team away">
+            <span class="report-team-label">Away</span>
+            <span class="report-team-name">{{ game.away_team }}</span>
+            <span class="report-team-score">{{ game.away_points | cell('int') }}</span>
+        </div>
+        <div class="report-score-divider" aria-hidden="true"><span>Final</span></div>
+        <div class="report-team home">
+            <span class="report-team-label">Home</span>
+            <span class="report-team-name">{{ game.home_team }}</span>
+            <span class="report-team-score">{{ game.home_points | cell('int') }}</span>
+        </div>
+    </div>
+    <div class="report-result-bar">
+        <div class="report-result-item"><span class="report-result-label">Date / kickoff</span><span class="report-result-value">{{ game.start_label }}</span></div>
+        <div class="report-result-item"><span class="report-result-label">Venue</span><span class="report-result-value">{{ game.venue or 'Venue unavailable' }}</span></div>
+        <div class="report-result-item"><span class="report-result-label">Report</span><span class="report-result-value">Stored data &middot; No live provider call</span></div>
+    </div>
+</header>
+
+<nav class="report-jump" aria-label="Postgame report sections">
+    <a href="#analysis">Analysis</a>
+    <a href="#team-box">Team box</a>
+    <a href="#player-box">Player box</a>
+</nav>
+
+<div id="analysis" class="report-chapter"></div>
+
+<section class="section report-team-stats report-chapter" id="team-box">
+    <div class="report-chapter-head"><span class="report-chapter-num">02</span><h2>Team box score</h2><p>Side-by-side statistical record</p></div>
+    <div class="report-note">Cached locally from CFBD. Opening this report does not call the provider.</div>
     {{ data_table(team_box_table) }}
 </section>
 
-<section class="section">
-    <h2>Player statistics</h2>
+<section class="section report-player-stats report-chapter" id="player-box">
+    <div class="report-chapter-head"><span class="report-chapter-num">03</span><h2>Player production</h2><p>Passing, rushing, receiving and defensive detail</p></div>
     {% if player_box_groups %}
         {% for team, groups in player_box_groups.items() %}
-        <h3>{{ team }}</h3>
+        <h3 class="report-player-team">{{ team }}</h3>
         {{ tabbed_tables(groups, 'box-' ~ loop.index) }}
         {% endfor %}
     {% else %}
         <div class="empty">No cached player box score is stored for this game.</div>
     {% endif %}
 </section>
+</div>
 {% endblock %}
 
 {% block scripts %}{{ tabs_script() }}{% endblock %}
