@@ -1,19 +1,27 @@
-"""Context-aware turning points reconstructed from valid wp-v2 game states.
+"""Event-centric turning points reconstructed from valid wp-v2 game states.
 
-The persisted leverage column is useful as a cheap generic diagnostic, but it was
-originally calculated between adjacent provider rows.  Provider PBP includes
-administrative rows (end of period, no-play records, timeouts, etc.), so adjacent
-raw rows are not always adjacent football states.  The postgame report therefore
-reconstructs transitions from valid regulation states and computes a signed
-before->after WP change at read time.
-
-This keeps the fitted WP model untouched while making turning-point semantics
-football-correct and auditable.
+Provider PBP mixes real football events with administrative rows, and some major
+scoring/return events do not carry a normal down/distance state.  Turning points
+therefore use valid pre-play WP states for the before/after probabilities, but
+attribute each transition to the most meaningful football event that occurred
+between those states.  This prevents an ordinary play from inheriting the WP
+swing of a following pick-six/fumble return while keeping the fitted WP model
+untouched.
 """
 from __future__ import annotations
 
 from contextlib import closing
 from typing import Any
+
+
+ADMIN_WORDS = (
+    "timeout", "end of quarter", "end of 1st", "end of 2nd", "end of 3rd",
+    "end of 4th", "end of half", "end of game", "end of regulation", "no play",
+)
+SPECIAL_WORDS = (
+    "touchdown", "intercept", "fumble", "field goal", "safety", "blocked punt",
+    "blocked field goal", "two point", "2pt",
+)
 
 
 def _home_score(row: dict[str, Any]) -> tuple[int | None, int | None]:
@@ -31,70 +39,98 @@ def _home_score(row: dict[str, Any]) -> tuple[int | None, int | None]:
     return defense_score, offense_score
 
 
-def _is_routine_kick(row: dict[str, Any]) -> bool:
-    text = f"{row.get('play_type') or ''} {row.get('play_text') or ''}".casefold()
-    if any(word in text for word in ("intercept", "fumble", "touchdown", "field goal")):
+def _text(row: dict[str, Any]) -> str:
+    return f"{row.get('play_type') or ''} {row.get('play_text') or ''}".casefold()
+
+
+def _administrative(row: dict[str, Any]) -> bool:
+    text = _text(row)
+    return any(word in text for word in ADMIN_WORDS)
+
+
+def _valid_state(row: dict[str, Any]) -> bool:
+    if _administrative(row):
         return False
-    return any(word in text for word in ("kickoff", "extra point", "pat ", "pat,"))
+    try:
+        period = int(row.get("period") or 0)
+        down = int(row.get("down") or 0)
+        distance = row.get("distance")
+        ytg = int(row.get("yards_to_goal"))
+    except (TypeError, ValueError):
+        return False
+    return (
+        1 <= period <= 4 and 1 <= down <= 4 and distance is not None and
+        1 <= ytg <= 100 and bool(str(row.get("offense") or "").strip()) and
+        row.get("home_win_probability") is not None
+    )
+
+
+def _event_priority(row: dict[str, Any]) -> int:
+    """Higher means this row should own a state transition when present."""
+    if _administrative(row):
+        return -1
+    text = _text(row)
+    scoring = int(row.get("scoring") or 0)
+    if "touchdown" in text:
+        return 100
+    if "intercept" in text and ("return" in text or scoring):
+        return 98
+    if "fumble" in text and ("return" in text or "recovered" in text or scoring):
+        return 96
+    if "safety" in text:
+        return 94
+    if "field goal" in text:
+        return 90
+    if "intercept" in text or "fumble" in text:
+        return 88
+    if scoring:
+        return 85
+    if int(row.get("down") or 0) == 4:
+        return 25
+    return 0
+
+
+def _choose_event(segment: list[dict[str, Any]]) -> dict[str, Any]:
+    """Choose the football event responsible for a valid-state transition."""
+    if not segment:
+        return {}
+    best = segment[0]
+    best_priority = _event_priority(best)
+    for row in segment[1:]:
+        priority = _event_priority(row)
+        if priority > best_priority:
+            best = row
+            best_priority = priority
+        elif priority == best_priority and priority >= 85:
+            # For chained turnover/return/scoring rows, the later provider row
+            # generally contains the most complete description of the outcome.
+            best = row
+    return best
 
 
 def _ranking_score(row: dict[str, Any]) -> float:
-    """Report score: true valid-state WP swing adjusted for game context."""
+    """Largest real WP swings first; context only makes modest adjustments."""
     leverage = abs(float(row.get("wp_change") or 0.0))
     period = int(row.get("period") or 0)
-    wp = row.get("home_wp_before")
+    before = row.get("home_wp_before")
     try:
-        wp = float(wp)
+        before = float(before)
     except (TypeError, ValueError):
-        wp = 0.5
+        before = 0.5
 
-    time_weight = {1: 0.82, 2: 0.94, 3: 1.08, 4: 1.25}.get(period, 1.0)
-    closeness = max(0.0, 1.0 - 2.0 * abs(wp - 0.5))
-    contest_weight = 0.82 + 0.38 * closeness
-
-    text = f"{row.get('play_type') or ''} {row.get('play_text') or ''}".casefold()
-    meaning = 1.0
-    if any(word in text for word in ("intercept", "fumble", "touchdown", "field goal")):
-        meaning += 0.12
-    if int(row.get("down") or 0) == 4:
-        meaning += 0.08
-    if int(row.get("scoring") or 0):
-        meaning += 0.08
-    if _is_routine_kick(row):
-        meaning *= 0.42
-
-    return leverage * time_weight * contest_weight * meaning
-
-
-def _select_diverse(candidates: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
-    ranked = sorted(candidates, key=lambda r: float(r.get("turning_point_score") or 0.0), reverse=True)
-    chosen: list[dict[str, Any]] = []
-    period_counts: dict[int, int] = {}
-    used: set[str] = set()
-
-    for row in ranked:
-        period = int(row.get("period") or 0)
-        if period_counts.get(period, 0) >= 2:
-            continue
-        play_id = str(row.get("play_id"))
-        chosen.append(row)
-        used.add(play_id)
-        period_counts[period] = period_counts.get(period, 0) + 1
-        if len(chosen) >= limit:
-            return chosen
-
-    for row in ranked:
-        if str(row.get("play_id")) in used:
-            continue
-        chosen.append(row)
-        if len(chosen) >= limit:
-            break
-    return chosen
+    # Keep the numerical WP swing dominant. These adjustments mainly resolve
+    # near-ties and elevate unmistakably decisive football events.
+    stage = {1: 0.98, 2: 1.00, 3: 1.03, 4: 1.08}.get(period, 1.0)
+    closeness = max(0.0, 1.0 - 2.0 * abs(before - 0.5))
+    competitive = 0.97 + 0.06 * closeness
+    priority = int(row.get("event_priority") or 0)
+    event = 1.08 if priority >= 85 else (1.03 if priority >= 25 else 1.0)
+    return leverage * stage * competitive * event
 
 
 def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2",
                         limit: int = 6) -> list[dict[str, Any]]:
-    """Return report-ready turning points using only valid regulation states."""
+    """Return the largest event-attributed WP changes for one completed game."""
     from sports_aggregator.cfb.win_probability import initialize
 
     initialize(repository)
@@ -106,55 +142,45 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
             "SELECT completed,home_points,away_points FROM games WHERE game_id=?", (game_id,)
         ).fetchone()
         rows = [dict(row) for row in connection.execute("""
-          WITH valid_states AS (
-            SELECT p.play_id,p.period,p.clock_minutes,p.clock_seconds,p.offense,p.defense,
-                   p.home_team,p.away_team,p.play_type,p.play_text,p.offense_score,p.defense_score,
-                   p.down,p.distance,p.yardline,p.yards_to_goal,p.yards_gained,p.scoring,
-                   p.drive_number,p.play_number,m.rush_pass,m.down_type,
-                   w.home_win_probability,
-                   LEAD(w.home_win_probability) OVER (
-                     ORDER BY p.period,p.clock_minutes DESC,p.clock_seconds DESC,
-                              COALESCE(p.drive_number,0),COALESCE(p.play_number,0),p.play_id
-                   ) AS next_home_win_probability
-            FROM cfb_plays p
-            JOIN cfb_play_win_probability w USING(play_id)
-            LEFT JOIN cfb_play_metrics m
-              ON m.play_id=p.play_id AND m.metric_version='pbp-v1'
-            WHERE p.game_id=? AND w.model_version=?
-              AND p.period BETWEEN 1 AND 4
-              AND p.down BETWEEN 1 AND 4
-              AND p.distance IS NOT NULL
-              AND p.yards_to_goal BETWEEN 1 AND 100
-              AND p.offense IS NOT NULL AND TRIM(p.offense)<>''
-              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%no play%'
-              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%end of quarter%'
-              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%end of 1st%'
-              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%end of 2nd%'
-              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%end of 3rd%'
-              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%end of 4th%'
-              AND LOWER(COALESCE(p.play_text,'')) NOT LIKE '%timeout%'
-          )
-          SELECT * FROM valid_states
-          ORDER BY period,clock_minutes DESC,clock_seconds DESC,
-                   COALESCE(drive_number,0),COALESCE(play_number,0),play_id
+          SELECT p.play_id,p.period,p.clock_minutes,p.clock_seconds,p.offense,p.defense,
+                 p.home_team,p.away_team,p.play_type,p.play_text,p.offense_score,p.defense_score,
+                 p.down,p.distance,p.yardline,p.yards_to_goal,p.yards_gained,p.scoring,
+                 p.drive_number,p.play_number,m.rush_pass,m.down_type,
+                 w.home_win_probability
+          FROM cfb_plays p
+          JOIN cfb_play_win_probability w USING(play_id)
+          LEFT JOIN cfb_play_metrics m
+            ON m.play_id=p.play_id AND m.metric_version='pbp-v1'
+          WHERE p.game_id=? AND w.model_version=? AND p.period BETWEEN 1 AND 4
+          ORDER BY p.period,p.clock_minutes DESC,p.clock_seconds DESC,
+                   COALESCE(p.drive_number,0),COALESCE(p.play_number,0),p.play_id
         """, (game_id, model_version)).fetchall()]
 
     if not rows:
         return []
 
-    completed = bool(game and int(game["completed"] or 0))
     terminal_outcome: float | None = None
-    if completed and game["home_points"] is not None and game["away_points"] is not None:
+    if game and int(game["completed"] or 0) and game["home_points"] is not None and game["away_points"] is not None:
         terminal_outcome = 1.0 if float(game["home_points"]) > float(game["away_points"]) else 0.0
 
+    state_indices = [i for i, row in enumerate(rows) if _valid_state(row)]
+    if not state_indices:
+        return []
+
     candidates: list[dict[str, Any]] = []
-    last_index = len(rows) - 1
-    for index, row in enumerate(rows):
-        before = row.get("home_win_probability")
-        after = row.get("next_home_win_probability")
-        if index == last_index and terminal_outcome is not None:
+    for position, start_index in enumerate(state_indices):
+        state = rows[start_index]
+        next_index = state_indices[position + 1] if position + 1 < len(state_indices) else None
+        before = state.get("home_win_probability")
+        if next_index is not None:
+            after = rows[next_index].get("home_win_probability")
+            segment = rows[start_index:next_index]
+        else:
+            if terminal_outcome is None:
+                continue
             after = terminal_outcome
-            row["terminal_outcome"] = terminal_outcome
+            segment = rows[start_index:]
+
         if before is None or after is None:
             continue
         try:
@@ -163,15 +189,44 @@ def game_turning_points(repository, game_id: int, *, model_version: str = "wp-v2
         except (TypeError, ValueError):
             continue
 
-        row["home_wp_before"] = before_f
-        row["home_wp_after"] = after_f
-        row["wp_change"] = after_f - before_f
-        row["leverage"] = abs(row["wp_change"])
-        row["wp_swing_points"] = 100.0 * abs(row["wp_change"])
-        home_score, away_score = _home_score(row)
-        row["home_score"] = home_score
-        row["away_score"] = away_score
-        row["turning_point_score"] = _ranking_score(row)
-        candidates.append(row)
+        event = dict(_choose_event(segment) or state)
+        # Football situation describes the state BEFORE the event. Preserve the
+        # event's text/type while using the valid state's down/distance/spot.
+        for key in (
+            "period", "clock_minutes", "clock_seconds", "offense", "defense",
+            "home_team", "away_team", "offense_score", "defense_score", "down",
+            "distance", "yardline", "yards_to_goal", "drive_number", "play_number",
+        ):
+            event[f"event_{key}"] = event.get(key)
+            event[key] = state.get(key)
 
-    return _select_diverse(candidates, limit)
+        event["home_wp_before"] = before_f
+        event["home_wp_after"] = after_f
+        event["wp_change"] = after_f - before_f
+        event["leverage"] = abs(event["wp_change"])
+        event["wp_swing_points"] = 100.0 * event["leverage"]
+        event["event_priority"] = _event_priority(event)
+        event["attribution"] = "special_event" if event.get("play_id") != state.get("play_id") else "state_play"
+        home_score, away_score = _home_score(state)
+        event["home_score"] = home_score
+        event["away_score"] = away_score
+        if next_index is None and terminal_outcome is not None:
+            event["terminal_outcome"] = terminal_outcome
+        event["turning_point_score"] = _ranking_score(event)
+        candidates.append(event)
+
+    # Deduplicate event rows in case a provider gives one special event between
+    # closely spaced state records. Keep the largest attributed swing.
+    by_event: dict[str, dict[str, Any]] = {}
+    for row in candidates:
+        key = str(row.get("play_id") or "")
+        existing = by_event.get(key)
+        if existing is None or float(row.get("leverage") or 0) > float(existing.get("leverage") or 0):
+            by_event[key] = row
+
+    ranked = sorted(
+        by_event.values(),
+        key=lambda row: (float(row.get("turning_point_score") or 0.0), float(row.get("leverage") or 0.0)),
+        reverse=True,
+    )
+    return ranked[:limit]
