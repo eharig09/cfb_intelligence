@@ -54,7 +54,11 @@ def _card(row: dict[str, Any], *, backup: bool = False, share: float | None = No
     metric_html=''.join(f'<div class="pg-qb-metric"><span>{escape(label)}</span><strong>{escape(value)}</strong></div>' for label,value in metrics)
     depth=(("Behind LOS",row.get("behind_line_plays")),("Short",row.get("short_plays")),("Intermediate",row.get("intermediate_plays")),("Deep",row.get("deep_plays")))
     depth_html=' · '.join(f'{escape(label)} <strong>{int(value or 0)}</strong>' for label,value in depth)
-    return f'<article class="pg-qb-card{" backup" if backup else ""}"><h4>{shown}{f"<span class=\"pg-qb-role\">{escape(role)}</span>" if backup else ""}</h4><div class="pg-qb-metrics">{metric_html}</div><div class="pg-qb-depth">{depth_html}</div></article>'
+    # Hoisted rather than nested inline: escaping quotes inside an f-string
+    # expression is 3.12-and-later syntax, and it is the only thing in the tree
+    # that stops the app importing on 3.11.
+    role_html = f'<span class="pg-qb-role">{escape(role)}</span>' if backup else ""
+    return f'<article class="pg-qb-card{" backup" if backup else ""}"><h4>{shown}{role_html}</h4><div class="pg-qb-metrics">{metric_html}</div><div class="pg-qb-depth">{depth_html}</div></article>'
 
 
 def _team_column(team: str, rows: list[dict[str, Any]]) -> str:
