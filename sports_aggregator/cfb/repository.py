@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from contextlib import closing, contextmanager
+from functools import wraps
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import json
@@ -466,6 +467,35 @@ def _mark_schema_current(kind: str, path: Path) -> None:
 def forget_initialized_schemas() -> None:
     """Drop the memo. For tests that rebuild a database in place."""
     _INITIALIZED_SCHEMAS.clear()
+
+
+def schema_once(kind: str):
+    """Memoize a module's `initialize(repository)` the way the repository's is.
+
+    `CFBRepository.initialize` has been guarded since the matchup-page work
+    above, but the per-module table creators were not, and they call each other:
+    `team_game_advanced` initializes `expected_points_v2`, which initializes
+    `play_by_play`. One box-score render therefore opened the database fifteen
+    extra times to replay `CREATE TABLE IF NOT EXISTS` against tables that were
+    already there -- half of that page's connections, and a third of its time.
+
+    Sharing `_INITIALIZED_SCHEMAS` rather than keeping a private memo means
+    `forget_initialized_schemas()` still resets every schema at once, so a test
+    that rebuilds a database in place does not have to know which modules cache.
+    """
+
+    def decorate(function):
+        @wraps(function)
+        def wrapper(repository) -> None:
+            path = Path(repository.path)
+            if _schema_is_current(kind, path):
+                return
+            function(repository)
+            _mark_schema_current(kind, path)
+
+        return wrapper
+
+    return decorate
 
 
 def _to_zone(value: str, zone: ZoneInfo) -> datetime | None:

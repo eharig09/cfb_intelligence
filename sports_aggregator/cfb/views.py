@@ -186,13 +186,90 @@ def historical_team_stats_table(rows: Sequence[dict[str, Any]]) -> Table:
         empty="Historical team-stat totals populate after the history backfill.")
 
 
+#: The team box score, read top to bottom: the statistic, how to render it, and
+#: which side of a comparison is the better one.
+#:
+#: "better" is None where the question does not have an answer. Time of
+#: possession is a description of how a team played, not a contest it won;
+#: penalties are a count and a yardage in one string; third and fourth down are
+#: conversions over attempts. Marking an edge on any of those would be asserting
+#: something the number does not say.
+#:
+#: Volume defence is the same trap in a less obvious form. Tackles and return
+#: yards both climb because the other team kept snapping the ball and kept
+#: kicking off, so in a 79-0 loss the losing side "wins" all three. Events that
+#: are good however they were arrived at -- a sack, a takeaway, a pass defended
+#: -- do carry an edge.
+_TEAM_BOX_GROUPS: tuple[tuple[str, tuple[tuple[str, str, str, str | None], ...]], ...] = (
+    ("Scoring", (
+        ("score", "Points", "int", "high"),
+    )),
+    ("Offense", (
+        ("firstDowns", "First downs", "int", "high"),
+        ("totalYards", "Total yards", "int", "high"),
+        ("completionAttempts", "Completions / attempts", "text", None),
+        ("netPassingYards", "Net passing yards", "int", "high"),
+        ("rushingYards", "Rushing yards", "int", "high"),
+        ("yardsPerPass", "Yards per pass", "f1", "high"),
+        ("yardsPerRushAttempt", "Yards per rush", "f1", "high"),
+        ("passingTDs", "Passing touchdowns", "int", "high"),
+        ("rushingTDs", "Rushing touchdowns", "int", "high"),
+        ("third_down", "Third down", "text", None),
+        ("fourthDownEff", "Fourth down", "text", None),
+        ("turnovers", "Turnovers", "int", "low"),
+        ("totalPenaltiesYards", "Penalties (no-yards)", "text", None),
+        ("possessionTime", "Time of possession", "text", None),
+    )),
+    ("Defense", (
+        ("tackles", "Tackles", "num", None),
+        ("tacklesForLoss", "Tackles for loss", "num", "high"),
+        ("sacks", "Sacks", "num", "high"),
+        ("qbHurries", "QB hurries", "num", "high"),
+        ("passesDeflected", "Passes defended", "num", "high"),
+        ("passesIntercepted", "Interceptions", "num", "high"),
+        ("fumblesRecovered", "Fumbles recovered", "num", "high"),
+        ("defensiveTDs", "Defensive touchdowns", "num", "high"),
+    )),
+    ("Special teams", (
+        ("kickingPoints", "Kicking points", "num", "high"),
+        ("kickReturnYards", "Kick return yards", "num", None),
+        ("puntReturnYards", "Punt return yards", "num", None),
+    )),
+)
+
+
+def _box_edge(values: Sequence[Any], better: str | None) -> int | None:
+    """Which team's value to mark, or None when there is nothing to mark.
+
+    A tie has no edge, and neither does a row where only one team reported.
+    """
+    if better is None or len(values) < 2:
+        return None
+    numbers: list[float] = []
+    for value in values:
+        try:
+            numbers.append(float(value))
+        except (TypeError, ValueError):
+            return None
+    best = max(numbers) if better == "high" else min(numbers)
+    if numbers.count(best) != 1:
+        return None
+    return numbers.index(best)
+
+
 def team_box_score_table(rows: Sequence[dict[str, Any]]) -> Table:
+    """The team box score as a comparison: one statistic per row, one team per column.
+
+    Emitting a column per statistic put twenty-seven columns and two rows into a
+    horizontally scrolling region, so comparing the two numbers a reader came for
+    meant scrolling sideways past everything else with the values two rows apart.
+    Transposing is what a printed box score has always done, and it fits a phone.
+    """
     by_team: dict[str, dict[str, Any]] = {}
     for row in rows:
         item = by_team.setdefault(row["team"], {
             "team": row["team"], "score": row.get("points")})
         item[row["category"]] = row.get("numeric_value") if row.get("numeric_value") is not None else row.get("stat_value")
-    result = []
     for item in by_team.values():
         conversions, attempts = item.get("thirdDownConversions"), item.get("thirdDowns")
         item["third_down"] = item.get("thirdDownEff")
@@ -204,39 +281,43 @@ def team_box_score_table(rows: Sequence[dict[str, Any]]) -> Table:
                 except (TypeError, ValueError):
                     return str(value)
             item["third_down"] = f"{display(conversions)}/{display(attempts)}"
-        result.append(item)
+
+    # The packet is ordered away team first, which is the order the report cover
+    # and every scoreboard already read in.
+    teams = list(by_team.values())
+    keys = [f"team_{index}" for index in range(len(teams))]
+    columns = [Column("stat", "Statistic", emphasis=True)] + [
+        Column(key, str(team["team"]), align="right") for key, team in zip(keys, teams)]
+
+    table_rows: list[dict[str, Any]] = []
+    for group, entries in _TEAM_BOX_GROUPS:
+        present = [entry for entry in entries
+                   if any(team.get(entry[0]) is not None for team in teams)]
+        if not present:
+            continue
+        # A heading row rather than a separate table: the whole point of this
+        # table is that the reader's eye runs down one column uninterrupted.
+        heading = {"stat": group, "stat_class": "box-group"}
+        # A non-breaking space, not "": the cell renderer turns an empty value
+        # into an em dash, which would read as "no data" under every heading.
+        heading.update({key: " " for key in keys})
+        heading.update({f"{key}_class": "box-group" for key in keys})
+        table_rows.append(heading)
+        for category, label, fmt, better in present:
+            values = [team.get(category) for team in teams]
+            row: dict[str, Any] = {"stat": label}
+            for key, value in zip(keys, values):
+                row[key] = format_value(value, fmt)
+            edge = _box_edge(values, better)
+            if edge is not None:
+                row[f"{keys[edge]}_class"] = "advantage"
+            table_rows.append(row)
+
     return Table(
-        columns=[Column("team", "Team", emphasis=True),
-                 Column("score", "Score", format="int", align="right"),
-                 # Offense
-                 Column("firstDowns", "1st", format="int", align="right"),
-                 Column("totalYards", "Yards", format="int", align="right"),
-                 Column("completionAttempts", "C/ATT", align="right"),
-                 Column("netPassingYards", "Pass", format="int", align="right"),
-                 Column("rushingYards", "Rush", format="int", align="right"),
-                 Column("yardsPerPass", "Y/Pass", format="f1", align="right"),
-                 Column("yardsPerRushAttempt", "Y/Rush", format="f1", align="right"),
-                 Column("passingTDs", "Pass TD", format="int", align="right"),
-                 Column("rushingTDs", "Rush TD", format="int", align="right"),
-                 Column("third_down", "3rd down", align="right"),
-                 Column("fourthDownEff", "4th down", align="right"),
-                 Column("turnovers", "TO", format="int", align="right"),
-                 Column("totalPenaltiesYards", "Pen-Yds", align="right"),
-                 # Defense
-                 Column("tackles", "Tkl", format="num", align="right"),
-                 Column("tacklesForLoss", "TFL", format="num", align="right"),
-                 Column("sacks", "Sacks", format="num", align="right"),
-                 Column("qbHurries", "Hurries", format="num", align="right"),
-                 Column("passesDeflected", "PD", format="num", align="right"),
-                 Column("passesIntercepted", "INT", format="num", align="right"),
-                 Column("fumblesRecovered", "FR", format="num", align="right"),
-                 Column("defensiveTDs", "Def TD", format="num", align="right"),
-                 # Special teams
-                 Column("kickingPoints", "Kick pts", format="num", align="right"),
-                 Column("kickReturnYards", "KR yds", format="num", align="right"),
-                 Column("puntReturnYards", "PR yds", format="num", align="right"),
-                 Column("possessionTime", "Possession", align="right")],
-        rows=result, caption="Team box score", dense=True,
+        columns=columns, rows=table_rows, caption="Team box score", dense=True,
+        # One metric per row, each on its own scale: there is no order to put
+        # the value columns in, so the headers offer no sort.
+        sortable=False,
         empty="No cached team box score is stored for this game.")
 
 

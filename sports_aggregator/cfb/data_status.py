@@ -82,8 +82,15 @@ def _local_datetime(value: Any) -> datetime | None:
 
 
 def _display_time(value: Any) -> str:
+    # `%-d`/`%-I` are a glibc extension: they raise ValueError on Windows, and
+    # this label sits in the shared layout, so every page 500s there. Formatting
+    # the unpadded numbers directly reads the same and runs anywhere.
     parsed = _local_datetime(value)
-    return parsed.strftime("%b %-d, %Y · %-I:%M %p %Z") if parsed else "Not recorded"
+    if not parsed:
+        return "Not recorded"
+    hour = (parsed.hour - 1) % 12 + 1
+    return (f"{parsed.strftime('%b')} {parsed.day}, {parsed.year} · "
+            f"{hour}:{parsed.strftime('%M %p %Z')}").strip()
 
 
 def _relative_time(value: Any) -> str:

@@ -15,10 +15,12 @@ from sports_aggregator.cfb.lines import game_lines
 from sports_aggregator.cfb.matchups import game_matchup_report
 from sports_aggregator.cfb.player_matchups import player_matchups
 from sports_aggregator.cfb.external import fpi_for_game, weather_for_game
+from sports_aggregator.cfb.repository import schema_once
 
 SNAPSHOT_VERSION = "pregame-v1"
 
 
+@schema_once("pregame_snapshots")
 def initialize(repository) -> None:
     repository.initialize()
     with closing(repository._connect()) as connection:

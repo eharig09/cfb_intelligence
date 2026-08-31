@@ -17,6 +17,8 @@ from typing import Any, Iterable
 from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
 
+from sports_aggregator.cfb.repository import schema_once
+
 
 SEARCH_URLS = (
     "https://site.web.api.espn.com/apis/search/v2?query={query}&sport=football&limit=20",
@@ -69,6 +71,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+@schema_once("player_injuries")
 def initialize(repository) -> None:
     with closing(repository._connect()) as connection:
         connection.executescript(SCHEMA)

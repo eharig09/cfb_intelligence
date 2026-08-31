@@ -11,10 +11,13 @@ from contextlib import closing
 from datetime import datetime, timezone
 from typing import Any
 
+from sports_aggregator.cfb.repository import schema_once
+
 MODEL_VERSION = "ep-v2"
 METRIC_VERSION = "team-game-advanced-v1"
 
 
+@schema_once("team_game_advanced")
 def initialize(repository) -> None:
     from sports_aggregator.cfb.expected_points_v2 import initialize as initialize_ep
     initialize_ep(repository)

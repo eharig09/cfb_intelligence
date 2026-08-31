@@ -564,6 +564,17 @@ table.data td.advantage::before {
     background: var(--edge);
 }
 
+/* A section heading inside a transposed comparison table (the team box score).
+   It labels the rows under it rather than carrying data, so it takes the head
+   treatment and drops out of the zebra striping and the hover target. */
+table.data td.box-group {
+    background: var(--head-bg); color: var(--head-ink);
+    font-size: .63rem; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .05em;
+    padding-top: 7px; padding-bottom: 7px;
+}
+table.data tbody tr:hover td.box-group { background: var(--head-bg); }
+
 /* A compact diverging scale supplements the explicit gap without tinting the
    data cells. Left represents the first/away unit and right the second/home. */
 .comparison-scale {

@@ -5,6 +5,8 @@ from contextlib import closing
 from datetime import datetime, timezone
 from typing import Any
 
+from sports_aggregator.cfb.repository import schema_once
+
 PARSER_VERSION = "play-detail-v3"
 MODEL_VERSION = "ep-v2"
 METRIC_VERSION = "team-game-tendency-v1"
@@ -19,6 +21,7 @@ DIMENSIONS = {
 }
 
 
+@schema_once("team_game_tendencies")
 def initialize(repository) -> None:
     from sports_aggregator.cfb.play_detail import initialize as initialize_detail
     from sports_aggregator.cfb.expected_points_v2 import initialize as initialize_ep

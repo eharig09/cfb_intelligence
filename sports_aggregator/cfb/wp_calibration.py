@@ -11,10 +11,13 @@ from contextlib import closing
 from datetime import datetime, timezone
 from typing import Any
 
+from sports_aggregator.cfb.repository import schema_once
+
 WRITE_BATCH = 1000
 CALIBRATION_BINS = 40
 
 
+@schema_once("wp_calibration")
 def initialize(repository) -> None:
     from sports_aggregator.cfb.win_probability import initialize as initialize_wp
     initialize_wp(repository)

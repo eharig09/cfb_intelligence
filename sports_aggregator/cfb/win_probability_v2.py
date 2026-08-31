@@ -27,12 +27,15 @@ import json
 import math
 from typing import Any
 
+from sports_aggregator.cfb.repository import schema_once
+
 MODEL_VERSION = "wp-v2"
 WRITE_BATCH = 1000
 FEATURE_VERSION = "wp-v2-features-2"
 FEATURE_COUNT = 10
 
 
+@schema_once("win_probability_v2")
 def initialize(repository) -> None:
     from sports_aggregator.cfb.win_probability import initialize as initialize_wp
     initialize_wp(repository)

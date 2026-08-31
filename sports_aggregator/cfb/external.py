@@ -26,7 +26,7 @@ from contextlib import closing
 import json
 from typing import Any, Iterable
 
-from sports_aggregator.cfb.repository import CFBRepository
+from sports_aggregator.cfb.repository import CFBRepository, schema_once
 from sports_aggregator.providers.sportsdataverse import optional_float, utc_now
 from sports_aggregator.providers.weather import weather_condition, weather_emoji
 
@@ -84,6 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_game_weather_game
 """
 
 
+@schema_once("external")
 def initialize(repository: CFBRepository) -> None:
     repository.initialize()
     with closing(repository._connect()) as connection:

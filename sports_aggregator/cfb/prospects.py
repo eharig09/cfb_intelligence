@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from sports_aggregator.cfb.models import normalize_alias
-from sports_aggregator.cfb.repository import CFBRepository, _logo_pair
+from sports_aggregator.cfb.repository import CFBRepository, _logo_pair, schema_once
 
 
 PROSPECT_SCHEMA = """
@@ -85,6 +85,7 @@ def board_position(code: str | None) -> str:
     return BOARD_POSITIONS.get(value, value.title() or "Unknown")
 
 
+@schema_once("prospects")
 def initialize(repository: CFBRepository) -> None:
     repository.initialize()
     with closing(repository._connect()) as connection:

@@ -19,11 +19,13 @@ import re
 from typing import Any, Iterable
 
 from sports_aggregator.cfb.cfbd import FINISHED_WEEK_TTL, LIVE_WEEK_TTL
+from sports_aggregator.cfb.repository import schema_once
 
 METRIC_VERSION = "pbp-v1"
 HAVOC_WORDS = ("sack", "interception", "fumble", "tackle for loss")
 
 
+@schema_once("play_by_play")
 def initialize(repository) -> None:
     repository.initialize()
     with closing(repository._connect()) as connection:

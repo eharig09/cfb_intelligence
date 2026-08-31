@@ -19,6 +19,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from sports_aggregator.cfb.models import normalize_alias
+from sports_aggregator.cfb.repository import schema_once
 
 
 SOURCE_URL = "https://www.puntandrally.com/staff_ratings.php"
@@ -173,6 +174,7 @@ def _resolve_team(connection: sqlite3.Connection, source_team: str) -> tuple[int
     return None
 
 
+@schema_once("coordinators")
 def initialize(repository) -> None:
     repository.initialize()
     with closing(repository._connect()) as connection:

@@ -279,6 +279,112 @@ class ViewTableTests(unittest.TestCase):
                          ["Passing", "Receiving", "Defense", "Kicking"])
 
 
+def team_box_rows(away, home, away_team="Howard", home_team="Maryland",
+                  away_points=0, home_points=79):
+    """Rows as `game_box_score` supplies them: away first, one per category."""
+    rows = []
+    for team, points, stats in ((away_team, away_points, away),
+                                (home_team, home_points, home)):
+        for category, value in stats.items():
+            rows.append({"team": team, "points": points, "category": category,
+                         "stat_value": str(value),
+                         "numeric_value": value if isinstance(value, (int, float)) else None})
+    return rows
+
+
+class TeamBoxScoreTests(unittest.TestCase):
+    """The team box score is a comparison, so it reads down rather than across."""
+
+    def table(self, away, home, **kwargs):
+        return views.team_box_score_table(team_box_rows(away, home, **kwargs))
+
+    def rows_by_stat(self, table):
+        return {row["stat"]: row for row in table.rows}
+
+    def test_it_puts_the_teams_in_columns_and_the_statistics_in_rows(self):
+        table = self.table({"totalYards": 68}, {"totalYards": 623})
+        self.assertEqual([column.label for column in table.columns],
+                         ["Statistic", "Howard", "Maryland"])
+        self.assertIn("Total yards", self.rows_by_stat(table))
+
+    def test_the_away_team_keeps_the_first_column(self):
+        """The cover, the scoreboard and the URL all read away-then-home."""
+        table = self.table({"totalYards": 68}, {"totalYards": 623})
+        self.assertEqual(table.columns[1].label, "Howard")
+
+    def test_it_offers_no_sort_because_the_rows_share_no_scale(self):
+        table = self.table({"totalYards": 68}, {"totalYards": 623})
+        self.assertFalse(table.sortable)
+
+    def test_a_group_heading_precedes_the_statistics_it_labels(self):
+        table = self.table({"totalYards": 68, "sacks": 0},
+                           {"totalYards": 623, "sacks": 3})
+        stats = [row["stat"] for row in table.rows]
+        self.assertLess(stats.index("Offense"), stats.index("Total yards"))
+        self.assertLess(stats.index("Defense"), stats.index("Sacks"))
+        heading = self.rows_by_stat(table)["Offense"]
+        self.assertEqual(heading["stat_class"], "box-group")
+
+    def test_a_heading_leaves_no_em_dash_under_it(self):
+        """An empty value renders as "no data"; a heading has no data to miss."""
+        table = self.table({"totalYards": 68}, {"totalYards": 623})
+        heading = self.rows_by_stat(table)["Offense"]
+        self.assertNotIn("—", [heading[column.key] for column in table.columns[1:]])
+
+    def test_a_group_with_nothing_reported_does_not_appear(self):
+        table = self.table({"totalYards": 68}, {"totalYards": 623})
+        self.assertNotIn("Special teams", [row["stat"] for row in table.rows])
+
+    def test_the_better_value_is_marked_on_one_side_only(self):
+        table = self.table({"totalYards": 68}, {"totalYards": 623})
+        yards = self.rows_by_stat(table)["Total yards"]
+        away, home = table.columns[1].key, table.columns[2].key
+        self.assertEqual(yards[f"{home}_class"], "advantage")
+        self.assertNotIn(f"{away}_class", yards)
+
+    def test_fewer_is_better_where_fewer_is_better(self):
+        table = self.table({"turnovers": 3}, {"turnovers": 0})
+        turnovers = self.rows_by_stat(table)["Turnovers"]
+        self.assertEqual(turnovers[f"{table.columns[2].key}_class"], "advantage")
+
+    def test_a_tie_gives_neither_side_an_edge(self):
+        table = self.table({"totalYards": 300}, {"totalYards": 300})
+        yards = self.rows_by_stat(table)["Total yards"]
+        self.assertEqual([key for key in yards if key.endswith("_class")], [])
+
+    def test_volume_defence_is_not_scored_as_an_edge(self):
+        """Tackles and return yards climb because the other team kept scoring.
+
+        Marking them would hand the losing side an "edge" in a 79-0 game.
+        """
+        table = self.table({"tackles": 45, "kickReturnYards": 145, "puntReturnYards": 60},
+                           {"tackles": 38, "kickReturnYards": 44, "puntReturnYards": 12})
+        for label in ("Tackles", "Kick return yards", "Punt return yards"):
+            row = self.rows_by_stat(table)[label]
+            self.assertEqual([key for key in row if key.endswith("_class")], [],
+                             f"{label} should carry no edge")
+
+    def test_a_statistic_that_is_not_a_contest_carries_no_edge(self):
+        table = self.table({"possessionTime": "28:04", "thirdDownEff": "2-17"},
+                           {"possessionTime": "31:56", "thirdDownEff": "6-13"})
+        for label in ("Time of possession", "Third down"):
+            row = self.rows_by_stat(table)[label]
+            self.assertEqual([key for key in row if key.endswith("_class")], [])
+
+    def test_a_value_only_one_team_reported_is_shown_without_an_edge(self):
+        table = self.table({"totalYards": 68},
+                           {"totalYards": 623, "kickingPoints": 11})
+        points = self.rows_by_stat(table)["Kicking points"]
+        self.assertEqual(points[table.columns[1].key], "—")
+        self.assertEqual(points[table.columns[2].key], "11")
+        self.assertEqual([key for key in points if key.endswith("_class")], [])
+
+    def test_no_stored_box_score_leaves_an_empty_table_rather_than_a_broken_one(self):
+        table = views.team_box_score_table([])
+        self.assertEqual(table.rows, [])
+        self.assertFalse(table)
+
+
 class RenderedTableTests(unittest.TestCase):
     """The pages must emit real tables, not divs styled to look like them."""
 

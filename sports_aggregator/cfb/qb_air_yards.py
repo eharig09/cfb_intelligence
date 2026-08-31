@@ -16,6 +16,7 @@ from typing import Any
 
 from sports_aggregator.cfb.models import normalize_alias
 from sports_aggregator.cfb.play_detail import PARSER_VERSION
+from sports_aggregator.cfb.repository import schema_once
 
 METRIC_VERSION = "qb-air-yards-v2"
 MODEL_VERSION = "ep-v2"
@@ -26,6 +27,7 @@ _SACKED = re.compile(rf"(?:^|\s)(?:#(?P<jersey>\d+)\s+)?(?P<name>{_NAME})\s+(?:i
 _SPIKE = re.compile(rf"(?:^|\s)(?:#(?P<jersey>\d+)\s+)?(?P<name>{_NAME})\s+(?:spike|spikes|spiked)\b", re.I)
 
 
+@schema_once("qb_air_yards")
 def initialize(repository) -> None:
     from sports_aggregator.cfb.play_detail import initialize as initialize_detail
     from sports_aggregator.cfb.expected_points_v2 import initialize as initialize_ep

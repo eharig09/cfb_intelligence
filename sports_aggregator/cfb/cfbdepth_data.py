@@ -14,6 +14,7 @@ from io import StringIO, TextIOBase
 from typing import Any, Iterable
 
 from sports_aggregator.cfb.models import normalize_alias
+from sports_aggregator.cfb.repository import schema_once
 
 
 SCHEMA = """
@@ -87,6 +88,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+@schema_once("cfbdepth_data")
 def initialize(repository) -> None:
     with closing(repository._connect()) as connection:
         connection.executescript(SCHEMA)

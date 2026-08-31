@@ -23,7 +23,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from sports_aggregator.cfb.repository import CFBRepository, _numeric
+from sports_aggregator.cfb.repository import CFBRepository, _numeric, schema_once
 
 
 LINES_SCHEMA = """
@@ -38,6 +38,7 @@ CREATE INDEX IF NOT EXISTS idx_game_lines_game ON game_lines(game_id);
 """
 
 
+@schema_once("lines")
 def initialize(repository: CFBRepository) -> None:
     repository.initialize()
     with closing(repository._connect()) as connection:

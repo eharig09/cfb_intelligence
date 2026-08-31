@@ -15,6 +15,8 @@ import re
 import unicodedata
 from typing import Any
 
+from sports_aggregator.cfb.repository import schema_once
+
 PARSER_VERSION = "play-detail-v3"
 WRITE_BATCH = 1000
 
@@ -34,6 +36,7 @@ def _columns(connection, table: str) -> set[str]:
     return {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
+@schema_once("play_detail")
 def initialize(repository) -> None:
     from sports_aggregator.cfb.play_by_play import initialize as initialize_pbp
     initialize_pbp(repository)

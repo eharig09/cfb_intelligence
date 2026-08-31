@@ -14,11 +14,14 @@ from contextlib import closing
 from datetime import datetime, timezone
 from typing import Any
 
+from sports_aggregator.cfb.repository import schema_once
+
 MODEL_VERSION = "wp-v1"
 MIN_CELL = 30
 WRITE_BATCH = 1000
 
 
+@schema_once("win_probability")
 def initialize(repository) -> None:
     from sports_aggregator.cfb.play_by_play import initialize as initialize_pbp
     initialize_pbp(repository)
