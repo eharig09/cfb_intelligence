@@ -95,7 +95,7 @@ def game_pace_summary(repository, game_id: int, *, metric_version: str = "pbp-v1
     """Return overlapping score-state tempo and pass tendency for both offenses."""
     from sports_aggregator.cfb.play_by_play import initialize
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = [dict(row) for row in connection.execute("""
           SELECT p.offense,p.drive_id,p.play_number,p.period,p.clock_minutes,p.clock_seconds,
                  p.offense_score,p.defense_score,m.rush_pass,m.garbage_time,m.down_type

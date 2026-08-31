@@ -168,7 +168,7 @@ def capture_due(repository, *, season: int, now: datetime | None = None) -> dict
 def snapshots_for_game(repository, game_id: int) -> list[dict[str, Any]]:
     initialize(repository)
     order = {"T-24H": 1, "T-3H": 2, "FINAL": 3}
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = [dict(row) for row in connection.execute(
             """SELECT * FROM cfb_pregame_snapshots WHERE game_id=? AND snapshot_version=?""",
             (int(game_id), SNAPSHOT_VERSION)).fetchall()]

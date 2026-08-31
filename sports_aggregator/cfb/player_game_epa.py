@@ -67,7 +67,7 @@ def annotate_player_epa(repository, game: dict[str, Any], players: list[dict[str
     if not game_id or not season or not teams:
         return
 
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         roster = [dict(r) for r in connection.execute(
             f"""SELECT player_id,team,first_name,last_name,position,jersey
                 FROM players WHERE season=? AND team IN ({','.join('?' for _ in teams)})""",

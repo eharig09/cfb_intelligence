@@ -81,7 +81,7 @@ def store_lines(repository: CFBRepository, season: int, payload: Iterable[dict[s
 def game_lines(repository: CFBRepository, game_id: int) -> dict[str, Any]:
     """Every provider quote for one game, with movement and disagreement."""
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = [dict(row) for row in connection.execute(
             "SELECT * FROM game_lines WHERE game_id=? ORDER BY provider", (game_id,))]
     for row in rows:
@@ -110,7 +110,7 @@ def game_lines(repository: CFBRepository, game_id: int) -> dict[str, Any]:
 def lines_by_game(repository: CFBRepository, season: int) -> dict[int, dict[str, Any]]:
     """Consensus spread and total per game, for slate-level views."""
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = connection.execute(
             """SELECT game_id,AVG(spread) spread,AVG(over_under) total,COUNT(*) books
                FROM game_lines WHERE season=? GROUP BY game_id""", (season,)).fetchall()

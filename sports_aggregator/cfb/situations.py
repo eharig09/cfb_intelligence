@@ -126,7 +126,7 @@ def schedule_spot(repository: CFBRepository, game: dict[str, Any],
     elo = elo if elo is not None else repository.team_elo(game["season"])
     kickoff = _parse(game.get("start_date"))
     signals: list[dict[str, Any]] = []
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         for team_id, team_name, opponent_id, opponent_name in (
             (game["home_team_id"], game["home_team"], game["away_team_id"], game["away_team"]),
             (game["away_team_id"], game["away_team"], game["home_team_id"], game["home_team"]),
@@ -288,7 +288,7 @@ def availability_reports(repository: CFBRepository, game: dict[str, Any],
     cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
     topics = ",".join("?" for _ in AVAILABILITY_TOPICS)
     types = ",".join("?" for _ in AVAILABILITY_TYPES)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         try:
             rows = connection.execute(
                 f"""SELECT c.content_id,c.platform,c.content_type,c.title,c.body_text,

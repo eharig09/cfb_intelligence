@@ -116,7 +116,7 @@ def team_production(repository: CFBRepository, team_id: int, season: int, *,
     arrivals = {row["player_id"]: row for row in movements["arrivals"] if row.get("player_id")}
     departures = {row["player_id"]: row for row in movements["departures"] if row.get("player_id")}
 
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         current = [dict(row) for row in connection.execute(
             "SELECT player_id,first_name,last_name,position FROM players "
             "WHERE season=? AND team=?", (season, team["school"]))]

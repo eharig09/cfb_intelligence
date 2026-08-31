@@ -64,7 +64,7 @@ def _role_names(repository, season:int, roles:list[dict[str,Any]])->None:
     ids=sorted({str(r['player_id']) for r in roles if r.get('player_id')})
     if not ids:return
     marks=','.join('?' for _ in ids)
-    with closing(repository._connect()) as c:
+    with repository._reader() as c:
         rows=c.execute(f'SELECT player_id,first_name,last_name FROM players WHERE season=? AND player_id IN ({marks})',(season,*ids)).fetchall()
     names={str(r['player_id']):f"{r['first_name']} {r['last_name']}".strip() for r in rows}
     for role in roles: role['player_name']=names.get(str(role.get('player_id') or '')) or 'Current roster player'

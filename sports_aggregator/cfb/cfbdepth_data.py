@@ -216,7 +216,7 @@ def roster_breakdown(repository, school: str) -> dict[str, Any] | None:
 
 def team_impact(repository, school: str) -> dict[str, Any] | None:
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         row = connection.execute(
             "SELECT * FROM cfbdepth_team_impact WHERE normalized_school=? LIMIT 1",
             (normalize_alias(school),),

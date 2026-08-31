@@ -98,7 +98,7 @@ def observed_depth_roles(repository, team: str, season: int,
     if not team:
         return {}
     repository.initialize()
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         roster = [dict(row) for row in connection.execute(
             """SELECT player_id,first_name,last_name,position
                FROM players WHERE season=? AND team=?""",

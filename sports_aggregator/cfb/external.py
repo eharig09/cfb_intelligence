@@ -180,7 +180,7 @@ def store_fpi(repository: CFBRepository, season: int, rows: Iterable[dict[str, A
 def fpi_for_game(repository: CFBRepository, game_id: int) -> dict[str, Any]:
     """Both teams' FPI projections for one game, kept as a distinct model."""
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = [dict(row) for row in connection.execute(
             """SELECT f.*,t.school FROM fpi_game_projections f
                JOIN teams t USING(team_id) WHERE f.game_id=?""", (game_id,))]
@@ -260,7 +260,7 @@ def store_weather(repository: CFBRepository, game_id: int, forecast, *,
 def weather_for_game(repository: CFBRepository, game_id: int) -> dict[str, Any]:
     """The newest forecast for a game, plus how it has moved since the first."""
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = [dict(row) for row in connection.execute(
             """SELECT * FROM game_weather WHERE game_id=?
                ORDER BY forecast_generated_at DESC""", (game_id,))]

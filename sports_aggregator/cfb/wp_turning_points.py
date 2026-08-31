@@ -146,7 +146,7 @@ def game_turning_points(repository, game_id: int, *, model_version: str="wp-v2",
     from sports_aggregator.cfb.win_probability import initialize
     from sports_aggregator.cfb.expected_points_v2 import initialize as initialize_ep
     initialize(repository); initialize_ep(repository); game_id=int(game_id); limit=max(1,int(limit))
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         game=connection.execute("SELECT completed,home_points,away_points FROM games WHERE game_id=?",(game_id,)).fetchone()
         rows=[dict(r) for r in connection.execute("""
           SELECT p.play_id,p.period,p.clock_minutes,p.clock_seconds,p.offense,p.defense,p.home_team,p.away_team,p.play_type,p.play_text,p.offense_score,p.defense_score,p.down,p.distance,p.yardline,p.yards_to_goal,p.yards_gained,p.scoring,p.drive_number,p.play_number,m.rush_pass,m.down_type,w.home_win_probability,e.epa

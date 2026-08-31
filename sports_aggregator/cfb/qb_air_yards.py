@@ -145,5 +145,5 @@ def build(repository, *, from_season: int = 2025, to_season: int | None = None,
 def game_summary(repository, game_id: int, *, parser_version: str = PARSER_VERSION,
                  model_version: str = MODEL_VERSION, metric_version: str = METRIC_VERSION) -> list[dict[str, Any]]:
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         return [dict(r) for r in connection.execute("""SELECT * FROM cfb_qb_air_yards_game WHERE game_id=? AND parser_version=? AND model_version=? AND metric_version=? ORDER BY team,attributed_pass_plays DESC,player_name""", (int(game_id), parser_version, model_version, metric_version)).fetchall()]

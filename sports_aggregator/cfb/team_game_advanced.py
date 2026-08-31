@@ -160,7 +160,7 @@ def build(repository, *, from_season: int | None = None,
 def game_summary(repository, game_id: int, *, model_version: str = MODEL_VERSION,
                  metric_version: str = METRIC_VERSION) -> list[dict[str, Any]]:
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         return [dict(r) for r in connection.execute("""
           SELECT * FROM cfb_team_game_advanced
           WHERE game_id=? AND model_version=? AND metric_version=?

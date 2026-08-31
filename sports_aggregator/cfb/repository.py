@@ -467,6 +467,27 @@ def forget_initialized_schemas() -> None:
     _INITIALIZED_SCHEMAS.clear()
 
 
+#: Prefix for the per-request connections `_reader` parks on Flask's `g`. Keyed
+#: by repository identity too, since an app may hold more than one database.
+_CONNECTION_KEY = "_cfb_reader_"
+
+#: Same idea for the team table, which a single render reads a dozen times.
+_TEAMS_KEY = "_cfb_teams_"
+
+
+def _request_scope():
+    """Flask's per-request scratch space, or None when there is no request.
+
+    Imported here rather than at module scope so the persistence layer still
+    loads for a CLI command or a test that never builds an app.
+    """
+    try:
+        from flask import g, has_app_context
+    except ImportError:
+        return None
+    return g if has_app_context() else None
+
+
 def schema_once(kind: str):
     """Memoize a module's `initialize(repository)` the way the repository's is.
 
@@ -526,6 +547,46 @@ class CFBRepository:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute(f"PRAGMA busy_timeout = {busy_timeout_ms}")
         return connection
+
+    @contextmanager
+    def _reader(self) -> Iterator[sqlite3.Connection]:
+        """A connection for reading, shared by everything in one request.
+
+        A matchup page opened ninety-three connections to render once, each one
+        a fresh open of a 900 MB file plus two pragmas, and reusing a single one
+        is worth about a fifth of the page. Reads only: `transaction` keeps its
+        own connection, so the writer never waits on a reader and a failed write
+        cannot roll back somebody else's work.
+
+        Only a request is scoped, because only a request has an end at which to
+        close the thing. A CLI command or a test gets what it always got -- a
+        connection of its own, closed on the way out -- so nothing is left
+        holding a database file open after the work that needed it is done.
+        """
+        scope = _request_scope()
+        if scope is None:
+            with closing(self._connect()) as connection:
+                yield connection
+            return
+        key = f"{_CONNECTION_KEY}{id(self)}"
+        connection = getattr(scope, key, None)
+        if connection is None:
+            connection = self._connect()
+            setattr(scope, key, connection)
+        yield connection
+
+    @staticmethod
+    def close_request_connections(_exception: BaseException | None = None) -> None:
+        """Registered as a Flask teardown; see `_reader`."""
+        scope = _request_scope()
+        if scope is None:
+            return
+        for key in [name for name in vars(scope) if name.startswith(_CONNECTION_KEY)]:
+            try:
+                getattr(scope, key).close()
+            except sqlite3.Error:
+                pass
+            delattr(scope, key)
 
     def initialize(self) -> None:
         if _schema_is_current("cfb", self.path):
@@ -828,7 +889,7 @@ class CFBRepository:
         table = self.HISTORY_TABLES.get(dataset)
         if table is None:
             raise ValueError(f"Unknown historical dataset: {dataset}")
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             marker = connection.execute(
                 "SELECT 1 FROM history_sync_state WHERE season=? AND dataset=?",
                 (season, dataset)).fetchone()
@@ -852,7 +913,7 @@ class CFBRepository:
 
     def history_conference_stats_cached(self, season: int, conference: str) -> bool:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             return connection.execute(
                 """SELECT 1 FROM player_season_stats
                    WHERE season=? AND conference=? LIMIT 1""",
@@ -871,14 +932,14 @@ class CFBRepository:
 
     def completed_weeks(self, season: int) -> list[int]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             return [row[0] for row in connection.execute(
                 """SELECT DISTINCT week FROM games WHERE season=? AND completed=1
                    ORDER BY week""", (season,))]
 
     def box_score_counts(self, season: int) -> dict[str, int]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             return {
                 "team_box_scores": connection.execute(
                     """SELECT COUNT(*) FROM game_team_box_stats b JOIN games g
@@ -906,7 +967,7 @@ class CFBRepository:
     def store_game_player_box_scores(self, payload: Iterable[dict[str, Any]]) -> int:
         games = tuple(payload)
         game_ids = [int(item["id"]) for item in games]
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             placeholders = ",".join("?" for _ in game_ids) or "NULL"
             game_teams = {row["game_id"]: dict(row) for row in connection.execute(
                 f"SELECT game_id,home_team_id,home_team,away_team_id,away_team FROM games "
@@ -940,7 +1001,7 @@ class CFBRepository:
         game = self.get_game(game_id)
         if game is None:
             return None
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             team_stats = [dict(row) for row in connection.execute(
                 """SELECT * FROM game_team_box_stats WHERE game_id=?
                    ORDER BY CASE home_away WHEN 'away' THEN 0 ELSE 1 END,category""",
@@ -1080,7 +1141,7 @@ class CFBRepository:
         when it is unique within the class.
         """
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = [dict(row) for row in connection.execute(
                 "SELECT * FROM recruits WHERE season=?", (season,))]
         index: dict[str, dict[str, Any]] = {}
@@ -1115,7 +1176,7 @@ class CFBRepository:
     def team_venues(self) -> dict[int, dict[str, Any]]:
         """Home venue with coordinates for each team, where CFBD supplies them."""
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = connection.execute(
                 """SELECT t.team_id,v.venue_id,v.name venue_name,v.city,v.state,
                    v.latitude,v.longitude,v.timezone,v.elevation,v.dome
@@ -1325,7 +1386,7 @@ class CFBRepository:
 
     def resolve_team_alias(self, value: str) -> list[dict[str, Any]]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = connection.execute(
                 """
                 SELECT t.*, a.alias FROM team_aliases a
@@ -1338,7 +1399,7 @@ class CFBRepository:
 
     def status(self, season: int) -> dict[str, Any]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             counts = {
                 "teams": connection.execute("SELECT COUNT(*) FROM teams").fetchone()[0],
                 "games": connection.execute("SELECT COUNT(*) FROM games WHERE season = ?", (season,)).fetchone()[0],
@@ -1382,7 +1443,7 @@ class CFBRepository:
             params.append(conference)
         sql += " ORDER BY school LIMIT ?"
         params.append(limit)
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = connection.execute(sql, params).fetchall()
         results = []
         for row in rows:
@@ -1393,7 +1454,7 @@ class CFBRepository:
 
     def conferences(self) -> list[dict[str, Any]]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows=connection.execute("""SELECT conference,COUNT(*) team_count FROM teams
               WHERE conference IS NOT NULL GROUP BY conference ORDER BY conference""").fetchall()
         return [{**dict(row),"slug":conference_slug(row["conference"])} for row in rows]
@@ -1405,7 +1466,7 @@ class CFBRepository:
         self.initialize(); rankings=self.latest_rankings(season)["teams"]
         rank_by_team={item["school"]:item["rank"] for item in rankings}
         elo_by_team=self.team_elo(season)
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows=connection.execute("""SELECT t.team_id,t.school,t.mascot,t.color,t.logos_json,
               COALESCE(r.games,0) games,COALESCE(r.wins,0) wins,COALESCE(r.losses,0) losses,
               COALESCE(r.ties,0) ties,COALESCE(r.conference_games,0) conference_games,
@@ -1434,7 +1495,7 @@ class CFBRepository:
         application said so. This makes the gaps explicit.
         """
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             stored = {(row["season"], row["conference"]): row["rows"]
                       for row in connection.execute(
                           """SELECT season,conference,COUNT(*) rows
@@ -1467,7 +1528,7 @@ class CFBRepository:
             "player_stats": "player_season_stats",
         }
         by_year: dict[int, dict[str, int]] = {}
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             for label, table in tables.items():
                 for row in connection.execute(
                     f"SELECT season,COUNT(*) rows FROM {table} GROUP BY season"):
@@ -1492,7 +1553,7 @@ class CFBRepository:
         can say how current it is.
         """
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = connection.execute(
                 """SELECT team_id,elo,week FROM (
                      SELECT home_team_id team_id,home_pregame_elo elo,week,start_date
@@ -1521,7 +1582,7 @@ class CFBRepository:
 
     def conference_games(self, conference: str, season: int, limit: int=30) -> list[dict[str,Any]]:
         self.initialize(); now=datetime.now(timezone.utc).isoformat()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows=connection.execute("""SELECT * FROM games WHERE season=? AND completed=0
               AND start_date>=? AND (home_conference=? OR away_conference=?)
               ORDER BY start_date LIMIT ?""",(season,now,conference,conference,limit)).fetchall()
@@ -1565,7 +1626,7 @@ class CFBRepository:
         statistics CFBD published for the same category.
         """
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             scope_column="conference" if conference else "team"; scope_value=conference or team
             available=connection.execute(
                 f"SELECT MAX(season) FROM player_season_stats WHERE season<=? AND {scope_column}=?",
@@ -1682,12 +1743,46 @@ class CFBRepository:
     def team_player_leaders(self, team: str, season: int, limit: int=8) -> dict[str,Any]:
         return self._stat_leaders(season=season,team=team,limit=limit)
 
-    def get_team(self, team_id: int) -> dict[str,Any] | None:
+    def _teams_by_id(self) -> dict[int, dict[str, Any]]:
+        """Every team row, read once per request.
+
+        A matchup page asked for a team twelve times per render -- seven of them
+        for the same team -- each its own connection and its own query against a
+        900 MB file, for 25ms of the page. There are 138 teams and 130 KB of logo
+        JSON in total, so reading the table whole costs less than asking twice.
+
+        Held for the request and not for the life of the repository, which is
+        what `team_brands` below does. A refresh runs in another process, and the
+        rendered-page cache is built on noticing that: it versions its keys by
+        the database's modification time so the next request rebuilds the page.
+        A team row cached past the end of the request would put stale content
+        into a page the cache believed it had just rebuilt.
+        """
+        scope = _request_scope()
+        key = f"{_TEAMS_KEY}{id(self)}"
+        if scope is not None:
+            cached = getattr(scope, key, None)
+            if cached is not None:
+                return cached
         self.initialize()
-        with closing(self._connect()) as connection:
-            row=connection.execute("SELECT * FROM teams WHERE team_id=?",(team_id,)).fetchone()
-        if row is None:return None
-        item=dict(row); item["logos"]=json.loads(item.pop("logos_json")); return item
+        with self._reader() as connection:
+            rows = connection.execute("SELECT * FROM teams").fetchall()
+        teams: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            item = dict(row)
+            item["logos"] = json.loads(item.pop("logos_json") or "[]")
+            teams[int(item["team_id"])] = item
+        if scope is not None:
+            setattr(scope, key, teams)
+        return teams
+
+    def get_team(self, team_id: int) -> dict[str,Any] | None:
+        item = self._teams_by_id().get(int(team_id))
+        if item is None:
+            return None
+        # Callers treat what they get back as their own, and this one is shared
+        # for the life of the repository.
+        return {**item, "logos": list(item["logos"])}
 
     def team_brands(self) -> dict[int, dict[str, Any]]:
         """Team identity for display: school, conference, colors, and primary logo.
@@ -1698,7 +1793,7 @@ class CFBRepository:
         """
         if self._brands is None:
             self.initialize()
-            with closing(self._connect()) as connection:
+            with self._reader() as connection:
                 rows = connection.execute(
                     "SELECT team_id,school,abbreviation,mascot,conference,color,"
                     "alternate_color,logos_json FROM teams").fetchall()
@@ -1735,7 +1830,7 @@ class CFBRepository:
 
     def team_schedule(self, team_id: int, season: int) -> list[dict[str,Any]]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows=connection.execute("""SELECT * FROM games WHERE season=?
               AND (home_team_id=? OR away_team_id=?) ORDER BY start_date""",
               (season,team_id,team_id)).fetchall()
@@ -1744,7 +1839,7 @@ class CFBRepository:
     def team_schedule_seasons(self, team_id: int) -> list[dict[str, int]]:
         """Stored schedule years, with remaining games kept separate from history."""
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = connection.execute(
                 """SELECT season,COUNT(*) games,
                           SUM(CASE WHEN completed=0 THEN 1 ELSE 0 END) upcoming
@@ -1755,7 +1850,7 @@ class CFBRepository:
 
     def team_roster(self, team: str, season: int) -> list[dict[str,Any]]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows=connection.execute("""SELECT * FROM players WHERE season=? AND team=?
               ORDER BY CASE position WHEN 'QB' THEN 1 WHEN 'RB' THEN 2 WHEN 'WR' THEN 3
               WHEN 'TE' THEN 4 WHEN 'OL' THEN 5 WHEN 'DL' THEN 6 WHEN 'LB' THEN 7
@@ -1791,7 +1886,7 @@ class CFBRepository:
         if team is None:
             return {"season": season, "arrivals": [], "departures": [], "counts": {}}
         self.initialize(); previous_season = season - 1
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             current = [dict(row) for row in connection.execute(
                 "SELECT * FROM players WHERE season=? AND team=?", (season, team["school"])
             )]
@@ -1935,7 +2030,7 @@ class CFBRepository:
         wanted = {category: sort_stat(category) for category in CATEGORY_ORDER}
         wanted = {category: stat for category, stat in wanted.items() if stat}
         distribution: dict[str, list[float]] = {category: [] for category in wanted}
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             for category, stat in wanted.items():
                 distribution[category] = [
                     float(row[0]) for row in connection.execute(
@@ -1980,7 +2075,7 @@ class CFBRepository:
         params: list[Any] = [stat_season]
         for category, stat in pairs:
             params.extend((category, stat))
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = connection.execute(
                 f"""SELECT player_id, category, MAX(numeric_value) value
                     FROM player_season_stats
@@ -2009,7 +2104,7 @@ class CFBRepository:
         movements = self.roster_movements(team_id, season)
         arrival_by_id = {row["player_id"]: row for row in movements["arrivals"]}
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             previous_ids = {row[0] for row in connection.execute(
                 "SELECT player_id FROM players WHERE season=? AND team=?", (season - 1, team["school"])
             )}
@@ -2083,7 +2178,7 @@ class CFBRepository:
             return {"state": "UNAVAILABLE", "cards": []}
         metrics = self.team_metrics(team["school"], season)
         depth = self.team_depth_chart(team_id, season)
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             returning = connection.execute(
                 "SELECT * FROM returning_production WHERE season=? AND team=?",
                 (season, team["school"]),
@@ -2115,7 +2210,7 @@ class CFBRepository:
 
     def get_player(self, player_id: str, season: int) -> dict[str, Any] | None:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             row = connection.execute(
                 """SELECT p.*,t.team_id,t.conference,t.color,t.alternate_color,t.logos_json
                    FROM players p LEFT JOIN teams t ON t.school=p.team
@@ -2164,7 +2259,7 @@ class CFBRepository:
 
     def recent_movements(self, season: int, limit: int = 24) -> list[dict[str, Any]]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             transfers = [dict(row) for row in connection.execute(
                 """SELECT 'TRANSFER' event_type,normalized_name,first_name||' '||last_name player_name,
                    position,origin,destination,transfer_date event_date,rating,stars,NULL nfl_team,
@@ -2182,7 +2277,7 @@ class CFBRepository:
 
     def team_metrics(self, team: str, season: int) -> dict[str,Any]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             record=connection.execute("SELECT * FROM team_records WHERE season=? AND team=?",(season,team)).fetchone()
             advanced=connection.execute("SELECT * FROM team_advanced_stats WHERE season=? AND team=?",(season,team)).fetchone()
             core=connection.execute("""SELECT * FROM core_ratings WHERE season=? AND team=?
@@ -2208,7 +2303,7 @@ class CFBRepository:
         """
         self.initialize()
         elo = self.team_elo(season)
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             games = [dict(row) for row in connection.execute(
                 """SELECT * FROM games WHERE season=? AND completed=1
                    AND home_points IS NOT NULL AND away_points IS NOT NULL
@@ -2260,7 +2355,7 @@ class CFBRepository:
 
     def pff_team_context(self, team_id: int, season: int=2025, player_limit: int=12) -> dict[str,Any]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             players=[dict(row) for row in connection.execute("""SELECT p.*,
               GROUP_CONCAT(m.dataset||':'||ROUND(m.primary_grade,1)) grades
               FROM pff_players p LEFT JOIN pff_player_metrics m
@@ -2301,7 +2396,7 @@ class CFBRepository:
         """
         self.initialize()
         current_season = roster_season or season + 1
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = connection.execute(
                 """SELECT p.*,r.team current_team,r.position current_position,
                    CASE WHEN r.team<>p.cfbd_team THEN 'TRANSFER_ARRIVAL'
@@ -2325,7 +2420,7 @@ class CFBRepository:
 
     def pff_game_units(self, home_team_id: int, away_team_id: int, season: int=2025) -> list[dict[str,Any]]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows=[dict(row) for row in connection.execute("""SELECT * FROM pff_position_groups
               WHERE season=? AND cfbd_team_id IN (?,?) AND weighted_grade IS NOT NULL""",
               (season,home_team_id,away_team_id)).fetchall()]
@@ -2357,7 +2452,7 @@ class CFBRepository:
         self.initialize()
         placeholders = ",".join("?" for _ in wanted)
         grouped: dict[int, list[dict[str, Any]]] = {team_id: [] for team_id in wanted}
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             statements = (
                 f"""SELECT p.cfbd_team_id,p.position,m.dataset,m.primary_grade,
                     m.usage_count,m.metrics_json FROM pff_players p
@@ -2453,7 +2548,7 @@ class CFBRepository:
 
     def latest_rankings(self, season: int) -> dict[str, Any]:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = connection.execute(
                 "SELECT * FROM rankings WHERE season = ? ORDER BY week DESC, poll, rank",
                 (season,),
@@ -2490,7 +2585,7 @@ class CFBRepository:
         """
         self.initialize()
         zone = ZoneInfo(timezone_name)
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = connection.execute(
                 "SELECT start_date, completed FROM games WHERE season=?", (season,)
             ).fetchall()
@@ -2522,7 +2617,7 @@ class CFBRepository:
                         - timedelta(days=1)).astimezone(timezone.utc).isoformat()
         window_end = (datetime.combine(wanted, dtime.max, tzinfo=zone)
                       + timedelta(days=1)).astimezone(timezone.utc).isoformat()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = [dict(row) for row in connection.execute(
                 """SELECT * FROM games
                    WHERE season=? AND start_date >= ? AND start_date <= ?
@@ -2534,7 +2629,7 @@ class CFBRepository:
     def upcoming_games(self, season: int, limit: int = 16) -> list[dict[str, Any]]:
         self.initialize()
         now = datetime.now(timezone.utc).isoformat()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM games
@@ -2555,7 +2650,7 @@ class CFBRepository:
 
     def get_game(self, game_id: int) -> dict[str, Any] | None:
         self.initialize()
-        with closing(self._connect()) as connection:
+        with self._reader() as connection:
             row = connection.execute("SELECT * FROM games WHERE game_id = ?", (game_id,)).fetchone()
             if row is None:
                 return None

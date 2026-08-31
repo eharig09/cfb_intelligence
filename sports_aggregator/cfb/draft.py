@@ -85,7 +85,7 @@ def calibration(repository: CFBRepository, *, draft_year: int = 2026,
     PFF importer uses, so a name collision cannot inflate a position's baseline.
     """
     repository.initialize()
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = connection.execute(
             """SELECT d.position,d.round,d.overall_pick,d.pre_draft_grade,
                p.interest_score,p.position pff_position
@@ -133,7 +133,7 @@ def prospect_board(repository: CFBRepository, *, roster_season: int = 2026,
     if conference:
         filters.append("AND t.conference=?")
         params.append(conference)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = connection.execute(
             f"""SELECT p.pff_player_id,p.player_name,p.position pff_position,
                 p.interest_score,p.cfbd_player_id,p.cfbd_team,

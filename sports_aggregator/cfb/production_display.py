@@ -253,7 +253,7 @@ def _raw_metrics_by_player(repository, player_ids: list[str], pff_season: int) -
     if not ids:
         return {}
     placeholders = ",".join("?" for _ in ids)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = connection.execute(
             f"""SELECT p.cfbd_player_id,m.dataset,m.metrics_json
                 FROM pff_players p JOIN pff_player_metrics m

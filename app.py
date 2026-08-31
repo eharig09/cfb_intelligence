@@ -114,6 +114,9 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.extensions["cfb_repository"] = app.config.get("CFB_REPOSITORY") or CFBRepository(
         app.config["CFB_DATABASE_PATH"]
     )
+    # Reads share one connection for the life of a request; this is the end at
+    # which it is closed. See CFBRepository._reader.
+    app.teardown_appcontext(CFBRepository.close_request_connections)
     source_database_path = app.extensions["cfb_repository"].path
     app.extensions["source_registry"] = app.config.get("SOURCE_REGISTRY") or SourceRegistry(source_database_path)
     app.extensions["unified_source_registry"] = app.config.get("UNIFIED_SOURCE_REGISTRY") or UnifiedSourceRegistry(source_database_path)

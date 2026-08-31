@@ -198,7 +198,7 @@ def consensus_board(repository: CFBRepository, *, draft_year: int = 2027,
         clause = " AND source=?"
         params.append(source)
     params.append(limit)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = connection.execute(
             f"""SELECT r.*,t.school team_school,t.color,t.logos_json
                 FROM draft_prospect_rankings r

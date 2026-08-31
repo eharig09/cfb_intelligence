@@ -183,7 +183,7 @@ def _side_context(connection, team_id: int, season: int, side: str) -> dict[str,
 def coordinator_context(repository, team_id: int, season: int) -> dict[str, Any]:
     """Return current coordinator, continuity, and career performance context."""
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         offense = _side_context(connection, team_id, season, "offense")
         defense = _side_context(connection, team_id, season, "defense")
     known = [x for x in (offense, defense) if x is not None]

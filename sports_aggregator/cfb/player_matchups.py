@@ -47,7 +47,7 @@ def player_matchups(repository: CFBRepository, home_team_id: int, away_team_id: 
                     draft_year: int = 2027, limit: int = 8) -> list[dict[str, Any]]:
     """Rank credible individual and player-vs-unit watches for current rosters."""
     repository.initialize()
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = [dict(row) for row in connection.execute(
             """SELECT p.pff_player_id,p.player_name,p.normalized_name,p.position,
                p.interest_score,p.cfbd_player_id,t.team_id AS cfbd_team_id,

@@ -101,7 +101,7 @@ def _completed_games(repository: CFBRepository, *, before: str | None = None
         sql += " AND start_date<?"
         params.append(before)
     sql += " ORDER BY start_date DESC"
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         return [dict(row) for row in connection.execute(sql, params)]
 
 
@@ -163,7 +163,7 @@ def matchup_history(repository: CFBRepository, game: dict[str, Any],
 
 def _coach_record(repository: CFBRepository, team_id: int, opponent_id: int,
                   season: int, before: str) -> dict[str, Any] | None:
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         current = connection.execute(
             """SELECT * FROM coach_seasons WHERE team_id=? AND season<=?
                ORDER BY season DESC LIMIT 1""", (team_id, season)).fetchone()
@@ -462,7 +462,7 @@ def player_vs_opponent_history(repository: CFBRepository, player_id: str,
 
 def matchup_player_history(repository: CFBRepository, game: dict[str, Any]) -> list[dict[str, Any]]:
     repository.initialize()
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         roster = {row["player_id"]: dict(row) for row in connection.execute(
             """SELECT p.player_id,p.first_name||' '||p.last_name player,p.position,t.team_id
                FROM players p JOIN teams t ON t.school=p.team

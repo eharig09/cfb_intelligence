@@ -232,7 +232,7 @@ def _ensure_cache(repository) -> None:
 
 def _read_cache(repository, team_id: int) -> dict[str, Any] | None:
     _ensure_cache(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         row = connection.execute("SELECT * FROM team_wiki_context WHERE team_id=?", (int(team_id),)).fetchone()
     return dict(row) if row is not None else None
 

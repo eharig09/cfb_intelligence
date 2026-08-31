@@ -32,7 +32,7 @@ def coach_tenure(repository, team_id: int, *, season: int) -> dict[str, Any] | N
     job changed hands, so a coach returning after a gap starts again.
     """
     repository.initialize()
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = connection.execute(
             """SELECT season, coach_id, first_name, last_name
                FROM coach_seasons WHERE team_id=? AND season<=?
@@ -86,7 +86,7 @@ def _played(repository, team_id: int, *, first: int, last: int) -> list[dict[str
     towards what the team's games have produced, which is what `versus_total`
     reads. Only the spread and total records need a line to grade against.
     """
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = connection.execute(
             """SELECT g.home_team_id, g.home_points, g.away_points,
                       l.spread, l.total
@@ -169,7 +169,7 @@ def _current_consensus_spread(repository, game_id: Any) -> float | None:
     if game_id is None:
         return None
     repository.initialize()
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         row = connection.execute(
             "SELECT AVG(spread) spread FROM game_lines WHERE game_id=?",
             (game_id,),

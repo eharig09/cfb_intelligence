@@ -81,5 +81,5 @@ def game_summary(repository, game_id: int, *, parser_version: str = PARSER_VERSI
                  model_version: str = MODEL_VERSION, metric_version: str = METRIC_VERSION,
                  min_plays: int = 3, min_coverage: float = 0.25) -> list[dict[str, Any]]:
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         return [dict(r) for r in connection.execute("""SELECT * FROM cfb_team_game_tendencies WHERE game_id=? AND parser_version=? AND model_version=? AND metric_version=? AND plays>=? AND coverage>=? ORDER BY team,dimension,plays DESC,value""", (int(game_id),parser_version,model_version,metric_version,max(1,int(min_plays)),max(0.0,min(1.0,float(min_coverage))))).fetchall()]

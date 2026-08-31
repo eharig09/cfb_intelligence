@@ -112,7 +112,7 @@ def unit_continuity(repository: CFBRepository, team_id: int, *,
     if team is None:
         return {}
 
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         current = [dict(row) for row in connection.execute(
             "SELECT player_id,first_name,last_name FROM players WHERE season=? AND team=?",
             (current_season, team["school"]))]

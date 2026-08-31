@@ -58,7 +58,7 @@ def rank_transfers(repository: CFBRepository, *, season: int, team_id: int | Non
     """Score portal entries by the evidence that they will matter."""
     repository.initialize()
     prior_season = season - 1
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         team_name = None
         if team_id is not None:
             row = connection.execute(

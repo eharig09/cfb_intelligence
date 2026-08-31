@@ -80,7 +80,7 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 def coordinator_run_pass_context(repository, team_id: int, season: int) -> dict[str, Any] | None:
     initialize(repository)
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         current = connection.execute(
             """SELECT season,team_id,team,role,coach_name
                FROM coordinator_seasons

@@ -146,7 +146,7 @@ def team_coaching_context(repository, team_id: int, season: int) -> dict[str, An
     if team is None:
         return {}
 
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         current = connection.execute(
             """SELECT * FROM coach_seasons
                WHERE team_id=? AND season<=?
@@ -252,7 +252,7 @@ def coach_lineage_table(repository, team_id: int, through_season: int | None = N
         where += " AND season<=?"
         params.append(int(through_season))
 
-    with closing(repository._connect()) as connection:
+    with repository._reader() as connection:
         rows = connection.execute(
             f"""SELECT season,coach_id,first_name,last_name,games,wins,losses,ties
                 FROM coach_seasons WHERE {where}
