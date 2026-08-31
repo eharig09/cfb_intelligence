@@ -34,6 +34,7 @@
       .team-schedule-elo{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:10px 0 14px}.team-schedule-elo>div{border:1px solid var(--line);background:var(--paper);padding:9px 10px}.team-schedule-elo span{display:block;color:var(--muted);font-size:.58rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em}.team-schedule-elo b{display:block;margin-top:2px;font:800 1.05rem var(--display-font);font-variant-numeric:tabular-nums}.team-schedule-elo small{display:block;color:var(--muted);font-size:.58rem;margin-top:2px}
       @media(max-width:700px){.team-schedule-elo{grid-template-columns:repeat(2,minmax(0,1fr))}.scroll-context{right:8px;bottom:8px;font-size:.62rem}}
     </style>
+    <noscript><style>.tabs{display:none}.tabpanel[hidden]{display:block}</style></noscript>
     {% block head %}{% endblock %}
 </head>
 <body{% block body_attrs %}{% endblock %}>
@@ -45,6 +46,16 @@
         </a>
         <form class="header-search" action="/college-football/search/" method="get" role="search"><input type="search" name="q" placeholder="Search" aria-label="Search teams, players, games"></form>
     </div>
+    {#- Every page's breadcrumb points one step back and nothing else, so the
+        deeper pages had no way out: a postgame report linked to its own game
+        and stopped. These are the whole-site destinations, on every page. -#}
+    <nav class="site-nav" aria-label="College football">
+        {%- for endpoint, label in [('cfb.today', 'Today'),
+                                    ('cfb.scoreboard', 'Scoreboard'),
+                                    ('cfb.draft_watch', 'Draft')] %}
+        <a href="{{ url_for(endpoint) }}"{% if request.endpoint == endpoint %} aria-current="page"{% endif %}>{{ label }}</a>
+        {%- endfor %}
+    </nav>
 </header>
 <main>
 {% block content %}{% endblock %}

@@ -154,6 +154,25 @@ img { max-width: 100%; }
 .site-header a { color: var(--on-strong); text-decoration: none; font-weight: 800; }
 .site-header .tagline { display: none; color: var(--on-strong-muted); font-size: .74rem; letter-spacing: .1em; text-transform: uppercase; }
 .site-header .nav { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+/* Whole-site destinations, as opposed to the breadcrumb above, which only ever
+   points one step back. */
+.site-nav { display: flex; flex-wrap: wrap; gap: 1px; margin: 9px -8px -4px; }
+.site-nav a {
+    padding: 5px 8px; font-size: .8rem; font-weight: 800;
+    color: var(--on-strong-muted); border-bottom: 2px solid transparent;
+}
+.site-nav a:hover { color: var(--on-strong); border-bottom-color: var(--on-strong-line); }
+.site-nav a[aria-current="page"] { color: var(--on-strong); border-bottom-color: var(--team); }
+
+/* Available to a screen reader and to a search engine, absent from the page.
+   For a heading whose text is already shown in some other form -- the postgame
+   report names both teams across its cover in display type, and repeating that
+   as a visible <h1> would say everything twice. */
+.visually-hidden {
+    position: absolute; width: 1px; height: 1px;
+    margin: -1px; padding: 0; border: 0;
+    clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
 .header-search { flex: 0 0 auto; }
 .header-search input {
     width: 8.5rem; padding: 6px 9px; font-size: .78rem;
@@ -525,6 +544,14 @@ table.data .conference-mark { min-width: 2.2rem; font-size: .55rem; padding: 1px
     box-shadow: inset 0 -3px var(--rust); font-weight: 900;
 }
 .tabpanel[hidden] { display: none; }
+/* The tail of a long category. Everyone is still on the page; the ones who did
+   something are just not buried under the ones who did not. */
+.table-overflow { margin: -4px 0 12px; }
+.table-overflow > summary {
+    cursor: pointer; padding: 6px 2px; color: var(--muted);
+    font-size: .72rem; font-weight: 800;
+}
+.table-overflow > summary:hover { color: var(--ink); }
 
 /* Every shared data table is sortable without changing its server-side default. */
 table.data th[data-sortable="true"] { cursor: pointer; user-select: none; white-space: nowrap; }
@@ -806,4 +833,5 @@ table.data tbody tr:hover td.box-group { background: var(--head-bg); }
 @media print {
     .tabs, .site-header { display: none; }
     .tabpanel[hidden] { display: block; }
+    .table-overflow > summary { display: none; }
 }

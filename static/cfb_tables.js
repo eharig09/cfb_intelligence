@@ -174,10 +174,10 @@
 
     if (sections.length < 3) return;
 
-    var stylesheet = document.createElement("link");
-    stylesheet.rel = "stylesheet";
-    stylesheet.href = "/static/cfb_section_nav.css?v=20260829";
-    document.head.appendChild(stylesheet);
+    // The layout loads cfb_section_nav.css itself, with a version stamped from
+    // the file's contents. Injecting a second <link> here duplicated the
+    // request, and its hand-written ?v= would have pinned a stale copy for a
+    // year now that stamped assets are served immutable.
 
     function slug(text) {
         return text.toLowerCase()
@@ -280,3 +280,22 @@
     currentSection();
 }());
 
+/* A printed box score has to be the whole box score. The tail of a long
+   category sits in a closed <details>, and a closed one hides its content
+   through the UA's own slot, which no print stylesheet can reach -- so open
+   them for the duration of the print and put them back afterwards. */
+(function () {
+    var reopened = [];
+    function expand() {
+        reopened = Array.prototype.filter.call(
+            document.querySelectorAll("details.table-overflow"),
+            function (node) { return !node.open; });
+        reopened.forEach(function (node) { node.open = true; });
+    }
+    function restore() {
+        reopened.forEach(function (node) { node.open = false; });
+        reopened = [];
+    }
+    window.addEventListener("beforeprint", expand);
+    window.addEventListener("afterprint", restore);
+})();

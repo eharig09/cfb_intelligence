@@ -174,10 +174,22 @@
             {%- endfor %}
         </div>
         {%- if note %}<div class="table-note">{{ note }}</div>{% endif %}
+        {#- Collapsed from the first paint rather than expanded-then-collapsed by
+            the script below. A postgame report renders sixteen tables and shows
+            two, so the page used to appear at full height and then jump when the
+            script ran. Without JavaScript the <noscript> rule in the layout
+            hides the tabs and reveals every panel, which is what a reader who
+            cannot press a tab needs. -#}
         {%- for group in groups %}
         <div class="tabpanel" role="tabpanel" id="{{ group_id }}-panel-{{ loop.index }}"
-             aria-labelledby="{{ group_id }}-tab-{{ loop.index }}">
+             aria-labelledby="{{ group_id }}-tab-{{ loop.index }}"{{ '' if loop.first else ' hidden' }}>
             {{ data_table(group.table) }}
+            {%- if group.overflow %}
+            <details class="table-overflow">
+                <summary>{{ group.overflow_label or 'Show the rest' }}</summary>
+                {{ data_table(group.overflow) }}
+            </details>
+            {%- endif %}
         </div>
         {%- endfor %}
     </div>

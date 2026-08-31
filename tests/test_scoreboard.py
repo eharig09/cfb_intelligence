@@ -407,7 +407,11 @@ class FinishedMatchupTests(unittest.TestCase):
 
     def test_the_page_says_final_rather_than_full_preview(self):
         body = self._page(1)
-        self.assertIn("Final", body[:body.index("<nav")])
+        # From the start of the page's own content: the site header now carries
+        # a <nav> of its own, so "the first nav" is no longer where the content
+        # begins. What is being asserted is that the result is at the top.
+        content = body[body.index("<main"):]
+        self.assertIn("Final", content[:content.index("<nav")])
         self.assertNotIn("Full preview", body)
 
     def test_the_winner_is_marked(self):

@@ -321,6 +321,13 @@ def team_box_score_table(rows: Sequence[dict[str, Any]]) -> Table:
         empty="No cached team box score is stored for this game.")
 
 
+#: How many players a box-score category shows before the rest go behind a
+#: disclosure, and how many surplus rows make that worth doing. Hiding two rows
+#: to save two rows of height is just another thing to click.
+BOX_SCORE_ROWS_SHOWN = 15
+BOX_SCORE_OVERFLOW_MIN = 3
+
+
 def player_box_score_groups(rows: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
@@ -357,13 +364,28 @@ def player_box_score_groups(rows: Sequence[dict[str, Any]]) -> dict[str, list[di
         headline = sort_stat(category)
         if headline:
             athlete_rows.sort(key=lambda row: -float(row.get(headline) or 0))
-        table = Table(
-            columns=[Column("player", "Player", emphasis=True)] + [
-                Column(name, name, format="num", align="right") for name in types],
-            rows=athlete_rows, caption=f"{team} — {category_label(category)}",
-            dense=True, empty="No player lines are stored for this category.")
-        result.setdefault(team, []).append({"label": category_label(category),
-                                             "table": table})
+        columns = [Column("player", "Player", emphasis=True)] + [
+            Column(name, name, format="num", align="right") for name in types]
+
+        def build(rows: list[dict[str, Any]], caption: str) -> Table:
+            return Table(columns=columns, rows=rows, caption=caption, dense=True,
+                         empty="No player lines are stored for this category.")
+
+        label = category_label(category)
+        group: dict[str, Any] = {"label": label}
+        # A defensive category lists everyone credited with a tackle -- 41 players
+        # in one game here -- sorted so that the ones who did something are at the
+        # top. Nobody is dropped, but the tail goes behind a disclosure rather
+        # than turning the panel into a scrolling window of its own.
+        if len(athlete_rows) > BOX_SCORE_ROWS_SHOWN + BOX_SCORE_OVERFLOW_MIN:
+            rest = athlete_rows[BOX_SCORE_ROWS_SHOWN:]
+            group["table"] = build(athlete_rows[:BOX_SCORE_ROWS_SHOWN],
+                                   f"{team} — {label}")
+            group["overflow"] = build(rest, f"{team} — {label}, continued")
+            group["overflow_label"] = f"Show {len(rest)} more"
+        else:
+            group["table"] = build(athlete_rows, f"{team} — {label}")
+        result.setdefault(team, []).append(group)
     return result
 
 
