@@ -225,22 +225,26 @@ class PassingRenderTests(unittest.TestCase):
         with self.app.test_request_context("/"):
             return str(self.app.jinja_env.globals[name](game))
 
-    def test_a_game_without_passing_detail_says_so_rather_than_vanishing(self):
+    def test_a_game_without_direction_says_so_rather_than_vanishing(self):
         html = self.render("passing_game_splits", {"game_id": 1, "season": 2025})
-        self.assertIn("Middle of the field", html)
-        self.assertIn("CFBD publishes pass direction", html)
+        self.assertIn("No classified run or pass direction", html)
 
-    def test_a_matchup_without_passing_detail_says_so_too(self):
+    def test_a_matchup_without_direction_says_so_too(self):
         html = self.render("passing_matchup_splits", {
             "season": 2025, "away_team": "Michigan", "home_team": "Ohio State"})
         self.assertIn("Middle of the field", html)
-        self.assertIn("CFBD publishes pass direction", html)
+        self.assertIn("No classified run or pass direction", html)
 
     def test_a_matchup_missing_its_teams_renders_nothing_at_all(self):
         self.assertEqual(self.render("passing_matchup_splits", {"season": 2025}), "")
 
     def test_the_block_discloses_that_it_is_not_a_recommendation(self):
-        """The middle EPA gap is a description of available value, not advice."""
+        """The middle EPA gap describes where value was available, not advice.
+
+        Quarterbacks throw over the middle when coverage allows it, so the gap is
+        a selection effect as much as a causal one. Losing that sentence would
+        turn a description into a play-call instruction.
+        """
         passing_plays.initialize(self.repository)
         store_attempts(self.repository, [
             attempt(f"m{i}", "Michigan", "Ohio State", "middle") for i in range(5)])

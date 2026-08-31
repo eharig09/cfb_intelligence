@@ -20,10 +20,10 @@ from typing import Any
 
 from markupsafe import Markup
 
-from sports_aggregator.cfb.passing_plays import (
-    DEPTH_BANDS, MIN_GAME_ATTEMPTS, MIN_SEASON_ATTEMPTS, game_splits,
-    passer_profile, team_season_splits,
+from sports_aggregator.cfb.middle_of_field import (
+    MIN_GAME_PLAYS, MIN_SEASON_PLAYS, game_middle, middle_verdict, team_season_middle,
 )
+from sports_aggregator.cfb.passing_plays import DEPTH_BANDS, MIN_SEASON_ATTEMPTS, passer_profile
 
 
 STYLE = '''<style>
@@ -48,6 +48,21 @@ STYLE = '''<style>
 .pass-row .best{color:var(--edge);font-weight:900}
 .pass-thin{color:var(--muted);font-style:italic}
 .pass-note{color:var(--muted);font-size:.56rem;line-height:1.45;margin:8px 0 0}
+.mof-verdict{border-left:3px solid var(--edge);background:var(--paper);padding:8px 12px;margin:8px 0;font-size:.72rem}
+.mof-block+.mof-block{margin-top:14px}
+.mof-block h3{margin:0 0 6px;font-size:.74rem}
+.mof-grid{border:1px solid var(--line);background:var(--paper);margin:8px 0 4px}
+.mof-row{display:grid;grid-template-columns:minmax(96px,1.1fr) repeat(var(--mof-columns),minmax(0,1fr));gap:8px;padding:7px 11px;border-top:1px solid var(--cell-line);align-items:baseline}
+.mof-row:first-child{border-top:0}
+.mof-header{background:var(--head-bg);color:var(--head-ink)}
+.mof-head{font-size:.52rem;text-transform:uppercase;letter-spacing:.05em;font-weight:850;text-align:right}
+.mof-label{font-size:.63rem;font-weight:750}
+.mof-total{border-top:2px solid var(--line-strong)}
+.mof-total .mof-label{font-weight:900}
+.mof-cell{text-align:right;min-width:0}
+.mof-cell strong{display:block;font-family:var(--display-font);font-size:.82rem;font-variant-numeric:tabular-nums}
+.mof-cell strong.best{color:var(--edge)}
+.mof-cell span{display:block;color:var(--muted);font-size:.5rem;margin-top:1px}
 .pass-qb-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;
   background:var(--line);border:1px solid var(--line);margin:8px 0}
 @media(min-width:620px){.pass-qb-facts{grid-template-columns:repeat(5,minmax(0,1fr))}}
@@ -113,76 +128,139 @@ def _side(label: str, buckets: dict[str, Any], *, minimum: int, better_high: boo
             f'{escape(share_text)}</div>{"".join(rows)}</div>')
 
 
-def _team_card(team: str, splits: dict[str, Any], *, minimum: int) -> str:
-    offense = splits.get("offense") or {}
-    defense = splits.get("defense") or {}
-    attempts = (offense.get("attempts") or 0) + (defense.get("attempts") or 0)
-    return (f'<article class="pass-team"><h4>{escape(team)}'
-            f'<span>{attempts} classified attempts</span></h4>'
-            + _side("Throwing", offense, minimum=minimum, better_high=True)
-            + _side("Allowing", defense, minimum=minimum, better_high=False)
-            + '</article>')
 
-
-def _empty(reason: str) -> Markup:
+def _empty(reason: str, *, heading: bool = True) -> Markup:
     return Markup(
-        STYLE + '<section class="section pass-map"><h2>Middle of the field</h2>'
-        f'<div class="empty">{escape(reason)}</div></section>')
+        STYLE + '<section class="section pass-map">'
+        + (_TITLE if heading else "")
+        + f'<div class="empty">{escape(reason)}</div></section>')
 
 
-def _shell(cards: str, note: str) -> Markup:
+
+#: Run and pass, each split middle against outside, then the two together. The
+#: combined row is the one the verdict is drawn from: a team can lose the middle
+#: on the ground and win it through the air, and neither half alone says which.
+ROWS = (("run", "middle", "Run — middle"), ("run", "outside", "Run — outside"),
+        ("pass", "middle", "Pass — middle"), ("pass", "outside", "Pass — outside"),
+        ("combined", "middle", "All middle"), ("combined", "outside", "All outside"))
+
+NOTE = ("Where each team attacked and what it returned, split between the middle "
+        "of the field and outside it, run and pass together. EPA is our "
+        "event-aligned ep-v2 model; pass direction is CFBD per-attempt detail and "
+        "rush direction is parsed from play text, so coverage varies by game and "
+        "the play count behind every figure is shown. A middle throw has been "
+        "worth about four times an outside one, but that reflects where coverage "
+        "allowed the ball to go: it describes value that was available, not a "
+        "play-call recommendation.")
+
+
+def _cell(bucket, *, minimum, best=False):
+    plays = bucket.get("plays") or 0
+    thin = plays < minimum
+    success = bucket.get("success_rate")
+    tail = "" if success is None else " \u00b7 %s success" % _pct(success)
+    mark = "best" if best and not thin else ""
+    return ('<div class="mof-cell%s"><strong class="%s">%s</strong>'
+            '<span>%d plays%s</span></div>'
+            % (" pass-thin" if thin else "", mark, _f2(bucket.get("epa_per_play")), plays, tail))
+
+
+def _matrix(columns, *, minimum, better_high=True):
+    """One row per split, one column per thing being compared."""
+    width = len(columns)
+    head = "".join('<div class="mof-head">%s</div>' % escape(label) for label, _ in columns)
+    body = []
+    for source, side, label in ROWS:
+        values = [data[source][side].get("epa_per_play") for _l, data in columns]
+        counts = [data[source][side].get("plays") or 0 for _l, data in columns]
+        usable = [v for v, c in zip(values, counts) if v is not None and c >= minimum]
+        winner = None
+        if len(usable) == width and width > 1 and len(set(usable)) > 1:
+            winner = values.index(max(usable) if better_high else min(usable))
+        cells = "".join(_cell(data[source][side], minimum=minimum, best=(i == winner))
+                        for i, (_l, data) in enumerate(columns))
+        emphasis = " mof-total" if source == "combined" else ""
+        body.append('<div class="mof-row%s"><div class="mof-label">%s</div>%s</div>'
+                    % (emphasis, escape(label), cells))
+    return ('<div class="mof-grid" style="--mof-columns:%d">'
+            '<div class="mof-row mof-header"><div class="mof-label"></div>%s</div>%s</div>'
+            % (width, head, "".join(body)))
+
+
+#: Printed only where nothing above it already says what this is. The postgame
+#: report wraps the block in a numbered chapter whose head is the title.
+_TITLE = '<h2>Middle of the field</h2>'
+
+
+def _shell_middle(inner, note, *, heading=True):
     return Markup(
-        STYLE + '<section class="section pass-map"><h2>Middle of the field</h2>'
-        '<div class="section-note">Where each team throws and what it returns, '
-        'split between the middle of the field and outside it. A middle throw has '
-        'been worth about four times an outside one; that reflects where coverage '
-        'allowed the ball to go, so it describes available value rather than a '
-        'play-call recommendation.</div>'
-        f'<div class="pass-map-grid">{cards}</div>'
-        f'<p class="pass-note">{escape(note)}</p></section>')
+        STYLE + '<section class="section pass-map">'
+        + (_TITLE if heading else "")
+        + '<div class="section-note">%s</div>%s<p class="pass-note">%s</p></section>'
+        % (escape(NOTE), inner, escape(note)))
 
 
-def render_game(repository, game: dict[str, Any]) -> Markup:
-    """Postgame: how the middle actually went in this game."""
+def render_game(repository, game):
+    """Postgame: both offences compared in the middle, run and pass.
+
+    Offence only. In one game a team's "middle allowed" is the opponent's
+    "middle attacked" -- the same plays counted again -- so printing both sides
+    for both teams showed two numbers four times.
+    """
     game_id = int(game.get("game_id") or 0)
     if not game_id:
         return Markup("")
     try:
-        splits = game_splits(repository, game_id)
+        teams = game_middle(repository, game_id)
     except Exception:
-        return _empty("Passing detail could not be read for this game.")
-    if not splits:
-        return _empty("No classified passing detail is stored for this game. "
-                      "CFBD publishes pass direction from 2025 week 9 onward.")
-    cards = "".join(
-        _team_card(team, data, minimum=MIN_GAME_ATTEMPTS)
-        for team, data in splits.items())
-    return _shell(cards, "Attempt counts are shown beside every rate. A split with fewer "
-                         f"than {MIN_GAME_ATTEMPTS} attempts is greyed and carries no edge "
-                         "mark, because one throw moves it. EPA is our event-aligned ep-v2 "
-                         "model; direction and air yards are CFBD's.")
+        return _empty("Directional detail could not be read for this game.",
+                      heading=False)
+    order = [str(game.get("away_team") or ""), str(game.get("home_team") or "")]
+    columns = [(team, teams[team]) for team in order if team in teams] or list(teams.items())
+    if not columns or not any(data["plays"] for _team, data in columns):
+        return _empty("No classified run or pass direction is stored for this game. "
+                      "Coverage varies by game and is thin before 2025.",
+                      heading=False)
+    verdict = middle_verdict(dict(columns))
+    banner = ""
+    if verdict:
+        banner = ('<div class="mof-verdict"><strong>%s</strong> won the middle, '
+                  '%s EPA per play to %s.</div>'
+                  % (escape(verdict["winner"]), _f2(verdict["winner_epa"]),
+                     _f2(verdict["loser_epa"])))
+    return _shell_middle(
+        banner + _matrix(columns, minimum=MIN_GAME_PLAYS),
+        "A split under %d plays is greyed and carries no edge mark. Each column is "
+        "that team with the ball, so what the opponent gave up is the other column "
+        "rather than a repeat of it." % MIN_GAME_PLAYS,
+        heading=False)
 
 
-def render_matchup(repository, game: dict[str, Any]) -> Markup:
-    """Pre-game: what each team has done in the middle so far this season."""
+def render_matchup(repository, game):
+    """Pre-game: each offence against the defence it is about to face."""
     season = int(game.get("season") or 0)
-    teams = [str(game.get("away_team") or ""), str(game.get("home_team") or "")]
-    if not season or not all(teams):
+    away = str(game.get("away_team") or "")
+    home = str(game.get("home_team") or "")
+    if not season or not away or not home:
         return Markup("")
     try:
-        splits = [team_season_splits(repository, team, season) for team in teams]
+        splits = {team: team_season_middle(repository, team, season) for team in (away, home)}
     except Exception:
-        return _empty(f"Passing detail could not be read for {season}.")
-    if not any((s["offense"]["attempts"] or 0) + (s["defense"]["attempts"] or 0) for s in splits):
-        return _empty(f"No classified passing detail is stored for {season}. "
-                      "CFBD publishes pass direction from 2025 week 9 onward.")
-    cards = "".join(
-        _team_card(team, data, minimum=MIN_SEASON_ATTEMPTS)
-        for team, data in zip(teams, splits))
-    return _shell(cards, "Season to date, both teams. Attempt counts are shown beside every "
-                         f"rate; a split under {MIN_SEASON_ATTEMPTS} attempts is greyed and "
-                         "carries no edge mark. EPA is our event-aligned ep-v2 model; "
-                         "direction and air yards are CFBD's.")
+        return _empty("Directional detail could not be read for %d." % season)
+    if not any(side["plays"] for team in splits.values()
+               for side in (team["offense"], team["defense"])):
+        return _empty("No classified run or pass direction is stored for %d yet." % season)
+    blocks = []
+    for attacker, defender in ((away, home), (home, away)):
+        columns = [("%s with the ball" % attacker, splits[attacker]["offense"]),
+                   ("%s allowed" % defender, splits[defender]["defense"])]
+        blocks.append('<div class="mof-block"><h3>When %s has the ball</h3>%s</div>'
+                      % (escape(attacker), _matrix(columns, minimum=MIN_SEASON_PLAYS)))
+    return _shell_middle(
+        "".join(blocks),
+        "Season to date. A split under %d plays is greyed and carries no edge mark. "
+        "Each block pairs one offence against the defence it faces, rather than "
+        "printing both teams twice." % MIN_SEASON_PLAYS)
 
 
 _DEPTH_LABELS = {"behind_line": "Behind LOS", "short": "Short (0-9)",

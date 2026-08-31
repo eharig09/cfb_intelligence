@@ -54,17 +54,39 @@ def _detail_team(team,states):
     return f'<section class="pg-detail-team"><h4>{escape(team)}</h4><div class="pg-row"><strong>Situation</strong><strong class="pg-num">Tempo</strong><strong class="pg-num">Pass</strong></div>{"".join(rows)}</section>'
 
 
+#: A turning point carries two states. `game_turning_points` attributes the win
+#: probability transition to the pre-play state, then overwrites the event's own
+#: down/distance/field position with that state's and keeps the originals under
+#: `event_*`. The transition is the state's, but the sentence a reader is looking
+#: at is the event's, and mixing them produced lines that contradicted the play:
+#: "4th & 7 at the TCU 27 ... gain of 9 yards" beside "rush left for 9 yards to
+#: the TCU goal line TOUCHDOWN". It was 1st & goal from the 9.
+def _event_field(row, key):
+    value = row.get(f"event_{key}")
+    return row.get(key) if value is None else value
+
+
 def _down_distance(row):
-    try: down=int(row.get("down")); distance=int(row.get("distance"))
+    try: down=int(_event_field(row,"down")); distance=int(_event_field(row,"distance"))
     except (TypeError,ValueError): return ""
     return f"{down}{ {1:'st',2:'nd',3:'rd'}.get(down,'th') } & {distance}"
 
 
 def _field_position(row):
-    offense=str(row.get("offense") or ""); defense=str(row.get("defense") or "")
-    try: ytg=int(row.get("yards_to_goal"))
+    offense=str(_event_field(row,"offense") or ""); defense=str(_event_field(row,"defense") or "")
+    try: ytg=int(_event_field(row,"yards_to_goal"))
     except (TypeError,ValueError): return ""
     return f"at the {defense} {ytg}" if ytg<=50 and defense else (f"at the {offense} {100-ytg}" if offense else "")
+
+
+#: Yards gained is a scrimmage number. The provider reports a made field goal as
+#: a 28-yard gain, which reads as an advance the offense never made.
+_KICKING=("field goal","punt","kickoff","extra point","pat")
+
+
+def _is_scrimmage(row):
+    text=f"{row.get('play_type') or ''} {row.get('play_text') or ''}".casefold()
+    return not any(cue in text for cue in _KICKING)
 
 
 def _scoreline(row,game):
@@ -239,9 +261,9 @@ def _render(repository,game):
         dd=_down_distance(row); field=_field_position(row)
         if dd:context.append(dd)
         if field:context.append(field)
-        offense=str(row.get("offense") or ""); defense=str(row.get("defense") or "")
+        offense=str(_event_field(row,"offense") or ""); defense=str(_event_field(row,"defense") or "")
         if offense:context.append(f"{offense} ball")
-        if row.get("yards_gained") is not None:
+        if row.get("yards_gained") is not None and _is_scrimmage(row):
             try:
                 yards=int(row.get("yards_gained")); context.append(f"gain of {yards} yards" if yards>=0 else f"loss of {abs(yards)} yards")
             except (TypeError,ValueError):pass
