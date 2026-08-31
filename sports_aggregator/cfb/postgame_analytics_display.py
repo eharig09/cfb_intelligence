@@ -174,10 +174,16 @@ def _roster_index(repository,game):
 
 
 def _play_pattern(index):
-    """Roster names first, then the generic shapes, so the specific one wins."""
+    """Roster names first, then the generic shapes, so the specific one wins.
+
+    The case-insensitivity is scoped to the roster half. `_PLAYER` uses [A-Z] to
+    mean a capital, and compiling the whole pattern with re.I broke that: it
+    matched "by" in "#1 by MSH." and highlighted it as a player on 69 plays in
+    60,000. The roster names still match whatever case the provider wrote.
+    """
     if not index:return _PLAYER
     names="|".join(re.escape(name) for name in sorted(index,key=len,reverse=True))
-    return re.compile(f"(?P<roster>{names})|(?P<generic>{_PLAYER.pattern})",re.I)
+    return re.compile(f"(?P<roster>(?i:{names}))|(?P<generic>{_PLAYER.pattern})")
 
 
 def _play_html(text,game,colors,offense,defense,index=None):

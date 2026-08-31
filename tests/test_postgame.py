@@ -61,5 +61,58 @@ class PostgameFactorTests(unittest.TestCase):
         self.assertIn("310 pass yds", impacts[0]["summary"])
 
 
+
+
+class TurningPointPlayerTests(unittest.TestCase):
+    """Names in a turning point are resolved against the roster, then linked."""
+
+    def index(self):
+        return {"jalen milroe": ("4432734", "Alabama"),
+                "milroe,jalen": ("4432734", "Alabama"),
+                "carson beck": ("4685720", "Georgia")}
+
+    def matches(self, text, index=None):
+        from sports_aggregator.cfb.postgame_analytics_display import _play_pattern
+        pattern = _play_pattern(self.index() if index is None else index)
+        return [(m.group(0), bool(m.groupdict().get("roster")))
+                for m in pattern.finditer(text)]
+
+    def test_a_full_name_is_recognised(self):
+        """The provider writes "Jalen Milroe"; the old pattern only knew "#12 Milroe"."""
+        self.assertIn(("Jalen Milroe", True),
+                      self.matches("Jalen Milroe pass complete to the ALA 38"))
+
+    def test_the_comma_form_is_recognised_too(self):
+        self.assertIn(("Milroe,Jalen", True),
+                      self.matches("Shotgun Milroe,Jalen pass complete short left"))
+
+    def test_a_roster_name_matches_whatever_case_the_provider_used(self):
+        self.assertIn(("JALEN MILROE", True), self.matches("JALEN MILROE pass complete"))
+
+    def test_the_generic_pattern_stays_case_sensitive(self):
+        """[A-Z] has to mean a capital.
+
+        Compiling the whole pattern case-insensitively matched "by" in
+        "#1 by MSH." and highlighted it as a player, on 69 plays in 60,000.
+        """
+        self.assertEqual(
+            [name for name, _roster in self.matches("Kickoff returned #1 by MSH.")], [])
+
+    def test_the_jersey_and_initial_forms_still_match(self):
+        found = [name for name, _roster in self.matches("R.Spruill rushed. Tackled by W.Philord")]
+        self.assertEqual(found, ["R.Spruill", "W.Philord"])
+
+    def test_without_a_roster_it_falls_back_to_the_shape_of_a_name(self):
+        from sports_aggregator.cfb.postgame_analytics_display import _PLAYER
+        from sports_aggregator.cfb.postgame_analytics_display import _play_pattern
+        self.assertIs(_play_pattern({}), _PLAYER)
+
+    def test_a_name_two_players_share_is_left_unlinked(self):
+        """Better an unlinked name than a link to the wrong player."""
+        shared = {"jay williams": ("1", "Alabama")}
+        self.assertEqual(
+            [roster for _name, roster in self.matches("Jay Williams run", shared)], [True])
+
+
 if __name__ == "__main__":
     unittest.main()
