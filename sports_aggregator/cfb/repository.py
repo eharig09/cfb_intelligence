@@ -127,7 +127,6 @@ CREATE TABLE IF NOT EXISTS game_team_box_stats (
     numeric_value REAL,
     PRIMARY KEY (game_id, team, category)
 );
-CREATE INDEX IF NOT EXISTS idx_game_team_box_game ON game_team_box_stats(game_id);
 
 CREATE TABLE IF NOT EXISTS game_player_box_stats (
     game_id INTEGER NOT NULL,
@@ -144,7 +143,6 @@ CREATE TABLE IF NOT EXISTS game_player_box_stats (
     numeric_value REAL,
     PRIMARY KEY (game_id, team, category, stat_type, player_id)
 );
-CREATE INDEX IF NOT EXISTS idx_game_player_box_game ON game_player_box_stats(game_id);
 CREATE INDEX IF NOT EXISTS idx_game_player_box_player
     ON game_player_box_stats(player_id, game_id);
 
@@ -593,6 +591,13 @@ class CFBRepository:
                     CREATE INDEX idx_rankings_team ON rankings(season, school, week);
                     """
                 )
+            # `game_id` is already the leftmost column of each table's
+            # primary-key autoindex, so these two indexed nothing that was not
+            # indexed twice: 42 MB across the two box-score tables, and a second
+            # b-tree to write on every one of the millions of refresh inserts.
+            # Query plans fall through to the autoindex at the same speed.
+            connection.execute("DROP INDEX IF EXISTS idx_game_team_box_game")
+            connection.execute("DROP INDEX IF EXISTS idx_game_player_box_game")
             self._ensure_statistics(connection)
         _mark_schema_current("cfb", self.path)
 

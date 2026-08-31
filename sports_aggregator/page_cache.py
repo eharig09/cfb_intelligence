@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from flask import current_app, request
+from flask import current_app, g, request
 from flask_caching import Cache
 
 
@@ -94,6 +94,10 @@ def cached_page(view):
 
     @wraps(view)
     def wrapper(*args, **kwargs):
+        # This decorator is the one place that already decides a page is public
+        # and identical for every reader; `client_cache` reads the flag rather
+        # than keeping its own list of which endpoints those are.
+        g.public_page = True
         if caching_disabled():
             return view(*args, **kwargs)
         key = page_key()

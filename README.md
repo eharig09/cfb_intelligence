@@ -246,6 +246,18 @@ python -m pip install -r requirements.txt
 python run.py
 ```
 
+`requirements.txt` is the web service and the refresh jobs, which is what Render
+installs. The legacy Reds/Bengals dashboards are disabled in production but on
+by default locally, and they need a second file:
+
+```powershell
+python -m pip install -r requirements.txt -r requirements-dashboards.txt
+```
+
+Set `REGISTER_LEGACY_DASHBOARDS=0` in `.env` to skip them instead -- the CFB
+pages do not use them, and leaving them on runs the baseball scrapers on every
+start.
+
 Add `CFBD_API_KEY` to `.env`, then use the orchestrator for a complete build or
 routine refresh:
 

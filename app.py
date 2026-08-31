@@ -42,6 +42,7 @@ from sports_aggregator.cfb.repository import _logo_pair
 from sports_aggregator.cfb.views import height_label
 from sports_aggregator.social.roles import role_label
 from sports_aggregator.tables import format_value
+from sports_aggregator.client_cache import install_client_caching
 from sports_aggregator.compression import install_compression
 from sports_aggregator.page_cache import cache
 from sports_aggregator.scheduled_refresh import REFRESH_PROFILES
@@ -105,6 +106,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     # Registered before every other after_request hook so that it runs after
     # them: Flask walks that list in reverse.
     install_compression(app)
+    install_client_caching(app)
     cache.init_app(app)
     app.extensions["league_aggregation_service"] = app.config.get(
         "LEAGUE_AGGREGATION_SERVICE"
