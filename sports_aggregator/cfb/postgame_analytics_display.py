@@ -5,6 +5,7 @@ from html import escape
 import re
 from typing import Any
 
+from flask import url_for
 from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
@@ -137,10 +138,68 @@ _DEFENSE_CUES=("broken up by","tackled by","sacked by","intercepted by","forced 
 _DEFENSE_CONTEXT=re.compile(r"(?:broken up by|tackled by|sacked by|intercepted by|forced by|recovered by|blocked by|hurried by)(?:\s+[a-z][a-z.'’\-]*){0,2}\s*$",re.I)
 
 
-def _play_html(text,game,colors,offense,defense):
+def _roster_index(repository,game):
+    """Every way the two rosters are written in play text, mapped to a player.
+
+    Resolving against the roster rather than against the shape of a name is what
+    makes the names in a turning point linkable, and it fixes the matching too:
+    the pattern below only ever recognised "#12 Milroe" and "J. Milroe", while
+    the provider writes "Jalen Milroe" most of the time and "Milroe,Jalen" on the
+    rows that carry formation. Knowing the player also settles which team to
+    colour them, which was previously guessed from the surrounding words.
+    """
+    season=int(game.get("season") or 0); index={}; ambiguous=set()
+    if not season:return index
+    for side in ("away","home"):
+        team=str(game.get(f"{side}_team") or "")
+        if not team:continue
+        try:
+            with repository._reader() as connection:
+                rows=connection.execute(
+                    "SELECT player_id,first_name,last_name FROM players WHERE season=? AND team=?",
+                    (season,team)).fetchall()
+        except Exception:continue
+        for row in rows:
+            first=str(row["first_name"] or "").strip(); last=str(row["last_name"] or "").strip()
+            if not last:continue
+            entry=(str(row["player_id"]),team)
+            variants=[f"{first} {last}",f"{last},{first}",f"{last}, {first}"] if first else []
+            if first:variants+=[f"{first[0]}.{last}",f"{first[0]}. {last}"]
+            for variant in variants:
+                key=variant.casefold()
+                if key in index and index[key]!=entry:ambiguous.add(key)
+                index[key]=entry
+    for key in ambiguous:index.pop(key,None)
+    return index
+
+
+def _play_pattern(index):
+    """Roster names first, then the generic shapes, so the specific one wins."""
+    if not index:return _PLAYER
+    names="|".join(re.escape(name) for name in sorted(index,key=len,reverse=True))
+    return re.compile(f"(?P<roster>{names})|(?P<generic>{_PLAYER.pattern})",re.I)
+
+
+def _play_html(text,game,colors,offense,defense,index=None):
     human=_clean_play_text(text,game); pieces=[]; last=0
-    for match in _PLAYER.finditer(human):
-        pieces.append(escape(human[last:match.start()])); before=human[max(0,match.start()-70):match.start()].rstrip(); defender=(match.start()>0 and human[match.start()-1]=="(") or bool(_DEFENSE_CONTEXT.search(before)) or any(before.casefold().endswith(cue) for cue in _DEFENSE_CUES); team=defense if defender else offense; color=colors.get(team,"var(--team-light)"); pieces.append(f'<span class="pg-turn-player" style="color:{escape(color,quote=True)}">{escape(match.group(1))}</span>'); last=match.end()
+    index=index or {}; pattern=_play_pattern(index)
+    for match in pattern.finditer(human):
+        pieces.append(escape(human[last:match.start()])); shown=match.group(0)
+        resolved=index.get(shown.casefold()) if match.groupdict().get("roster") else None
+        if resolved:
+            player_id,team=resolved
+            try:href=url_for("cfb.player_preview",player_id=player_id,season=int(game.get("season") or 0))
+            except Exception:href=None
+        else:
+            href=None
+            before=human[max(0,match.start()-70):match.start()].rstrip()
+            defender=(match.start()>0 and human[match.start()-1]=="(") or bool(_DEFENSE_CONTEXT.search(before)) or any(before.casefold().endswith(cue) for cue in _DEFENSE_CUES)
+            team=defense if defender else offense
+        color=colors.get(team,"var(--team-light)")
+        style=f'class="pg-turn-player" style="color:{escape(color,quote=True)}"'
+        pieces.append(f'<a href="{escape(href,quote=True)}" {style}>{escape(shown)}</a>' if href
+                      else f'<span {style}>{escape(shown)}</span>')
+        last=match.end()
     pieces.append(escape(human[last:])); return "".join(pieces)
 
 
@@ -159,9 +218,12 @@ def _render(repository,game):
     try:turns=game_turning_points(repository,game_id,model_version=WP_MODEL_VERSION,limit=12)
     except Exception:turns=[]
     turns=[r for r in turns if not _routine_kick_return(r)][:6]; teams=pace.get("teams") or {}
-    if not teams and not turns:return Markup("")
-    colors=_team_colors(repository,game); away_team=str(game.get("away_team") or "Away"); home_team=str(game.get("home_team") or "Home"); away_color=colors.get(away_team,"var(--team-light)"); home_color=colors.get(home_team,"var(--team-light)"); efficiency_override='<style>'+f'.box-report .efficiency-row .efficiency-cell:nth-child(2).edge{{color:{escape(away_color,quote=True)}!important}}'+f'.box-report .efficiency-row .efficiency-cell:nth-child(3).edge{{color:{escape(home_color,quote=True)}!important}}'+'</style>'
-    pace_html=""
+    # Every other section of this report says why it is empty. This one used to
+    # return "" and take its own headings with it, so a game without scored
+    # win-probability read as a section that had been deleted rather than one
+    # waiting on a pipeline step.
+    colors=_team_colors(repository,game); roster=_roster_index(repository,game); away_team=str(game.get("away_team") or "Away"); home_team=str(game.get("home_team") or "Home"); away_color=colors.get(away_team,"var(--team-light)"); home_color=colors.get(home_team,"var(--team-light)"); efficiency_override='<style>'+f'.box-report .efficiency-row .efficiency-cell:nth-child(2).edge{{color:{escape(away_color,quote=True)}!important}}'+f'.box-report .efficiency-row .efficiency-cell:nth-child(3).edge{{color:{escape(home_color,quote=True)}!important}}'+'</style>'
+    pace_html=f'<div class="pg-section-head"><h3>Pace &amp; game state</h3><span>pace-v1</span></div><div class="empty">No scored play-by-play is stored for this game, so pace and game state cannot be computed.</div>'
     if teams:
         summaries=''.join(_summary_card(team,states) for team,states in teams.items()); details=''.join(_detail_team(team,states) for team,states in teams.items()); pace_html=f'<div class="pg-section-head"><h3>Pace & game state</h3><span>pace-v1 · situational detail on demand</span></div><div class="pg-summary-grid">{summaries}</div><details class="pg-details"><summary>View full pace splits</summary><div class="pg-detail-grid">{details}</div></details><p class="pg-note">Tempo uses represented same-drive game-clock intervals between qualifying rush/pass snaps; it is a comparison proxy, not wall-clock seconds to snap.</p>'
     turn_rows=[]
@@ -180,7 +242,7 @@ def _render(repository,game):
         wp_html=""
         if before is not None and after is not None:
             direction="↑" if float(after)>float(before) else "↓" if float(after)<float(before) else "→"; wp_html=f'<div class="pg-turn-wp">{escape(home_team)} WP&nbsp; {100*float(before):.1f}% {direction} {100*float(after):.1f}%</div>'
-        label_html=f'<span class="pg-turn-event">{escape(event_label)}</span>' if event_label else ""; attribution="Major event matched to surrounding valid WP states." if row.get("attribution")=="special_event" else "WP transition attributed to this pre-play state."; play_html=_play_html(str(row.get("play_text") or row.get("play_type") or "Play"),game,colors,offense,defense)
+        label_html=f'<span class="pg-turn-event">{escape(event_label)}</span>' if event_label else ""; attribution="Major event matched to surrounding valid WP states." if row.get("attribution")=="special_event" else "WP transition attributed to this pre-play state."; play_html=_play_html(str(row.get("play_text") or row.get("play_type") or "Play"),game,colors,offense,defense,roster)
         turn_rows.append(f'<article class="pg-turn"><div class="pg-turn-rank">{rank:02d}</div><div class="pg-turn-main"><div class="pg-turn-head"><span class="pg-turn-clock">Q{period} · {minute}:{second:02d}</span>{label_html}</div><div class="pg-turn-swing"><strong>{100*leverage:.1f}</strong> win-probability points</div>{wp_html}<div class="pg-turn-context">{" · ".join(escape(piece) for piece in context)}</div></div><div class="pg-turn-detail"><p class="pg-turn-play">{play_html}</p><div class="pg-turn-attribution">{escape(attribution)}</div><div class="pg-turn-meta">WP direction is checked against {escape(EPA_MODEL_VERSION)} event-aligned play value and scoreboard/down-result sanity rules; routine kick returns and large unsupported state discontinuities are suppressed.</div></div></article>')
     turning_html=''.join(turn_rows) or f'<div class="empty">Fit and score {escape(WP_MODEL_VERSION)} to identify leverage and turning points.</div>'
     return Markup(STYLE+efficiency_override+'<section class="section pg-analytics">'+pace_html+f'<div class="pg-section-head"><h3>Turning points</h3><span>{escape(WP_MODEL_VERSION)} · {escape(EPA_MODEL_VERSION)}-checked event swings</span></div><div class="pg-turning">{turning_html}</div></section>')

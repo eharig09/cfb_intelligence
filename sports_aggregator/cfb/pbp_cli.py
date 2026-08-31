@@ -14,8 +14,10 @@ from dotenv import load_dotenv
 from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError, FINISHED_WEEK_TTL
 from sports_aggregator.cfb.epa_validation import validate_epa
 from sports_aggregator.cfb.expected_points import fit_model as fit_edp, score_plays as score_edp
-from sports_aggregator.cfb.expected_points_v2 import fit_model as fit_ep
-from sports_aggregator.cfb.expected_points_v2 import score_plays as score_epa
+from sports_aggregator.cfb.expected_points_event import fit_model as fit_ep_v2
+from sports_aggregator.cfb.expected_points_event import score_plays as score_epa_v2
+from sports_aggregator.cfb.expected_points_v2 import fit_model as fit_ep_v1
+from sports_aggregator.cfb.expected_points_v2 import score_plays as score_epa_v1
 from sports_aggregator.cfb.expected_points_v2 import validate_model as validate_ep
 from sports_aggregator.cfb.model_validation import validate_edp, validate_wp
 from sports_aggregator.cfb.pace import game_pace_summary
@@ -64,9 +66,53 @@ def _years(args) -> tuple[int, int]:
     return first, last
 
 
+#: `expected_points_v2.py` implements ep-v1 and `expected_points_event.py`
+#: implements ep-v2, which supersedes it -- the file names record the order the
+#: files were written, not the model versions they produce. Every consumer of
+#: EPA reads ep-v2: team_game_advanced, player_game_epa, qb_air_yards,
+#: team_game_tendencies, wp_turning_points and the postgame report.
+_EP_MODULES = {"ep-v1": (fit_ep_v1, score_epa_v1),
+               "ep-v2": (fit_ep_v2, score_epa_v2)}
+
+
 def _model_version(args, family: str) -> str:
-    defaults = {"edp": "edp-v1", "ep": "ep-v1", "wp": "wp-v1", "wp-v2": "wp-v2"}
+    # "ep" defaults to ep-v2. It defaulted to the superseded ep-v1, so the
+    # obvious sequence -- fit-ep, score-epa, build-team-advanced -- wrote rows
+    # that were correct, complete, and invisible to every page that reads them.
+    defaults = {"edp": "edp-v1", "ep": "ep-v2", "wp": "wp-v1", "wp-v2": "wp-v2"}
     return str(args.model_version or defaults[family])
+
+
+def _ep_functions(version: str):
+    """Fit/score for the requested EPA version, so a tag names its own model."""
+    try:
+        return _EP_MODULES[version]
+    except KeyError:
+        raise SystemExit(
+            f"unknown EPA model version {version!r}; expected one of "
+            f"{', '.join(sorted(_EP_MODULES))}") from None
+
+
+def _require_scored_plays(repository, version: str) -> None:
+    """Refuse to build from an EPA version nothing has scored.
+
+    Building against an unscored version produced an empty table and a report
+    that said the metrics were "not available for this game yet", which reads as
+    missing data rather than as a step that has not been run.
+    """
+    with closing(repository._connect()) as connection:
+        try:
+            scored = int(connection.execute(
+                "SELECT COUNT(*) FROM cfb_play_epa WHERE model_version=?",
+                (version,)).fetchone()[0])
+        except sqlite3.Error:
+            scored = 0
+    if scored:
+        return
+    raise SystemExit(
+        f"no plays scored for model version {version!r}. Run `score-epa"
+        f" --model-version {version}` first (ep-v2 is also scored by"
+        f" `python -m sports_aggregator.cfb.expected_points_event_cli score`).")
 
 
 def _week_ready(repository: CFBRepository, year: int, week: int) -> tuple[bool, int]:
@@ -143,13 +189,15 @@ def main(argv: list[str] | None = None, *, client=None) -> int:
 
     if args.command == "fit-ep":
         version = _model_version(args, "ep")
-        print(json.dumps(fit_ep(repository, from_season=first, to_season=last,
-                                model_version=version), indent=2))
+        fit, _score = _ep_functions(version)
+        print(json.dumps(fit(repository, from_season=first, to_season=last,
+                             model_version=version), indent=2))
         return 0
     if args.command == "score-epa":
         version = _model_version(args, "ep")
-        print(json.dumps(score_epa(repository, from_season=first, to_season=last,
-                                   model_version=version), indent=2))
+        _fit, score = _ep_functions(version)
+        print(json.dumps(score(repository, from_season=first, to_season=last,
+                               model_version=version), indent=2))
         return 0
     if args.command == "validate-ep":
         version = _model_version(args, "ep")
@@ -163,6 +211,7 @@ def main(argv: list[str] | None = None, *, client=None) -> int:
         return 0
     if args.command == "build-team-advanced":
         version = _model_version(args, "ep")
+        _require_scored_plays(repository, version)
         print(json.dumps(build_team_game_advanced(
             repository, from_season=first, to_season=last, model_version=version), indent=2))
         return 0
@@ -212,8 +261,9 @@ def main(argv: list[str] | None = None, *, client=None) -> int:
     if args.command == "rebuild-values":
         edp = score_edp(repository, from_season=first, to_season=last,
                         model_version=_model_version(args, "edp"))
-        ep = score_epa(repository, from_season=first, to_season=last,
-                       model_version=_model_version(args, "ep"))
+        ep_version = _model_version(args, "ep")
+        ep = _ep_functions(ep_version)[1](
+            repository, from_season=first, to_season=last, model_version=ep_version)
         wp = score_wp(repository, from_season=first, to_season=last,
                       model_version=_model_version(args, "wp"))
         print(json.dumps({"edp": edp, "ep": ep, "wp": wp}, indent=2))
