@@ -172,6 +172,36 @@ def steps(season: int, *, history_from: int | None = None,
         Step("score", "Relevance scoring",
              ["sports_aggregator.social.content_cli", "score"],
              ("initial", "refresh"), optional=True),
+        # The analytics layer, which had no scheduled step at all. Every model
+        # the postgame report reads -- EPA, win probability, pace, turning
+        # points, tendencies -- is built from these, and they were only ever run
+        # by hand, so rebuilding a database silently emptied all of it with
+        # nothing to notice or restore it.
+        Step("pbp", "Play-by-play for the weeks just played",
+             ["sports_aggregator.cfb.pbp_cli", "backfill", "--year", year],
+             ("initial", "refresh"), optional=True,
+             requires_env=("CFBD_API_KEY",), timeout_seconds=1800),
+        Step("pbp-derive", "Per-play and per-drive metrics from stored plays",
+             ["sports_aggregator.cfb.pbp_cli", "derive", "--year", year],
+             ("initial", "refresh"), optional=True, timeout_seconds=1800),
+        # Scored against the stored ep-v2 model rather than refitted: a fit
+        # wants several seasons and does not change week to week.
+        Step("epa", "Score plays with the event-aligned ep-v2 model",
+             ["sports_aggregator.cfb.expected_points_event_cli", "score",
+              "--from-year", year, "--to-year", year],
+             ("initial", "refresh"), optional=True, timeout_seconds=1800),
+        Step("team-advanced", "Team-game efficiency the report and matchup read",
+             ["sports_aggregator.cfb.pbp_cli", "build-team-advanced",
+              "--from-year", year, "--to-year", year, "--model-version", "ep-v2"],
+             ("initial", "refresh"), optional=True, timeout_seconds=900),
+        Step("win-probability", "Score win probability for leverage and turning points",
+             ["sports_aggregator.cfb.pbp_cli", "score-wp-v2",
+              "--from-year", year, "--to-year", year],
+             ("initial", "refresh"), optional=True, timeout_seconds=1800),
+        Step("passing-detail", "Pass direction, depth, air yards and YAC per attempt",
+             ["sports_aggregator.cfb.passing_cli", "sync", "--year", year],
+             ("initial", "refresh"), optional=True,
+             requires_env=("CFBD_API_KEY",), timeout_seconds=1200),
     ]
 
     # Two horizons, because the two kinds of history cost wildly different
