@@ -12,12 +12,13 @@ from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError
 from sports_aggregator.cfb.passing_plays import (
     coverage, sync_season, sync_week, team_season_splits,
 )
+from sports_aggregator.cfb.qb_air_yards import build_from_cfbd
 from sports_aggregator.cfb.repository import CFBRepository
 
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="CFBD passing detail (direction, depth, air yards)")
-    p.add_argument("command", choices=("sync", "coverage", "splits"))
+    p.add_argument("command", choices=("sync", "coverage", "splits", "build-qb"))
     p.add_argument("--year", type=int, default=datetime.now().year)
     p.add_argument("--week", type=int, default=None,
                    help="One week. Omitted, sync walks the whole season.")
@@ -35,6 +36,11 @@ def main(argv: list[str] | None = None, *, client=None) -> int:
 
     if args.command == "coverage":
         print(json.dumps(coverage(repository, args.year), indent=2))
+        return 0
+
+    if args.command == "build-qb":
+        print(json.dumps(build_from_cfbd(
+            repository, from_season=args.year, to_season=args.year), indent=2))
         return 0
 
     if args.command == "splits":

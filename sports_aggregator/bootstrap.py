@@ -202,6 +202,9 @@ def steps(season: int, *, history_from: int | None = None,
              ["sports_aggregator.cfb.passing_cli", "sync", "--year", year],
              ("initial", "refresh"), optional=True,
              requires_env=("CFBD_API_KEY",), timeout_seconds=1200),
+        Step("passing-qb", "Quarterback air-yard summaries from measured attempts",
+             ["sports_aggregator.cfb.passing_cli", "build-qb", "--year", year],
+             ("initial", "refresh"), optional=True, timeout_seconds=600),
     ]
 
     # Two horizons, because the two kinds of history cost wildly different

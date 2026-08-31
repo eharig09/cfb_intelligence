@@ -26,6 +26,16 @@ def attempt(play_id, offense, defense, direction, *, depth="short", epa=None,
             "outcome": outcome, "parseStatus": "complete", "_epa": epa}
 
 
+def game_row(game_id):
+    return Game.from_cfbd({
+        "id": game_id, "season": 2025, "week": 9, "seasonType": "regular",
+        "startDate": "2025-10-25T19:30:00.000Z", "startTimeTBD": False,
+        "completed": True, "neutralSite": False, "conferenceGame": True,
+        "venue": "Stadium", "venueId": 1, "homeId": 2, "homeTeam": "Ohio State",
+        "homeConference": "Big Ten", "homePoints": 20, "awayId": 1,
+        "awayTeam": "Michigan", "awayConference": "Big Ten", "awayPoints": 17})
+
+
 def score_plays(path, pairs):
     """Give plays an ep-v2 EPA, through the real schema rather than a stand-in."""
     now = "2026-01-01T00:00:00+00:00"
@@ -241,13 +251,147 @@ class PassingRenderTests(unittest.TestCase):
         self.assertIn("Middle", html)
 
 
+class PasserProfileTests(unittest.TestCase):
+    """A quarterback's own page: depth, direction, and what the throws returned."""
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        os.unlink(self.path)
+        forget_initialized_schemas()
+        self.repository = CFBRepository(self.path)
+        self.repository.initialize()
+        passing_plays.initialize(self.repository)
+        # Air yards on four of five, so availability differs from attempts.
+        rows = [attempt("a0", "Michigan", "Ohio State", "middle", air=-2.0),
+                attempt("a1", "Michigan", "Ohio State", "middle", air=5.0),
+                attempt("a2", "Michigan", "Ohio State", "left", air=14.0),
+                attempt("a3", "Michigan", "Ohio State", "right", air=27.0),
+                attempt("a4", "Michigan", "Ohio State", "left", air=None)]
+        store_attempts(self.repository, rows)
+        score_plays(self.path, [(f"a{i}", 0.5) for i in range(5)])
+
+    def tearDown(self):
+        forget_initialized_schemas()
+        for path in (self.path, self.path + "-wal", self.path + "-shm"):
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def profile(self):
+        return passing_plays.passer_profile(self.repository, "p1", 2025)
+
+    def test_the_depth_bands_split_where_a_chart_would(self):
+        depth = self.profile()["depth"]
+        self.assertEqual(depth, {"behind_line": 1, "short": 1,
+                                 "intermediate": 1, "deep": 1})
+
+    def test_a_screen_is_not_counted_as_a_short_pass(self):
+        """Behind the line is its own band; averaging it into short hides both."""
+        self.assertEqual(self.profile()["depth"]["behind_line"], 1)
+
+    def test_availability_is_reported_separately_from_attempts(self):
+        profile = self.profile()
+        self.assertEqual(profile["attempts"], 5)
+        self.assertEqual(profile["air_yards_available"], 4)
+
+    def test_adot_averages_only_the_measured_attempts(self):
+        self.assertAlmostEqual(self.profile()["adot"], (-2.0 + 5.0 + 14.0 + 27.0) / 4)
+
+    def test_the_direction_split_rides_along(self):
+        direction = self.profile()["direction"]
+        self.assertEqual(direction["middle"]["attempts"], 2)
+        self.assertEqual(direction["outside"]["attempts"], 3)
+
+    def test_a_player_who_never_threw_has_no_profile(self):
+        self.assertEqual(
+            passing_plays.passer_profile(self.repository, "nobody", 2025)["attempts"], 0)
+
+    def test_team_passers_are_ranked_by_attempts(self):
+        passers = passing_plays.season_passers(self.repository, "Michigan", 2025, minimum=1)
+        self.assertEqual([p["attempts"] for p in passers], [5])
+
+
+class QbAirYardsSourceTests(unittest.TestCase):
+    """The measured source replaces a text parser that reached ~1% of attempts."""
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        os.unlink(self.path)
+        forget_initialized_schemas()
+        self.repository = CFBRepository(self.path)
+        self.repository.initialize()
+        self.repository.replace_games(2025, [game_row(1), game_row(7)])
+        passing_plays.initialize(self.repository)
+        store_attempts(self.repository, [
+            attempt("q0", "Michigan", "Ohio State", "middle", air=12.0),
+            attempt("q1", "Michigan", "Ohio State", "left", air=4.0,
+                    outcome="incompletion")])
+        score_plays(self.path, [("q0", 1.0), ("q1", -0.5)])
+
+    def tearDown(self):
+        forget_initialized_schemas()
+        for path in (self.path, self.path + "-wal", self.path + "-shm"):
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def test_passing_for_a_game_the_schedule_has_not_stored_is_skipped(self):
+        """One orphan must not fail the insert and take every other row with it."""
+        from sports_aggregator.cfb.qb_air_yards import build_from_cfbd
+        store_attempts(self.repository, [
+            attempt("z0", "Michigan", "Ohio State", "middle", air=9.0, game_id=99999)])
+        score_plays(self.path, [("z0", 0.4)])
+        report = build_from_cfbd(self.repository, from_season=2025, to_season=2025)
+        self.assertEqual(report["rows"], 1)
+        self.assertEqual(report["skipped_unknown_games"], 1)
+
+    def test_it_builds_a_row_per_passer_per_game(self):
+        from sports_aggregator.cfb.qb_air_yards import build_from_cfbd
+        report = build_from_cfbd(self.repository, from_season=2025, to_season=2025)
+        self.assertEqual((report["rows"], report["games"]), (1, 1))
+
+    def test_air_yards_include_incompletions_so_the_average_is_adot(self):
+        from sports_aggregator.cfb.qb_air_yards import build_from_cfbd, game_summary
+        build_from_cfbd(self.repository, from_season=2025, to_season=2025)
+        row = game_summary(self.repository, 1)[0]
+        self.assertEqual(row["attributed_pass_plays"], 2)
+        self.assertEqual(row["measured_completions"], 1)
+        self.assertAlmostEqual(row["measured_adot"], 8.0)
+
+    def test_coverage_is_recorded_rather_than_assumed(self):
+        from sports_aggregator.cfb.qb_air_yards import build_from_cfbd, game_summary
+        build_from_cfbd(self.repository, from_season=2025, to_season=2025)
+        self.assertAlmostEqual(game_summary(self.repository, 1)[0]["numeric_depth_coverage"], 1.0)
+
+    def test_the_source_with_measurements_wins_not_the_newer_one(self):
+        """A week CFBD has not published carries attempts but no air yards."""
+        from sports_aggregator.cfb.qb_air_yards import (
+            CFBD_PARSER_VERSION, METRIC_VERSION, MODEL_VERSION, build_from_cfbd, game_summary)
+        from sports_aggregator.cfb.play_detail import PARSER_VERSION
+        store_attempts(self.repository, [
+            attempt("u0", "Michigan", "Ohio State", None, air=None, game_id=7)])
+        score_plays(self.path, [("u0", 0.2)])
+        build_from_cfbd(self.repository, from_season=2025, to_season=2025)
+        with closing(sqlite3.connect(self.path)) as connection:
+            connection.execute(
+                "INSERT INTO cfb_qb_air_yards_game VALUES (%s)" % ",".join("?" * 23),
+                (7, 2025, "Michigan", "Ohio State", "p1", "A Passer", PARSER_VERSION,
+                 MODEL_VERSION, METRIC_VERSION, 1, 1, 9.0, 9.0, 3.0, 3.0, 0.2, 0.2,
+                 0, 1, 0, 0, 1.0, "2026-01-01T00:00:00+00:00"))
+            connection.commit()
+        rows = game_summary(self.repository, 7)
+        self.assertEqual(rows[0]["parser_version"], PARSER_VERSION,
+                         "the parsed row measured something and the CFBD row did not")
+        self.assertNotEqual(rows[0]["parser_version"], CFBD_PARSER_VERSION)
+
+
 class RefreshWiringTests(unittest.TestCase):
     def test_the_analytics_pipeline_has_scheduled_steps(self):
         """It had none, which is why the whole layer was empty."""
         from sports_aggregator.bootstrap import steps
         by_name = {step.name: step for step in steps(2026)}
         for name in ("pbp", "pbp-derive", "epa", "team-advanced",
-                     "win-probability", "passing-detail"):
+                     "win-probability", "passing-detail", "passing-qb"):
             self.assertIn(name, by_name, f"{name} has no scheduled step")
             self.assertIn("refresh", by_name[name].phases)
 

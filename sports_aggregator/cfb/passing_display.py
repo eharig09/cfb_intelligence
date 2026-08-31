@@ -21,7 +21,8 @@ from typing import Any
 from markupsafe import Markup
 
 from sports_aggregator.cfb.passing_plays import (
-    MIN_GAME_ATTEMPTS, MIN_SEASON_ATTEMPTS, game_splits, team_season_splits,
+    DEPTH_BANDS, MIN_GAME_ATTEMPTS, MIN_SEASON_ATTEMPTS, game_splits,
+    passer_profile, team_season_splits,
 )
 
 
@@ -47,6 +48,18 @@ STYLE = '''<style>
 .pass-row .best{color:var(--edge);font-weight:900}
 .pass-thin{color:var(--muted);font-style:italic}
 .pass-note{color:var(--muted);font-size:.56rem;line-height:1.45;margin:8px 0 0}
+.pass-qb-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);margin:8px 0}
+@media(min-width:620px){.pass-qb-facts{grid-template-columns:repeat(5,minmax(0,1fr))}}
+.pass-qb-fact{background:var(--paper);padding:8px 10px}
+.pass-qb-fact b{display:block;font:800 1.02rem var(--display-font);font-variant-numeric:tabular-nums}
+.pass-qb-fact span{display:block;color:var(--muted);font-size:.54rem;text-transform:uppercase;
+  letter-spacing:.05em;font-weight:850;margin-top:2px}
+.pass-depth{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0 4px}
+.pass-depth div{border-top:2px solid var(--line);padding-top:6px}
+.pass-depth b{display:block;font:800 .92rem var(--display-font);font-variant-numeric:tabular-nums}
+.pass-depth span{display:block;color:var(--muted);font-size:.52rem;text-transform:uppercase;
+  letter-spacing:.05em;font-weight:850;margin-top:2px}
 </style>'''
 
 
@@ -172,6 +185,62 @@ def render_matchup(repository, game: dict[str, Any]) -> Markup:
                          "direction and air yards are CFBD's.")
 
 
+_DEPTH_LABELS = {"behind_line": "Behind LOS", "short": "Short (0-9)",
+                 "intermediate": "Intermediate (10-19)", "deep": "Deep (20+)"}
+
+
+def render_passer(repository, player: dict[str, Any], season: Any) -> Markup:
+    """A quarterback's season: depth, direction, and what the throws returned."""
+    player_id = str(player.get("player_id") or "")
+    try:
+        year = int(season or player.get("season") or 0)
+    except (TypeError, ValueError):
+        year = 0
+    if not player_id or not year:
+        return Markup("")
+    try:
+        profile = passer_profile(repository, player_id, year)
+    except Exception:
+        return Markup("")
+    # Silent for everyone who did not throw: this belongs on a passer's page,
+    # not as an empty panel on every lineman's.
+    if not profile["attempts"]:
+        return Markup("")
+
+    facts = "".join(
+        f'<div class="pass-qb-fact"><b>{value}</b><span>{escape(label)}</span></div>'
+        for label, value in (
+            ("Attempts", profile["attempts"]),
+            ("Completion", _pct(profile["completion_rate"])),
+            ("ADOT", _f1(profile["adot"])),
+            ("YAC / comp", _f1(profile["yac_per_completion"])),
+            ("EPA / attempt", _f2(profile["epa_per_attempt"]))))
+
+    air = profile["air_yards_available"]
+    depth_total = sum(profile["depth"].values()) or 1
+    depth = "".join(
+        f'<div><b>{_pct(profile["depth"][name] / depth_total)}</b>'
+        f'<span>{escape(_DEPTH_LABELS[name])}</span></div>'
+        for name, _low, _high in DEPTH_BANDS)
+
+    direction = _side("By direction", profile["direction"],
+                      minimum=MIN_SEASON_ATTEMPTS, better_high=True)
+    return Markup(
+        STYLE + '<section class="section pass-map"><h2>Passing profile</h2>'
+        '<div class="section-note">Where this quarterback throws and what it returns. '
+        "Air yards and direction come from CFBD per-attempt detail; EPA is our "
+        "event-aligned ep-v2 model.</div>"
+        f'<div class="pass-qb-facts">{facts}</div>'
+        f'<div class="pass-side-label">Depth of target</div>'
+        f'<div class="pass-depth">{depth}</div>'
+        f'<div class="pass-team">{direction}</div>'
+        f'<p class="pass-note">Depth is drawn from the {air} of {profile["attempts"]} '
+        f'attempts carrying air yards, and direction from the '
+        f'{profile["direction"]["attempts"]} that carry it. CFBD publishes both on a '
+        'subset before 2026, so these are shares of what was measured rather than of '
+        'every throw.</p></section>')
+
+
 def install_passing_display(app) -> None:
     """Registered as template globals, so the templates call them where they want.
 
@@ -186,4 +255,6 @@ def install_passing_display(app) -> None:
         lambda game: render_game(repository, dict(game)))
     app.jinja_env.globals["passing_matchup_splits"] = (
         lambda game: render_matchup(repository, dict(game)))
+    app.jinja_env.globals["passing_passer_profile"] = (
+        lambda player, season=None: render_passer(repository, dict(player), season))
     app.extensions["passing_display_installed"] = True

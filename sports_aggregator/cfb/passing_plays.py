@@ -266,3 +266,98 @@ def coverage(repository: CFBRepository, season: int) -> dict[str, Any]:
             "games": row["games"] or 0, "first_week": row["first_week"],
             "last_week": row["last_week"],
             "coverage": round(classified / attempts, 4) if attempts else 0.0}
+
+
+#: Air-yard bands, so a passer's depth profile reads the way a chart would.
+#: Behind the line is its own thing rather than "short": a screen is a run that
+#: starts with a throw, and averaging it into short passing hides both.
+DEPTH_BANDS = (("behind_line", None, 0.0), ("short", 0.0, 10.0),
+               ("intermediate", 10.0, 20.0), ("deep", 20.0, None))
+
+
+def _band(air_yards: float) -> str:
+    for name, low, high in DEPTH_BANDS:
+        if (low is None or air_yards >= low) and (high is None or air_yards < high):
+            return name
+    return "deep"
+
+
+def passer_profile(repository: CFBRepository, player_id: str, season: int, *,
+                   model_version: str = MODEL_VERSION) -> dict[str, Any]:
+    """One quarterback's season: where he throws, how far, and what it returns.
+
+    Built from the stored attempts rather than CFBD's own passer aggregates,
+    which carry air yards and yards after catch but neither the direction split
+    nor EPA. The passer id is the provider's, so nothing here depends on
+    matching a name out of play text.
+    """
+    initialize(repository)
+    identifier = str(player_id)
+    with repository._reader() as connection:
+        splits = _buckets(
+            connection, "p.season = ? AND p.passer_id = ?",
+            (model_version, int(season), identifier))
+        rows = connection.execute(
+            """SELECT p.air_yards, p.yards_after_catch, p.outcome, p.pass_direction,
+                      p.passer, p.offense, e.epa
+               FROM cfbd_passing_plays p
+               LEFT JOIN cfb_play_epa e
+                 ON e.play_id = p.play_id AND e.model_version = ?
+               LEFT JOIN cfb_play_metrics m ON m.play_id = p.play_id
+               WHERE p.season = ? AND p.passer_id = ?
+                 AND COALESCE(m.garbage_time, 0) = 0""",
+            (model_version, int(season), identifier)).fetchall()
+
+    depth = {name: 0 for name, _low, _high in DEPTH_BANDS}
+    attempts = completions = air_available = yac_available = 0
+    air_total = yac_total = 0.0
+    epa_total = 0.0
+    epa_available = 0
+    name = team = None
+    for row in rows:
+        attempts += 1
+        name = name or row["passer"]
+        team = team or row["offense"]
+        if row["outcome"] == "completion":
+            completions += 1
+        if row["air_yards"] is not None:
+            air_available += 1
+            air_total += float(row["air_yards"])
+            depth[_band(float(row["air_yards"]))] += 1
+        if row["yards_after_catch"] is not None:
+            yac_available += 1
+            yac_total += float(row["yards_after_catch"])
+        if row["epa"] is not None:
+            epa_available += 1
+            epa_total += float(row["epa"])
+    return {
+        "player_id": identifier, "player": name, "team": team, "season": int(season),
+        "attempts": attempts, "completions": completions,
+        "completion_rate": (completions / attempts) if attempts else None,
+        "air_yards": air_total if air_available else None,
+        "adot": (air_total / air_available) if air_available else None,
+        "yards_after_catch": yac_total if yac_available else None,
+        "yac_per_completion": (yac_total / yac_available) if yac_available else None,
+        "epa": epa_total if epa_available else None,
+        "epa_per_attempt": (epa_total / epa_available) if epa_available else None,
+        # Availability, not attempts: CFBD publishes air yards on a subset, and a
+        # depth profile drawn from a third of the throws should say so.
+        "air_yards_available": air_available, "yac_available": yac_available,
+        "epa_available": epa_available,
+        "depth": depth, "direction": splits,
+    }
+
+
+def season_passers(repository: CFBRepository, team: str, season: int,
+                   *, minimum: int = 20) -> list[dict[str, Any]]:
+    """Everyone who threw for a team, most attempts first."""
+    initialize(repository)
+    with repository._reader() as connection:
+        rows = connection.execute(
+            """SELECT passer_id, passer, COUNT(*) AS attempts
+               FROM cfbd_passing_plays
+               WHERE season = ? AND offense = ? AND passer_id IS NOT NULL
+               GROUP BY passer_id, passer HAVING attempts >= ?
+               ORDER BY attempts DESC""",
+            (int(season), str(team), int(minimum))).fetchall()
+    return [dict(row) for row in rows]

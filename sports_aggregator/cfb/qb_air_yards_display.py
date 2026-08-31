@@ -71,6 +71,25 @@ def _team_column(team: str, rows: list[dict[str, Any]]) -> str:
     return f'<section class="pg-qb-team"><div class="pg-qb-team-head">{escape(team)}</div>{"".join(cards)}</section>'
 
 
+#: What the numbers above actually measure, which differs by source. The text
+#: parser only ever recovered a catch spot on completions, so its "air yards"
+#: excluded every incompletion and its per-completion figure was not aDOT. The
+#: provider publishes air yards on the attempt, so for those rows it is.
+_PARSED_NOTE = ("Air yards and YAC are measured only on completions with an "
+                "unambiguous catch spot, so “Air yds / comp” is not full aDOT.")
+_MEASURED_NOTE = ("Air yards come from CFBD per attempt, including incompletions, "
+                  "so the per-attempt figure is aDOT. Coverage is partial before "
+                  "2026; the coverage percentage above is of attributed plays.")
+
+
+def _provenance(rows: list[dict[str, Any]]) -> str:
+    from sports_aggregator.cfb.qb_air_yards import CFBD_PARSER_VERSION
+    measured = str(rows[0].get("parser_version") or "") == CFBD_PARSER_VERSION
+    return ("Primary quarterbacks are paired for direct comparison. Backups appear "
+            "only when they account for at least 20% of attributed team pass plays "
+            "and at least 8 plays. " + (_MEASURED_NOTE if measured else _PARSED_NOTE))
+
+
 def _render(repository, game: dict[str, Any]) -> Markup:
     try: rows=game_summary(repository,int(game.get("game_id") or 0))
     except Exception: rows=[]
@@ -78,7 +97,7 @@ def _render(repository, game: dict[str, Any]) -> Markup:
     grouped=defaultdict(list)
     for row in rows: grouped[str(row.get("team") or "Team")].append(row)
     away=str(game.get("away_team") or "Away"); home=str(game.get("home_team") or "Home"); columns=[_team_column(away,grouped.get(away,[])),_team_column(home,grouped.get(home,[]))]
-    return Markup(STYLE+'<section class="pg-qb-air">'+f'<div class="pg-qb-air-head"><h3>Quarterback air yards</h3><span>{escape(METRIC_VERSION)} · play-detail-v3 × {escape(MODEL_VERSION)}</span></div>'+f'<div class="pg-qb-air-grid">{"".join(columns)}</div>'+'<p class="pg-qb-note">Primary quarterbacks are paired for direct comparison. Backups appear only when they account for at least 20% of attributed team pass plays and at least 8 plays. Air yards and YAC are measured only on completions with an unambiguous catch spot; “Air yds / comp” is not full aDOT.</p></section>')
+    return Markup(STYLE+'<section class="pg-qb-air">'+f'<div class="pg-qb-air-head"><h3>Quarterback air yards</h3><span>{escape(METRIC_VERSION)} · {escape(str(rows[0].get("parser_version") or "unknown"))} × {escape(MODEL_VERSION)}</span></div>' +f'<div class="pg-qb-air-grid">{"".join(columns)}</div>'+f'<p class="pg-qb-note">{_provenance(rows)}</p></section>')
 
 
 def install_qb_air_yards_display(app) -> None:

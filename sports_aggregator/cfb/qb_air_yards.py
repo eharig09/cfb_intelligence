@@ -19,6 +19,16 @@ from sports_aggregator.cfb.play_detail import PARSER_VERSION
 from sports_aggregator.cfb.repository import schema_once
 
 METRIC_VERSION = "qb-air-yards-v2"
+
+#: Rows built from CFBD's per-attempt passing detail rather than from play text.
+#: Stored in the same table under their own parser version so both sources can
+#: coexist and `game_summary` can prefer the measured one.
+#:
+#: Worth the separate builder: the text parser recovers air yards on about 1% of
+#: attempts and has to guess which rostered quarterback a compact name like
+#: "#12 M.Alejado" refers to, while the endpoint publishes air yards on ~98% and
+#: carries the provider's own passer id, so nothing is attributed by guesswork.
+CFBD_PARSER_VERSION = "cfbd-passing-v1"
 MODEL_VERSION = "ep-v2"
 
 _NAME = r"[A-Za-z][A-Za-z.'’\-]*(?:\s+[A-Za-z][A-Za-z.'’\-]*)?"
@@ -142,8 +152,127 @@ def build(repository, *, from_season: int = 2025, to_season: int | None = None,
     return {"metric_version":metric_version,"parser_version":parser_version,"model_version":model_version,"from_season":from_season,"to_season":to_season,"quarterback_games":len(rows),"attributed_pass_plays":attributed_pass_plays,"unmatched_pass_plays":unmatched_pass_plays,"passer_attribution_rate":round(attributed_pass_plays/max(1,total_pass_plays),4),"measured_completions":sum(int(r[10]) for r in rows),"attribution_methods":dict(sorted(methods.items())),"pass_play_grammar":dict(sorted(grammars.items())),"unmatched_reasons":dict(sorted(audit.items()))}
 
 
-def game_summary(repository, game_id: int, *, parser_version: str = PARSER_VERSION,
+def game_summary(repository, game_id: int, *, parser_version: str | None = None,
                  model_version: str = MODEL_VERSION, metric_version: str = METRIC_VERSION) -> list[dict[str, Any]]:
+    """Summaries for one game, measured source first.
+
+    CFBD's per-attempt detail is preferred wherever it exists and the play-text
+    parser is the fallback, because the parser recovers air yards on roughly 1%
+    of attempts and has to infer the passer from a compact name. An explicit
+    `parser_version` pins one source, for comparing them.
+    """
     initialize(repository)
+    order = [parser_version] if parser_version else [CFBD_PARSER_VERSION, PARSER_VERSION]
+    candidates = []
     with repository._reader() as connection:
-        return [dict(r) for r in connection.execute("""SELECT * FROM cfb_qb_air_yards_game WHERE game_id=? AND parser_version=? AND model_version=? AND metric_version=? ORDER BY team,attributed_pass_plays DESC,player_name""", (int(game_id), parser_version, model_version, metric_version)).fetchall()]
+        for version in order:
+            rows = connection.execute(
+                """SELECT * FROM cfb_qb_air_yards_game
+                   WHERE game_id=? AND parser_version=? AND model_version=? AND metric_version=?
+                   ORDER BY team,attributed_pass_plays DESC,player_name""",
+                (int(game_id), version, model_version, metric_version)).fetchall()
+            if rows:
+                candidates.append([dict(row) for row in rows])
+    if not candidates:
+        return []
+    # By measured coverage rather than by source. CFBD is the better source
+    # almost everywhere, but a week it has not published yet carries attempts
+    # with no air yards at all, and preferring it there would displace a parsed
+    # row that did have some.
+    def measured(rows: list[dict[str, Any]]) -> float:
+        return sum((row.get("numeric_depth_coverage") or 0) * (row.get("attributed_pass_plays") or 0)
+                   for row in rows)
+    return max(candidates, key=measured)
+
+
+def build_from_cfbd(repository, *, from_season: int | None = None,
+                    to_season: int | None = None,
+                    model_version: str = MODEL_VERSION,
+                    metric_version: str = METRIC_VERSION) -> dict[str, Any]:
+    """Per-game quarterback summaries from CFBD's measured attempts."""
+    from sports_aggregator.cfb.passing_plays import DEPTH_BANDS, initialize as initialize_passing
+
+    initialize(repository)
+    initialize_passing(repository)
+    bounds, params = [], [model_version]
+    if from_season is not None:
+        bounds.append("p.season >= ?"); params.append(int(from_season))
+    if to_season is not None:
+        bounds.append("p.season <= ?"); params.append(int(to_season))
+    where = (" AND " + " AND ".join(bounds)) if bounds else ""
+
+    with repository._reader() as connection:
+        rows = connection.execute(f"""
+            SELECT p.game_id, p.season, p.offense AS team, p.defense AS opponent,
+                   p.passer_id, p.passer, p.air_yards, p.yards_after_catch,
+                   p.outcome, e.epa
+            FROM cfbd_passing_plays p
+            LEFT JOIN cfb_play_epa e
+              ON e.play_id = p.play_id AND e.model_version = ?
+            WHERE p.passer IS NOT NULL{where}
+        """, tuple(params)).fetchall()
+
+    def band(air: float) -> str:
+        for name, low, high in DEPTH_BANDS:
+            if (low is None or air >= low) and (high is None or air < high):
+                return name
+        return "deep"
+
+    grouped: dict[tuple, dict[str, Any]] = {}
+    for row in rows:
+        key = (row["game_id"], row["team"], row["passer"])
+        item = grouped.setdefault(key, {
+            "game_id": row["game_id"], "season": row["season"], "team": row["team"],
+            "opponent": row["opponent"], "player_id": row["passer_id"],
+            "player_name": row["passer"], "attempts": 0, "completions": 0,
+            "air": 0.0, "air_n": 0, "yac": 0.0, "yac_n": 0, "epa": 0.0, "epa_n": 0,
+            "behind_line": 0, "short": 0, "intermediate": 0, "deep": 0})
+        item["attempts"] += 1
+        if row["outcome"] == "completion":
+            item["completions"] += 1
+        if row["air_yards"] is not None:
+            air = float(row["air_yards"])
+            item["air"] += air; item["air_n"] += 1; item[band(air)] += 1
+        if row["yards_after_catch"] is not None:
+            item["yac"] += float(row["yards_after_catch"]); item["yac_n"] += 1
+        if row["epa"] is not None:
+            item["epa"] += float(row["epa"]); item["epa_n"] += 1
+
+    now = datetime.now(timezone.utc).isoformat()
+    payload = [(
+        item["game_id"], item["season"], item["team"], item["opponent"],
+        item["player_id"], item["player_name"], CFBD_PARSER_VERSION, model_version,
+        metric_version, item["attempts"], item["completions"],
+        item["air"] if item["air_n"] else None,
+        (item["air"] / item["air_n"]) if item["air_n"] else None,
+        item["yac"] if item["yac_n"] else None,
+        (item["yac"] / item["yac_n"]) if item["yac_n"] else None,
+        item["epa"] if item["epa_n"] else None,
+        (item["epa"] / item["epa_n"]) if item["epa_n"] else None,
+        item["behind_line"], item["short"], item["intermediate"], item["deep"],
+        # Availability, reported rather than assumed: a depth profile drawn from
+        # a third of the throws is a different claim from one drawn from all.
+        (item["air_n"] / item["attempts"]) if item["attempts"] else 0.0, now,
+    ) for item in grouped.values()]
+
+    # The table has a foreign key to `games`, and passing detail can arrive for a
+    # game the schedule sync has not stored yet. Dropping those rows keeps one
+    # orphan from failing the insert and losing every other row with it.
+    with repository._reader() as connection:
+        known = {row[0] for row in connection.execute(
+            "SELECT game_id FROM games WHERE game_id IN (%s)"
+            % ",".join("?" * len({row[0] for row in payload})),
+            tuple({row[0] for row in payload}))} if payload else set()
+    skipped = [row for row in payload if row[0] not in known]
+    payload = [row for row in payload if row[0] in known]
+
+    with repository.transaction() as connection:
+        connection.execute(
+            "DELETE FROM cfb_qb_air_yards_game WHERE parser_version=?", (CFBD_PARSER_VERSION,))
+        connection.executemany(
+            "INSERT OR REPLACE INTO cfb_qb_air_yards_game VALUES (%s)" % ",".join("?" * 23),
+            payload)
+    return {"rows": len(payload), "games": len({row[0] for row in payload}),
+            "skipped_unknown_games": len({row[0] for row in skipped}),
+            "parser_version": CFBD_PARSER_VERSION,
+            "from_season": from_season, "to_season": to_season}
