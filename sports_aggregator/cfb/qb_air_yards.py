@@ -267,8 +267,17 @@ def build_from_cfbd(repository, *, from_season: int | None = None,
     payload = [row for row in payload if row[0] in known]
 
     with repository.transaction() as connection:
+        # Scoped to the seasons being rebuilt, the way `build` above does it.
+        # Deleting every row for the parser version meant building one season
+        # threw away all the others: a 2026 run left 21 rows where 3,007 had been.
+        clauses, delete_params = ["parser_version=?"], [CFBD_PARSER_VERSION]
+        if from_season is not None:
+            clauses.append("season >= ?"); delete_params.append(int(from_season))
+        if to_season is not None:
+            clauses.append("season <= ?"); delete_params.append(int(to_season))
         connection.execute(
-            "DELETE FROM cfb_qb_air_yards_game WHERE parser_version=?", (CFBD_PARSER_VERSION,))
+            "DELETE FROM cfb_qb_air_yards_game WHERE " + " AND ".join(clauses),
+            tuple(delete_params))
         connection.executemany(
             "INSERT OR REPLACE INTO cfb_qb_air_yards_game VALUES (%s)" % ",".join("?" * 23),
             payload)

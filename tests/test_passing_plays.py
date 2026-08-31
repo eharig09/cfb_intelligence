@@ -345,6 +345,20 @@ class QbAirYardsSourceTests(unittest.TestCase):
         self.assertEqual(report["rows"], 1)
         self.assertEqual(report["skipped_unknown_games"], 1)
 
+    def test_building_one_season_leaves_the_others_alone(self):
+        """An unscoped delete turned 3,007 rows into 21 when 2026 was built."""
+        from sports_aggregator.cfb.qb_air_yards import build_from_cfbd
+        build_from_cfbd(self.repository, from_season=2025, to_season=2025)
+        before = self.stored_rows()
+        self.assertTrue(before)
+        build_from_cfbd(self.repository, from_season=2026, to_season=2026)
+        self.assertEqual(self.stored_rows(), before, "the 2025 rows were discarded")
+
+    def stored_rows(self):
+        with closing(sqlite3.connect(self.path)) as connection:
+            return connection.execute(
+                "SELECT COUNT(*) FROM cfb_qb_air_yards_game WHERE season=2025").fetchone()[0]
+
     def test_it_builds_a_row_per_passer_per_game(self):
         from sports_aggregator.cfb.qb_air_yards import build_from_cfbd
         report = build_from_cfbd(self.repository, from_season=2025, to_season=2025)
