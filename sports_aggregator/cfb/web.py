@@ -14,6 +14,7 @@ from sports_aggregator.social.roles import role_label
 from sports_aggregator.cfb.insights import games_to_watch
 from sports_aggregator.cfb.ats import matchup_ats
 from sports_aggregator.cfb.draft import position_targets, prospect_board
+from sports_aggregator.cfb.draft_matchups import annotate_board
 from sports_aggregator.cfb.prospects import (
     board_with_profile, consensus_board, reconcile)
 from sports_aggregator.cfb.external import (
@@ -919,8 +920,16 @@ def draft_watch():
     repository = _repository()
     conference = (request.args.get("conference") or "").strip() or None
     board = prospect_board(repository, roster_season=season, limit=80, conference=conference)
-    full_board = prospect_board(repository, roster_season=season, limit=500)
+    # The filter used to reach only the position cards. Everything below is
+    # built from `full_board`, so a conference pill changed a corner of the page
+    # and left the 250-row board it sits above completely alone -- which reads
+    # as a filter that does not work.
+    full_board = prospect_board(repository, roster_season=season, limit=500,
+                                conference=conference)
     comparison = reconcile(repository, full_board, draft_year=2027)
+    annotate_board(repository, board.get("prospects") or [], season=season)
+    watch_entries = annotate_board(
+        repository, board_with_profile(repository, full_board, limit=100), season=season)
     return render_template(
         "cfb_draft.html",
         season=season,
@@ -930,8 +939,9 @@ def draft_watch():
         conferences=_with_conference_identity(repository.conferences()),
         prospect_table=views.prospect_table(board, season, dense=True),
         draft_watch_table=views.draft_watch_table(
-            board_with_profile(repository, full_board, limit=100), season,
-            caption="2027 consensus board"),
+            watch_entries, season,
+            caption=("2027 consensus board" if not conference
+                     else f"2027 consensus board · {conference}")),
         consensus_table=views.consensus_table(
             consensus_board(repository, draft_year=2027, limit=100), season),
         agree_table=views.divergence_table(

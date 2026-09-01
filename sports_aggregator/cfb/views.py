@@ -1914,6 +1914,20 @@ def draft_watch_table(entries: Sequence[dict[str, Any]], season: int, *,
             "profile": (profile * 100) if profile is not None else None,
             "verdict": entry.get("verdict"),
         }
+        # Where and when you can actually watch him, and against what. Absent
+        # for a team with no game left, which is the honest answer rather than a
+        # dash pretending to be one.
+        if entry.get("next_opponent"):
+            item["next_game"] = ("vs " if entry.get("next_is_home") else "at ") + str(
+                entry["next_opponent"])
+            item["next_game_url"] = url_for("cfb.game_preview", game_id=entry["next_game_id"])
+            if entry.get("next_week"):
+                item["next_game_sub"] = f"Week {entry['next_week']}"
+            item["opposing_group"] = entry.get("opposing_group")
+            grade = entry.get("opposing_grade")
+            if grade is not None:
+                item["opposing_group_sub"] = f"{grade:.1f} avg PFF"
+            item["watch_score"] = entry.get("watch_score")
         brand_cell(item, "team", {"logo": entry.get("logo"), "logo_dark": entry.get("logo_dark"),
                             "color": entry.get("color")})
         rows.append(item)
@@ -1928,11 +1942,19 @@ def draft_watch_table(entries: Sequence[dict[str, Any]], season: int, *,
                title="2025 PFF interest score, where a profile is linked"),
         Column(key="profile", label="vs drafted", format="pct",
                title="Percentile against players actually drafted at this position"),
+        Column(key="next_game", label="Next", align="left",
+               title="The player's next scheduled game"),
+        Column(key="opposing_group", label="Facing", align="left",
+               title="The opposing group this position spends the game against,"
+                     " with that unit's average PFF grade"),
+        Column(key="watch_score", label="Watch", format="f1",
+               title="The player's grade weighted 4:1 against how much the game"
+                     " itself is worth watching"),
         Column(key="verdict", label="Read", align="left",
                title="How the consensus rank and the production profile compare"),
     ]
     return Table(columns=columns, rows=rows, caption=caption,
-                 note="consensus board + our profile",
+                 note="consensus board + our profile, with the next game",
                  empty="No consensus board has been imported for this draft year.",
                  dense=dense)
 

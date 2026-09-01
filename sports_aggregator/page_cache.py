@@ -81,6 +81,18 @@ def code_version() -> str:
 
 
 def caching_disabled() -> bool:
+    """Never cache while developing.
+
+    The key carries a data version and a code version, but the code version is
+    only a real one where the deployment supplies it -- Render sets
+    RENDER_GIT_COMMIT. Everywhere else it falls back to a fixed token, so
+    editing a template or a view does not change the key and the cache keeps
+    serving the page built by the old code until the entry expires or something
+    writes to the database. On a debug server that reads as "my change did
+    nothing", which is the worst possible answer to a refresh.
+    """
+    if current_app.debug:
+        return True
     return bool(current_app.config.get("TESTING")) or page_cache_seconds() <= 0
 
 
