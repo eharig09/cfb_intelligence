@@ -1,0 +1,166 @@
+{% extends "_layout.html" %}
+{% block title %}Data import | College Football{% endblock %}
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_data_import.css') }}">
+{% endblock %}
+{% block breadcrumb %}<a href="{{ url_for('cfb.today') }}">College Football</a><span class="tagline">Data import</span>{% endblock %}
+{% block content %}
+<section class="section import-page">
+    <div class="eyebrow">Private data admin</div>
+    <h1>Import CSV data</h1>
+    <p class="section-note">
+        PFF and CFBDepth are the two sources that arrive as files rather than
+        over an API. Every upload is validated before a single row is replaced,
+        so a batch that fails checks leaves what is already loaded untouched.
+        Files are parsed into the CFB database and are never written into the
+        repository.
+    </p>
+    <p class="section-note">
+        Looking for the API-fed sources? Those live on the
+        <a href="{{ url_for('cfb_data_status.data_status') }}">data status</a> page.
+    </p>
+
+    {% if result %}
+    <article class="import-result {{ 'ok' if result.ok else 'bad' }}" role="status">
+        <strong>{{ result.headline }}</strong>
+        {% if result.detail %}<p>{{ result.detail }}</p>{% endif %}
+        {% if result.rows %}
+        <ul class="import-result-rows">
+            {% for row in result.rows %}
+            <li><b>{{ row.dataset }}</b> <span class="kind">{{ row.kind }}</span> {{ row.detail }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </article>
+    {% endif %}
+
+    {# ---------------------------------------------------------------- PFF #}
+    <article class="import-source">
+        <header class="import-head">
+            <div>
+                <h2>PFF</h2>
+                <div class="import-sub">
+                    Season {{ pff.season }} snapshot
+                    {%- if seasons|length > 1 %}
+                    <form class="import-season" method="get" action="{{ url_for('cfb_data_import.data_import') }}">
+                        <label for="season-pick">Show</label>
+                        <select id="season-pick" name="season" onchange="this.form.submit()">
+                            {%- for option in seasons %}
+                            <option value="{{ option }}"{{ ' selected' if option == pff.season }}>{{ option }}</option>
+                            {%- endfor %}
+                        </select>
+                        <noscript><button type="submit">Go</button></noscript>
+                    </form>
+                    {%- endif %}
+                </div>
+            </div>
+            <div class="import-freshness {{ 'stale' if not pff.loaded }}">
+                <b>{{ pff.relative }}</b>
+                <span>{{ pff.last_import or 'no batch imported' }}</span>
+            </div>
+        </header>
+
+        <div class="import-facts">
+            <div><b>{{ '{:,}'.format(pff.rows) }}</b><span>metric rows</span></div>
+            <div><b>{{ '{:,}'.format(pff.players) }}</b><span>players</span></div>
+            <div><b>{{ '{:,}'.format(pff.linked) }}</b><span>linked to a roster</span></div>
+            <div><b>{{ pff.primary_present }}/{{ pff.primary_expected }}</b><span>primary datasets</span></div>
+            <div><b>{{ pff.supplemental_present }}/{{ pff.supplemental_expected }}</b><span>supplemental</span></div>
+        </div>
+
+        <details class="import-detail">
+            <summary>What is loaded, dataset by dataset</summary>
+            <div class="table-overflow">
+                <table class="import-table">
+                    <thead>
+                        <tr><th>Dataset</th><th>Kind</th><th class="num">Rows</th><th>Imported</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for group, kind in [(pff.primary, 'primary'), (pff.supplemental, 'supplemental')] %}
+                        {% for row in group %}
+                        <tr class="{{ '' if row.present else 'absent' }}">
+                            <td>{{ row.dataset }}</td>
+                            <td class="kind">{{ kind }}</td>
+                            <td class="num">{{ '{:,}'.format(row.rows) if row.present else '—' }}</td>
+                            <td>{{ row.relative }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+
+        <form class="import-form" method="post" enctype="multipart/form-data"
+              action="{{ url_for('cfb_data_import.import_pff') }}">
+            <p class="import-note">
+                Select the whole export batch at once. Files are recognized by
+                their column headers, not their names, so browser-added suffixes
+                are fine. All {{ pff.primary_expected }} primary datasets must be
+                present or the batch is refused.
+            </p>
+            <div class="import-fields">
+                <label>Admin PIN or refresh token
+                    <input type="password" name="token" required autocomplete="current-password">
+                </label>
+                <label>PFF season
+                    <input type="number" name="season" value="{{ season }}" min="2000" max="2100">
+                </label>
+                <label>Roster season
+                    <input type="number" name="roster_season" value="{{ roster_season }}" min="2000" max="2100">
+                </label>
+            </div>
+            <label class="import-file">Export batch (.csv, select all)
+                <input type="file" name="batch" accept=".csv,text/csv" multiple required>
+            </label>
+            <label class="import-check">
+                <input type="checkbox" name="validate_only" value="1">
+                Validate only — report what would happen without importing
+            </label>
+            <button type="submit">Validate and import batch</button>
+        </form>
+    </article>
+
+    {# ----------------------------------------------------------- CFBDepth #}
+    <article class="import-source">
+        <header class="import-head">
+            <div>
+                <h2>CFBDepth</h2>
+                <div class="import-sub">Private exports · replaced whole, not merged</div>
+            </div>
+            <div class="import-freshness {{ 'stale' if not cfbdepth.loaded }}">
+                <b>{{ cfbdepth.relative }}</b>
+                <span>{{ cfbdepth.last_import or 'no export imported' }}</span>
+            </div>
+        </header>
+
+        <div class="import-facts">
+            {% for entry in cfbdepth.entries %}
+            <div>
+                <b>{{ '{:,}'.format(entry.rows) }}</b>
+                <span>{{ entry.label|lower }} · {{ entry.relative }}</span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <form class="import-form" method="post" enctype="multipart/form-data"
+              action="{{ url_for('cfb_data_import.import_cfbdepth') }}">
+            <p class="import-note">
+                Upload any combination of the three. Each replaces its own
+                snapshot entirely; the ones you leave empty are left alone.
+            </p>
+            <div class="import-fields">
+                <label>Admin PIN or refresh token
+                    <input type="password" name="token" required autocomplete="current-password">
+                </label>
+            </div>
+            {% for entry in cfbdepth.entries %}
+            <label class="import-file">{{ entry.label }} CSV
+                <input type="file" name="{{ entry.key }}" accept=".csv,text/csv">
+            </label>
+            {% endfor %}
+            <button type="submit">Validate and import selected exports</button>
+        </form>
+    </article>
+</section>
+{% endblock %}

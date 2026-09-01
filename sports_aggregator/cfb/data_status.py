@@ -109,6 +109,13 @@ def _relative_time(value: Any) -> str:
     return f"{hours // 24} d ago"
 
 
+#: Public names for the import page, which shows the same two kinds of
+#: timestamp and should not grow its own copy of them -- particularly of the
+#: Windows fix above, which is invisible until every page 500s.
+display_time = _display_time
+relative_time = _relative_time
+
+
 def _safe_step(row: dict[str, Any]) -> dict[str, Any]:
     step = str(row.get("step") or "unknown")
     result = {

@@ -1,0 +1,117 @@
+/* Presentation for cfb_data_import.html.
+   Kept as its own file rather than merged into a shared one: several of
+   these selectors are named the same as another page's and mean something
+   different, and the isolation the inline block gave them is the point. */
+
+.import-page { max-width: 940px; margin: 0 auto; }
+.import-page h1 { margin: .15rem 0 .5rem; }
+
+/* Each source is one block: what is loaded, then the control that changes it.
+   The order matters more than it looks -- the state has to be readable before
+   the operator commits to replacing it. */
+.import-source {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--paper);
+    padding: 1rem 1.1rem 1.15rem;
+    margin: 1.25rem 0;
+}
+.import-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 1rem; flex-wrap: wrap;
+    padding-bottom: .7rem; border-bottom: 1px solid var(--cell-line);
+}
+.import-head h2 { margin: 0; font-size: 1.15rem; }
+.import-sub { color: var(--muted); font-size: .82rem; margin-top: .2rem; }
+
+.import-freshness { text-align: right; line-height: 1.35; }
+.import-freshness b { display: block; font-size: .95rem; }
+.import-freshness span { color: var(--muted); font-size: .76rem; }
+.import-freshness.stale b { color: var(--gold); }
+
+.import-facts {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: .7rem; margin: .9rem 0 .2rem;
+}
+.import-facts div {
+    border: 1px solid var(--cell-line); border-radius: 8px;
+    padding: .55rem .65rem; background: var(--cream);
+}
+.import-facts b { display: block; font-family: var(--display-font); font-size: 1.05rem; }
+.import-facts span { color: var(--muted); font-size: .74rem; }
+
+.import-detail { margin: .9rem 0 .2rem; }
+.import-detail summary { cursor: pointer; font-size: .84rem; color: var(--head-ink); }
+.import-table { width: 100%; border-collapse: collapse; margin-top: .6rem; }
+.import-table th, .import-table td {
+    text-align: left; padding: .45rem .5rem;
+    border-bottom: 1px solid var(--cell-line); font-size: .84rem;
+}
+.import-table th {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted);
+}
+.import-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* A dataset with no rows is the thing an operator is looking for, so it is
+   dimmed rather than hidden -- absence is the finding. */
+.import-table tr.absent td { color: var(--muted); }
+.import-table .kind, .import-result-rows .kind {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted);
+}
+
+.import-form { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--cell-line); }
+.import-note { color: var(--muted); font-size: .82rem; margin: 0 0 .8rem; }
+.import-fields {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: .7rem; margin-bottom: .8rem;
+}
+.import-form label { display: block; font-size: .8rem; color: var(--head-ink); }
+.import-form input[type="password"],
+.import-form input[type="number"],
+.import-form input[type="file"] {
+    display: block; width: 100%; margin-top: .3rem;
+    background: var(--cream); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: .5rem .6rem; font: inherit; font-size: .85rem;
+}
+.import-file { margin-bottom: .7rem; }
+.import-check {
+    display: flex; align-items: center; gap: .45rem;
+    margin: .2rem 0 .9rem; color: var(--head-ink);
+}
+.import-check input { margin: 0; }
+.import-form button {
+    border: 1px solid var(--field-border); background: var(--paper);
+    color: var(--ink); border-radius: 7px; padding: .55rem .85rem;
+    font: inherit; font-weight: 800; cursor: pointer;
+}
+.import-form button:hover { border-color: var(--line-strong); }
+
+.import-result {
+    border: 1px solid var(--line); border-left-width: 3px; border-radius: 8px;
+    padding: .8rem 1rem; margin: 1rem 0; background: var(--paper);
+}
+.import-result.ok { border-left-color: var(--green); }
+.import-result.bad {
+    border-left-color: var(--red);
+    background: color-mix(in srgb, var(--red) 8%, var(--paper));
+}
+.import-result p { margin: .4rem 0 0; font-size: .85rem; color: var(--head-ink); }
+.import-result-rows { margin: .6rem 0 0; padding-left: 1.1rem; font-size: .82rem; }
+.import-result-rows li { margin: .15rem 0; }
+
+@media (max-width: 640px) {
+    .import-head { display: block; }
+    .import-freshness { text-align: left; margin-top: .5rem; }
+    .import-table th:nth-child(2), .import-table td:nth-child(2) { display: none; }
+}
+
+/* The season the page opens on is the newest one with data, not the one on
+   the clock -- so the picker has to say which it landed on. */
+.import-season { display: inline-flex; align-items: center; gap: .35rem; margin-left: .5rem; }
+.import-season label { font-size: .74rem; color: var(--muted); }
+.import-season select {
+    background: var(--cream); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 6px; padding: .15rem .35rem; font: inherit; font-size: .78rem;
+}

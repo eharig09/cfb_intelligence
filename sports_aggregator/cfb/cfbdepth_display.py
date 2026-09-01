@@ -1,25 +1,23 @@
-"""Presentation and protected upload flow for private CFBDepth exports."""
+"""Presentation of private CFBDepth exports inside the ordinary pages.
+
+The upload flow moved to `data_import`, which shows what each source
+currently holds beside the control that replaces it.
+"""
 
 from __future__ import annotations
 
 from html import escape
-import secrets
 from typing import Any
 
-from flask import Blueprint, current_app, render_template_string, request, session
+from flask import current_app
 from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
 from sports_aggregator.cfb.cfbdepth_data import (
-    import_player_updates,
-    import_roster_breakdown,
-    import_team_impact,
     player_updates,
     roster_breakdown,
     team_impact,
 )
-from sports_aggregator.cfb.cfbdepth_flexible import canonicalize_cfbdepth_upload
-from sports_aggregator.page_cache import cache
 
 
 TEAM_FACTS_END = '</div>\n\n<nav class="mobile-page-tabs"'
@@ -140,54 +138,6 @@ def _player_update_cards(repository, name: str, team: str) -> Markup:
     return Markup("".join(rendered))
 
 
-IMPORT_PAGE = """
-{% extends "_layout.html" %}
-{% block title %}CFBDepth Import | College Football{% endblock %}
-{% block content %}
-<section class="section" style="max-width:760px;margin:auto">
-  <div class="eyebrow">Private data admin</div>
-  <h1>Import CFBDepth exports</h1>
-  <div class="section-note">Files are preflighted and header-normalized before any snapshot table is replaced. The files are parsed into the persistent CFB SQLite database and are not written into the Git repository.</div>
-  {% if message %}<article class="card"><strong>{{ message }}</strong></article>{% endif %}
-  <form method="post" enctype="multipart/form-data" style="display:grid;gap:12px">
-    <label>Admin PIN or refresh token<br><input type="password" name="token" required style="width:100%"></label>
-    <label>Roster Breakdown CSV<br><input type="file" name="roster" accept=".csv,text/csv"></label>
-    <label>Team Impact Report CSV<br><input type="file" name="impact" accept=".csv,text/csv"></label>
-    <label>Player Updates CSV<br><input type="file" name="updates" accept=".csv,text/csv"></label>
-    <button type="submit">Validate and import selected exports</button>
-  </form>
-</section>
-{% endblock %}
-"""
-
-
-def _authorized() -> bool:
-    if session.get("cfb_admin") is True:
-        return True
-    supplied = str(request.form.get("token") or "").strip()
-    if not supplied:
-        return False
-    for key in ("CFB_ADMIN_PIN", "CFB_REFRESH_TOKEN"):
-        expected = str(current_app.config.get(key) or "").strip()
-        if expected and secrets.compare_digest(supplied, expected):
-            return True
-    return False
-
-
-def _safe_upload(file_storage, expected_kind: str) -> tuple[str, str] | None:
-    if not file_storage or not file_storage.filename:
-        return None
-    raw = file_storage.read()
-    check, canonical = canonicalize_cfbdepth_upload(
-        raw, expected_kind=expected_kind, label=file_storage.filename
-    )
-    optional_note = (
-        f"; optional columns absent: {', '.join(check.missing_optional)}"
-        if check.missing_optional else ""
-    )
-    return canonical, optional_note
-
-
 def install_cfbdepth_display(app) -> None:
     if app.extensions.get("cfbdepth_display_installed"):
         return
@@ -198,49 +148,4 @@ def install_cfbdepth_display(app) -> None:
     app.jinja_loader = _CFBDepthTemplateLoader(app.jinja_loader)
     app.jinja_env.cache.clear()
 
-    blueprint = Blueprint("cfbdepth_private", __name__)
-
-    @blueprint.route("/college-football/cfbdepth-import/", methods=["GET", "POST"])
-    def import_page():
-        message = None
-        if request.method == "POST":
-            if not _authorized():
-                return render_template_string(IMPORT_PAGE, message="Authorization failed."), 401
-            try:
-                prepared = {
-                    "roster": _safe_upload(request.files.get("roster"), "roster"),
-                    "impact": _safe_upload(request.files.get("impact"), "impact"),
-                    "updates": _safe_upload(request.files.get("updates"), "updates"),
-                }
-            except ValueError as exc:
-                # Crucially, no importer has been called yet, so the current
-                # production snapshots remain untouched when preflight fails.
-                return render_template_string(
-                    IMPORT_PAGE, message=f"Validation failed — existing data was not changed. {exc}"
-                ), 400
-
-            counts = []
-            warnings = []
-            if prepared["roster"]:
-                canonical, note = prepared["roster"]
-                counts.append(f"roster={import_roster_breakdown(repository, canonical)}")
-                if note:
-                    warnings.append("roster" + note)
-            if prepared["impact"]:
-                canonical, note = prepared["impact"]
-                counts.append(f"impact={import_team_impact(repository, canonical)}")
-                if note:
-                    warnings.append("impact" + note)
-            if prepared["updates"]:
-                canonical, note = prepared["updates"]
-                counts.append(f"updates={import_player_updates(repository, canonical)}")
-                if note:
-                    warnings.append("updates" + note)
-            cache.clear()
-            message = "Imported " + ", ".join(counts) if counts else "No CSV files selected."
-            if warnings:
-                message += " Warnings: " + " | ".join(warnings)
-        return render_template_string(IMPORT_PAGE, message=message)
-
-    app.register_blueprint(blueprint)
     app.extensions["cfbdepth_display_installed"] = True

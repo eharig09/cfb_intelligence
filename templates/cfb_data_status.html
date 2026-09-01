@@ -11,7 +11,8 @@
 <div class="data-status-wrap">
   <div class="data-status-hero"><div><div class="data-status-muted">Quiet system view</div><h1>Data Status & Content Audit</h1><div class="data-status-muted">Last completed refresh: {{ status.latest_finished_label }}{% if status.latest_relative_label != 'unknown' %} · {{ status.latest_relative_label }}{% endif %}</div></div><div class="data-status-pill">{% if status.running %}<span class="data-status-warn">●</span> Refresh running{% elif status.latest_status == 'success' %}<span class="data-status-ok">●</span> Healthy{% elif status.latest_status == 'degraded' %}<span class="data-status-warn">●</span> Degraded{% elif status.latest_status == 'failed' %}<span class="data-status-bad">●</span> Needs attention{% else %}<span>●</span> No status yet{% endif %}</div></div>
 
-  <div class="audit-subnav"><a href="#content-audit">Recent content</a><a href="#connections">Connections</a><a href="#flagged-links">Flagged links</a><a href="#refresh-history">Refresh history</a></div>
+  <div class="audit-subnav"><a href="#content-audit">Recent content</a><a href="#connections">Connections</a><a href="#flagged-links">Flagged links</a><a href="#refresh-history">Refresh history</a>{#- The sources that arrive as files rather than over an API are not
+    refreshed by anything on this page, so this is the only route to them. -#}<a href="{{ url_for('cfb_data_import.data_import') }}">Import CSV data</a></div>
 
   <div class="data-status-grid"><div class="data-status-card"><strong>Latest profile</strong><span class="data-status-muted">{{ status.latest_profile|title }}</span></div><div class="data-status-card"><strong>Latest result</strong><span class="data-status-muted">{{ status.latest_status|title }}</span></div><div class="data-status-card"><strong>Refresh activity</strong><span class="data-status-muted">{{ 'Running now' if status.running else 'Idle' }}</span></div></div>
 
