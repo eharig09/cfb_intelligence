@@ -15,13 +15,7 @@ ANCHOR = "{{ postgame_analysis(game, team_stats, player_stats) }}"
 REPLACEMENT = ANCHOR + "\n{{ postgame_tendencies(game) }}"
 MIN_METRIC_SAMPLE = 4
 
-STYLE = '''<style>
-.pg-tendency{margin:0 0 18px}.pg-tendency-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-end;margin:17px 0 7px;padding-bottom:6px;border-bottom:1px solid var(--line)}.pg-tendency-head h3{margin:0;font-size:.8rem}.pg-tendency-head span{font-size:.51rem;color:var(--muted)}
-.pg-tendency-teams{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pg-tendency-team{min-width:0}.pg-tendency-team>h4{margin:0 0 6px;font-size:.69rem}
-.pg-tendency-block{border-top:1px solid var(--line);margin-top:7px;padding-top:6px}.pg-tendency-block:first-of-type{margin-top:0}.pg-tendency-label{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:3px}.pg-tendency-label strong{font-size:.58rem;text-transform:uppercase;letter-spacing:.055em}.pg-tendency-label span{font-size:.48rem;color:var(--muted)}
-.pg-tendency-row{display:grid;grid-template-columns:minmax(72px,1fr) 48px 66px 58px;gap:6px;align-items:center;padding:4px 0;border-top:1px solid color-mix(in srgb,var(--line) 72%,transparent);font-size:.57rem}.pg-tendency-row.header{border-top:0;color:var(--muted);font-size:.47rem;text-transform:uppercase;letter-spacing:.045em;font-weight:800}.pg-tendency-row .num{text-align:right;font-variant-numeric:tabular-nums}.pg-tendency-row .value{font-weight:750;text-transform:capitalize}.pg-tendency-row .epa{font-family:var(--display-font);font-size:.65rem}.pg-tendency-row.low-sample{color:var(--muted)}.pg-tendency-row.low-sample .value:after{content:" · small sample";font-size:.45rem;font-weight:500;text-transform:none}.pg-tendency-note{margin:7px 0 0;font-size:.53rem;line-height:1.45;color:var(--muted)}
-@media(max-width:720px){.pg-tendency-teams{grid-template-columns:1fr}.pg-tendency-head span{display:none}}@media(max-width:430px){.pg-tendency-row{grid-template-columns:minmax(68px,1fr) 42px 60px 52px}}
-</style>'''
+STYLE = ""  # served from static/cfb_analysis.css, not inlined per render
 
 LABELS={"rush_direction":"Rush direction","pass_depth":"Pass depth","pass_location":"Pass location"}
 ORDER=("rush_direction","pass_depth","pass_location")

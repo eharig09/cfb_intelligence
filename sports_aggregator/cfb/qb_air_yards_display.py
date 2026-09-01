@@ -16,11 +16,7 @@ REPLACEMENT = ANCHOR + "\n{{ postgame_qb_air_yards(game) }}"
 BACKUP_SHARE_MIN = 0.20
 BACKUP_PLAYS_MIN = 8
 
-STYLE = '''<style>
-.pg-qb-air{margin:0 0 18px}.pg-qb-air-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-end;margin:17px 0 7px;padding-bottom:6px;border-bottom:1px solid var(--line)}.pg-qb-air-head h3{margin:0;font-size:.8rem}.pg-qb-air-head span{font-size:.51rem;color:var(--muted)}
-.pg-qb-air-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.pg-qb-team{min-width:0}.pg-qb-team-head{margin:0 0 5px;font-size:.57rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:850}.pg-qb-card{border-top:2px solid var(--line);padding:9px 0 10px;min-width:0}.pg-qb-card.backup{border-top:1px solid var(--line);padding-top:8px}.pg-qb-card h4{margin:0 0 7px;font-size:.72rem}.pg-qb-card.backup h4{font-size:.65rem}.pg-qb-card h4 a{text-decoration:none}.pg-qb-role{color:var(--muted);font-size:.48rem;text-transform:uppercase;letter-spacing:.05em;margin-left:5px}.pg-qb-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pg-qb-metric span{display:block;font-size:.45rem;text-transform:uppercase;letter-spacing:.055em;color:var(--muted);font-weight:800}.pg-qb-metric strong{display:block;margin-top:2px;font-family:var(--display-font);font-size:.75rem;font-variant-numeric:tabular-nums}.pg-qb-card.backup .pg-qb-metric strong{font-size:.68rem}.pg-qb-depth{margin-top:8px;padding-top:7px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:5px 10px;font-size:.53rem}.pg-qb-depth strong{font-variant-numeric:tabular-nums}.pg-qb-note{margin:7px 0 0;color:var(--muted);font-size:.52rem;line-height:1.45}
-@media(max-width:760px){.pg-qb-air-grid{grid-template-columns:1fr}.pg-qb-air-head span{display:none}}@media(max-width:480px){.pg-qb-metrics{grid-template-columns:1fr 1fr}}
-</style>'''
+STYLE = ""  # served from static/cfb_analysis.css, not inlined per render
 
 
 class _Loader(BaseLoader):

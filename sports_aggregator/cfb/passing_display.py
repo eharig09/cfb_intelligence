@@ -29,58 +29,7 @@ from sports_aggregator.cfb.middle_of_field import (
 from sports_aggregator.cfb.passing_plays import DEPTH_BANDS, MIN_SEASON_ATTEMPTS, passer_profile
 
 
-STYLE = '''<style>
-.pass-map{margin:8px 0 4px}
-.pass-map-grid{display:grid;grid-template-columns:1fr;gap:10px}
-@media(min-width:760px){.pass-map-grid{grid-template-columns:1fr 1fr}}
-.pass-team{border:1px solid var(--line);background:var(--paper);min-width:0}
-.pass-team h4{margin:0;padding:8px 11px;border-bottom:1px solid var(--line);font-size:.72rem;
-  display:flex;justify-content:space-between;gap:8px;align-items:baseline}
-.pass-team h4 span{color:var(--muted);font-size:.55rem;font-weight:700}
-.pass-side{padding:9px 11px}
-.pass-side+.pass-side{border-top:1px solid var(--line)}
-.pass-side-label{font-size:.5rem;text-transform:uppercase;letter-spacing:.07em;
-  color:var(--muted);font-weight:850;margin-bottom:6px}
-.pass-row{display:grid;grid-template-columns:minmax(64px,.6fr) repeat(3,minmax(0,1fr));gap:8px;
-  padding:5px 0;border-top:1px solid var(--cell-line);font-size:.63rem;align-items:baseline}
-.pass-row:first-of-type{border-top:0}
-.pass-row .num{text-align:right;font-variant-numeric:tabular-nums}
-.pass-row.head{color:var(--muted);font-size:.5rem;text-transform:uppercase;
-  letter-spacing:.06em;font-weight:850}
-.pass-row strong{font-family:var(--display-font);font-size:.78rem}
-.pass-row .best{color:var(--edge);font-weight:900}
-.pass-thin{color:var(--muted);font-style:italic}
-.pass-note{color:var(--muted);font-size:.56rem;line-height:1.45;margin:8px 0 0}
-.mof-verdict{border-left:3px solid var(--edge);background:var(--paper);padding:8px 12px;margin:8px 0;font-size:.72rem}
-.mof-block+.mof-block{margin-top:14px}
-.mof-block h3{margin:0 0 6px;font-size:.74rem}
-.mof-grid{border:1px solid var(--line);background:var(--paper);margin:8px 0 4px}
-.mof-row{display:grid;grid-template-columns:minmax(96px,1.1fr) repeat(var(--mof-columns),minmax(0,1fr));gap:8px;padding:7px 11px;border-top:1px solid var(--cell-line);align-items:baseline}
-.mof-row:first-child{border-top:0}
-.mof-header{background:var(--head-bg);color:var(--head-ink)}
-.mof-head{font-size:.52rem;text-transform:uppercase;letter-spacing:.05em;font-weight:850;text-align:right}
-.mof-label{font-size:.63rem;font-weight:750}
-.mof-total{border-top:2px solid var(--line-strong)}
-.mof-total .mof-label{font-weight:900}
-.mof-cell{text-align:right;min-width:0}
-.mof-cell strong{display:block;font-family:var(--display-font);font-size:.82rem;font-variant-numeric:tabular-nums}
-.mof-cell strong.best{color:var(--edge)}
-.mof-cell span{display:block;color:var(--muted);font-size:.5rem;margin-top:1px}
-.mof-phases .mof-row{grid-template-columns:minmax(88px,1fr) repeat(var(--mof-columns),minmax(0,1fr))}
-@media(max-width:820px){.mof-phases{overflow-x:auto}.mof-phases .mof-row{min-width:640px}}
-.pass-qb-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;
-  background:var(--line);border:1px solid var(--line);margin:8px 0}
-@media(min-width:620px){.pass-qb-facts{grid-template-columns:repeat(5,minmax(0,1fr))}}
-.pass-qb-fact{background:var(--paper);padding:8px 10px}
-.pass-qb-fact b{display:block;font:800 1.02rem var(--display-font);font-variant-numeric:tabular-nums}
-.pass-qb-fact span{display:block;color:var(--muted);font-size:.54rem;text-transform:uppercase;
-  letter-spacing:.05em;font-weight:850;margin-top:2px}
-.pass-depth{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0 4px}
-.pass-depth div{border-top:2px solid var(--line);padding-top:6px}
-.pass-depth b{display:block;font:800 .92rem var(--display-font);font-variant-numeric:tabular-nums}
-.pass-depth span{display:block;color:var(--muted);font-size:.52rem;text-transform:uppercase;
-  letter-spacing:.05em;font-weight:850;margin-top:2px}
-</style>'''
+STYLE = ""  # served from static/cfb_analysis.css, not inlined per render
 
 
 def _f2(value: Any, *, signed: bool = True) -> str:

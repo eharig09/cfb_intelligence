@@ -195,15 +195,21 @@ h1, h2, h3 { overflow-wrap: anywhere; }
 .dek { color: var(--muted); font: .92rem/1.5 var(--body-font); max-width: 68ch; }
 .meta { color: var(--muted); font-size: .72rem; line-height: 1.5; }
 
-.section { margin-top: 26px; }
+/* Section rhythm, tuned for pages that carry a dozen of them. A team page runs
+   to thirteen sections and 2,800 cells, and at the old size the headings were
+   nearly as large as the page title -- thirteen of them set a shouty rhythm and
+   cost roughly 250px of scroll before any data. The heavy rule stays, because it
+   is what makes the boundaries scannable; only the type and the gaps come in. */
+.section { margin-top: 18px; }
 .section > h2, .section-title h2 {
-    font: 800 clamp(1.3rem, 3.4vw, 1.75rem)/1.05 var(--display-font); letter-spacing: -.02em; margin: 0 0 8px;
-    border-bottom: 2px solid var(--ink); padding-bottom: 7px;
+    font: 800 clamp(1.12rem, 2.3vw, 1.35rem)/1.1 var(--display-font); letter-spacing: -.015em;
+    margin: 0 0 6px; border-bottom: 2px solid var(--ink); padding-bottom: 5px;
 }
 .section-title { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
 .section-title h2 { flex: 1 1 14rem; }
 .section-title span { color: var(--muted); font-size: .72rem; }
-.section-note { color: var(--muted); font-size: .74rem; margin: 0 0 11px; }
+.section-note { color: var(--muted); font-size: .72rem; line-height: 1.42;
+                margin: 0 0 8px; max-width: 78ch; }
 
 .card { background: var(--paper); border: 1px solid var(--line); padding: 13px; }
 .empty {
@@ -718,7 +724,7 @@ table.data tbody tr:hover td.box-group { background: var(--head-bg); }
     .mobile-scroll table.data { font-size: .74rem; }
     .mobile-scroll table.data thead th,
     .mobile-scroll table.data tbody td { padding: 6px; }
-    .section { margin-top: 20px; }
+    .section { margin-top: 15px; }
     .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
             overflow: visible; padding-bottom: 3px; }
     .tabs button { min-width: 0; white-space: normal; line-height: 1.2; }
