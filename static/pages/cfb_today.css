@@ -1,0 +1,205 @@
+/* Presentation for cfb_today.html.
+   Kept as its own file rather than merged into a shared one: several of
+   these selectors are named the same as another page's and mean something
+   different, and the isolation the inline block gave them is the point. */
+
+.hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; border-bottom: 3px solid var(--ink); padding-bottom: 14px; }
+    .hero h1 { font-size: clamp(2rem, 4.5vw, 3.2rem); margin: 4px 0 6px; }
+    .hero .dek { font-size: .92rem; max-width: 640px; }
+    .season { font-family: var(--display-font); font-size: 1.6rem; font-weight: 800; color: var(--rust); }
+    .notice { padding: 12px 15px; background: var(--notice-bg); color: var(--notice-ink); border-left: 5px solid var(--gold); margin: 14px 0 0; font-size: .85rem; line-height: 1.5; }
+
+    /* Three panels across on a wide screen: the slate, what happened, and who
+       to watch. They collapse to two and then one as width runs out. */
+    /* Panels size to their own content. Stretching them to the tallest in the
+       row left blank space below the shorter ones, inside their own border. */
+    .briefing { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px;
+                margin-top: 18px; align-items: start; }
+    @media (min-width: 900px) {
+        .briefing { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+        /* Three panels in two columns left the third alone on its own row with
+           an empty cell beside it, which is most of a laptop screen of nothing.
+           It spans instead, and the draft table is wide enough to want it. */
+        .briefing > .panel:nth-child(3) { grid-column: 1 / -1; }
+    }
+    /* Three across as soon as the columns are usable, rather than holding the
+       two-column arrangement until 1300px. */
+    @media (min-width: 1180px) {
+        .briefing { grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.14fr) minmax(0, .92fr); }
+        .briefing > .panel:nth-child(3) { grid-column: auto; }
+    }
+    .panel { background: var(--paper); border: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; }
+    .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 12px; background: var(--surface-strong); color: var(--on-strong); }
+    .panel-head strong { font: 800 1.02rem var(--display-font); }
+    .panel-head span { color: var(--on-strong-muted); font-size: .64rem; text-transform: uppercase; letter-spacing: .08em; }
+    .panel-head .panel-more {
+        flex: 0 0 auto; color: var(--on-strong); font-size: .64rem; font-weight: 800;
+        text-transform: uppercase; letter-spacing: .08em; white-space: nowrap;
+        text-decoration: none; border-bottom: 1px solid var(--on-strong-muted);
+    }
+    .panel-head .panel-more:hover { border-bottom-color: var(--on-strong); }
+    .panel-head .panel-more:focus-visible { outline: 2px solid var(--on-strong); outline-offset: 3px; }
+    .panel-body { overflow-y: auto; max-height: 31rem; }
+    /* Spanning the full width, the draft panel has room to show more before
+       scrolling; capping it at the column height wasted the width it gained. */
+    @media (min-width: 900px) and (max-width: 1179px) {
+        .briefing > .panel:nth-child(3) .panel-body { max-height: 22rem; }
+    }
+    .panel .table-wrap { border: 0; margin: 0; }
+    .games-table-display { display: none; }
+    .watch-cards { display: grid; gap: 10px; padding: 10px; }
+    .watch-card {
+        display: block; min-width: 0; overflow: hidden; color: var(--ink);
+        background: var(--paper); border: 1px solid var(--line);
+        border-radius: 8px; box-shadow: var(--shadow-soft);
+        text-decoration: none; transition: transform .14s ease, box-shadow .14s ease;
+    }
+    .watch-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-raised); }
+    .watch-card:focus-visible { outline: 3px solid var(--rust); outline-offset: 2px; }
+    .watch-card-top {
+        display: flex; justify-content: space-between; align-items: center; gap: 8px;
+        padding: 7px 10px; background: var(--surface-strong); color: var(--on-strong);
+        font-size: .62rem; font-weight: 800; text-transform: uppercase;
+        letter-spacing: .055em;
+    }
+    .watch-card-top span:last-child { color: var(--on-strong-muted); text-align: right; }
+    .watch-faceoff {
+        display: grid; grid-template-columns: minmax(0, 1fr) 46px minmax(0, 1fr);
+        align-items: center; min-height: 116px;
+        background:
+            linear-gradient(115deg, color-mix(in srgb, var(--away) 12%, transparent), transparent 42%),
+            linear-gradient(245deg, color-mix(in srgb, var(--home) 12%, transparent), transparent 42%);
+    }
+    .watch-team { min-width: 0; padding: 11px 6px 9px; text-align: center; }
+    .watch-team-mark {
+        position: relative; display: grid; place-items: center;
+        width: 68px; height: 68px; margin: 0 auto 7px; border-radius: 50%;
+        background: var(--logo-ground); border: 3px solid var(--team);
+        box-shadow: var(--shadow-crest), 0 0 0 4px color-mix(in srgb, var(--team) 10%, transparent);
+    }
+    .watch-team-mark img { width: 53px; height: 53px; object-fit: contain; }
+    .watch-team-mark b { color: var(--team); font-size: .74rem; }
+    .watch-team-rank {
+        position: absolute; top: -6px; right: -7px; min-width: 26px; height: 26px;
+        display: grid; place-items: center; padding: 0 3px; border-radius: 50%;
+        border: 2px solid var(--paper); background: var(--surface-strong); color: var(--on-strong);
+        font-size: .59rem;
+    }
+    .watch-team-name {
+        display: block; overflow: hidden; text-overflow: ellipsis;
+        font: 800 .92rem/1.15 var(--display-font); white-space: nowrap;
+    }
+    .watch-vs {
+        display: grid; place-items: center; width: 42px; height: 42px;
+        border-radius: 50%; background: var(--surface-strong); color: var(--on-strong);
+        font-size: .68rem; font-weight: 900; letter-spacing: .05em;
+        box-shadow: var(--shadow-bar);
+    }
+    .watch-card-bottom {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px;
+        align-items: center; padding: 8px 10px; border-top: 1px solid var(--line);
+        color: var(--muted); font-size: .63rem;
+    }
+    .watch-card-edge { min-width: 0; }
+    .watch-card-edge strong { color: var(--ink); }
+    .watch-card-edge span {
+        display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        margin-top: 2px;
+    }
+    .watch-card-line { text-align: right; white-space: nowrap; }
+    .watch-card-line strong { display: block; color: var(--rust); font-size: .78rem; }
+
+    /* The day's games, as a strip rather than a grid: this is the first thing
+       on the page and it must not push the rest of it below the fold. */
+    .slate { margin: 14px 0 4px; }
+    .slate-head {
+        display: flex; align-items: baseline; justify-content: space-between;
+        gap: 10px; margin-bottom: 7px;
+    }
+    .slate-head strong {
+        font: 900 .62rem/1 var(--display-font); letter-spacing: .09em;
+        text-transform: uppercase; color: var(--muted);
+    }
+    .slate-head a {
+        color: var(--rust); font-size: .62rem; font-weight: 800;
+        text-transform: uppercase; letter-spacing: .06em; text-decoration: none;
+        white-space: nowrap;
+    }
+    .slate-head a:hover { text-decoration: underline; }
+    .slate-strip {
+        display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+        overscroll-behavior-inline: contain; scrollbar-width: thin;
+    }
+    .slate-chip {
+        flex: 0 0 auto; width: 168px; min-width: 0; text-decoration: none;
+        color: var(--ink); background: var(--paper);
+        border: 1px solid var(--line); border-left: 3px solid var(--team);
+        border-radius: 6px; padding: 7px 9px 8px;
+    }
+    .slate-chip:hover { border-color: var(--team); }
+    .slate-chip:focus-visible { outline: 3px solid var(--team); outline-offset: 2px; }
+    .slate-status {
+        color: var(--muted); font-size: .58rem; font-weight: 800;
+        text-transform: uppercase; letter-spacing: .07em; margin-bottom: 5px;
+    }
+    .slate-side {
+        display: flex; align-items: center; gap: 6px; min-width: 0;
+        color: var(--muted); line-height: 1.5;
+    }
+    .slate-side.is-winner { color: var(--ink); }
+    .slate-side .team-mark { width: 17px; height: 17px; flex: 0 0 auto; }
+    .slate-name {
+        flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap; font-size: .74rem; font-weight: 800;
+    }
+    .slate-score {
+        flex: 0 0 auto; font: 800 .92rem/1 var(--display-font);
+        font-variant-numeric: tabular-nums;
+    }
+    .slate-side.is-winner .slate-score { color: var(--green); }
+    .slate-market {
+        flex: 0 0 auto; font-size: .66rem; font-weight: 700;
+        font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+
+    /* Compact development entries with their provenance one click away. */
+    .dev { padding: 9px 12px; border-bottom: 1px solid var(--line); border-left: 4px solid transparent; }
+    .dev.has-team { border-left-color: var(--story-team); }
+    .dev:last-child { border-bottom: 0; }
+    .dev-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .dev-role { color: var(--rust); font-size: .59rem; font-weight: 900; text-transform: uppercase; letter-spacing: .07em; }
+    .dev-score { color: var(--muted); font-size: .65rem; font-variant-numeric: tabular-nums; }
+    .dev > a { display: block; font-size: .84rem; line-height: 1.35; font-weight: 700; text-decoration: none; margin: 3px 0 4px; }
+    .dev > a:hover { text-decoration: underline; }
+    .dev-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; color: var(--muted); font-size: .64rem; }
+
+    /* One row: every chip is now an abbreviation and a count, so they are
+       near enough the same width to share a line. */
+    .conference-strip { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+    .conference-chip { display: inline-flex; align-items: center; gap: 6px; }
+    .conference-chip { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--rust); padding: 5px 9px; font-size: .72rem; font-weight: 700; text-decoration: none; }
+    .conference-chip span { color: var(--muted); font-weight: 400; }
+    .reference .table-wrap { max-height: 27rem; overflow-y: auto; }
+
+    @media (max-width: 767px) {
+        .season { display: none; }
+        .hero { align-items: flex-start; gap: 8px; }
+        .panel-head { align-items: flex-start; }
+        .panel-head span { max-width: 48%; text-align: right; line-height: 1.35; }
+        .panel-body { max-height: 24rem; }
+        .conference-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+                            overflow: visible; padding-bottom: 5px; }
+        .conference-chip { min-width: 0; text-align: center; }
+
+        .watch-cards { gap: 9px; padding: 9px; }
+        .watch-card:hover { transform: none; }
+        .watch-faceoff {
+            grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1fr);
+            min-height: 106px;
+        }
+        .watch-team { padding: 10px 5px 8px; }
+        .watch-team-mark { width: 62px; height: 62px; margin-bottom: 6px; }
+        .watch-team-mark img { width: 48px; height: 48px; }
+        .watch-team-name { font-size: .86rem; }
+        .watch-vs { width: 38px; height: 38px; font-size: .65rem; }
+    }

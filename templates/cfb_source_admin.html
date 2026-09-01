@@ -2,9 +2,7 @@
 {% block title %}CFB Source Admin{% endblock %}
 
 {% block head %}
-<style>
-.source-admin{max-width:920px;margin:0 auto;padding:1.25rem 1rem 3rem}.source-admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}.source-admin-card{border:1px solid var(--line);background:var(--paper);padding:1rem;border-radius:10px}.source-admin label{display:flex;flex-direction:column;gap:.3rem;font-size:.78rem;color:var(--muted)}.source-admin input,.source-admin select{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:7px;padding:.58rem .65rem;font:inherit}.source-admin fieldset{border:1px solid var(--line);border-radius:9px;padding:.8rem;margin:.9rem 0}.source-admin legend{font-weight:800;padding:0 .35rem}.tag-grid{display:flex;gap:.6rem 1rem;flex-wrap:wrap}.tag-grid label{display:flex;flex-direction:row;align-items:center;color:var(--ink);font-size:.9rem}.source-admin-actions{display:flex;gap:.65rem;align-items:center;flex-wrap:wrap;margin-top:1rem}.source-admin button{border:1px solid var(--surface-strong);background:var(--surface-strong);color:var(--on-strong);border-radius:7px;padding:.6rem .85rem;font-weight:800;cursor:pointer}.source-admin-status{font-size:.9rem;color:var(--muted)}.source-admin-result{margin-top:1rem;border-left:4px solid var(--team);padding:.7rem .9rem;background:var(--surface)}.source-admin-help{font-size:.88rem;color:var(--muted);line-height:1.45}.source-admin-help code{color:var(--ink)}@media(max-width:700px){.source-admin-grid{grid-template-columns:1fr}}
-</style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_source_admin.css') }}">
 {% endblock %}
 
 {% block breadcrumb %}

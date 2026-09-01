@@ -29,12 +29,6 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='cfb_table_windows.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='cfb_section_nav.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='cfb_analysis.css') }}">
-    <style>
-      .scroll-context{position:fixed;right:12px;bottom:12px;z-index:50;max-width:min(420px,calc(100vw - 24px));padding:.42rem .65rem;border:1px solid var(--line-strong);background:color-mix(in srgb,var(--surface-strong) 94%,transparent);color:var(--on-strong);box-shadow:var(--shadow-raised);font-size:.68rem;line-height:1.25;opacity:.9;pointer-events:none}
-      .scroll-context strong{font-weight:900}.scroll-context span{color:var(--on-strong-muted)}
-      .team-schedule-elo{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:10px 0 14px}.team-schedule-elo>div{border:1px solid var(--line);background:var(--paper);padding:9px 10px}.team-schedule-elo span{display:block;color:var(--muted);font-size:.58rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em}.team-schedule-elo b{display:block;margin-top:2px;font:800 1.05rem var(--display-font);font-variant-numeric:tabular-nums}.team-schedule-elo small{display:block;color:var(--muted);font-size:.58rem;margin-top:2px}
-      @media(max-width:700px){.team-schedule-elo{grid-template-columns:repeat(2,minmax(0,1fr))}.scroll-context{right:8px;bottom:8px;font-size:.62rem}}
-    </style>
     <noscript><style>.tabs{display:none}.tabpanel[hidden]{display:block}</style></noscript>
     {% block head %}{% endblock %}
 </head>

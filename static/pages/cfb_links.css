@@ -1,0 +1,16 @@
+/* Presentation for cfb_links.html.
+   Kept as its own file rather than merged into a shared one: several of
+   these selectors are named the same as another page's and mean something
+   different, and the isolation the inline block gave them is the point. */
+
+.filters { display: flex; flex-wrap: wrap; gap: 5px; margin: 14px 0 6px; }
+    .filters a { background: var(--paper); border: 1px solid var(--line); padding: 5px 10px; font-size: .72rem; font-weight: 700; text-decoration: none; }
+    .filters a.active { background: var(--surface-strong); color: var(--on-strong); border-color: var(--surface-strong); }
+    .link-row { background: var(--paper); border: 1px solid var(--line); border-left: 5px solid var(--team); padding: 11px 13px; margin-bottom: 8px; }
+    .link-row.is-weak { border-left-color: var(--gold); }
+    .link-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .link-target { font: 800 1rem var(--display-font); }
+    .link-method { color: var(--muted); font-size: .66rem; font-variant-numeric: tabular-nums; }
+    .link-excerpt { font-size: .8rem; line-height: 1.45; margin: 6px 0 5px; }
+    .link-evidence { color: var(--muted); font-size: .68rem; }
+    .link-evidence code { background: var(--tint); padding: 0 3px; }

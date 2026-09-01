@@ -4,26 +4,7 @@
 {% block title %}{{ board.draft_year }} Draft Watch | College Football{% endblock %}
 
 {% block head %}
-<style>
-    .hero { border-bottom: 3px solid var(--ink); padding-bottom: 14px; }
-    .hero h1 { font-size: clamp(2rem, 4.5vw, 3.4rem); margin: 4px 0 8px; }
-    .method { background: var(--paper); border-left: 5px solid var(--gold); padding: 13px 16px; margin: 16px 0 4px; font-size: .82rem; line-height: 1.6; }
-    .method strong { display: block; margin-bottom: 4px; }
-    .filters { display: flex; flex-wrap: wrap; gap: 5px; margin: 14px 0 4px; }
-    .filters a { background: var(--paper); border: 1px solid var(--line); padding: 5px 9px; font-size: .72rem; font-weight: 700; text-decoration: none; }
-    .filters a.active { background: var(--surface-strong); color: var(--on-strong); border-color: var(--surface-strong); }
-    .position-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(216px, 1fr)); gap: var(--gap); }
-    .draft-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; margin-top: 26px; }
-    @media (min-width: 1180px) { .draft-split { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); } }
-    .split-head { font: 800 1.4rem var(--display-font); margin: 0 0 8px; border-bottom: 2px solid var(--ink); padding-bottom: 7px; }
-    .draft-split .table-wrap { max-height: 34rem; overflow-y: auto; }
-    .position-card { background: var(--paper); border: 1px solid var(--line); padding: 12px 14px; }
-    .position-card h3 { font: 800 1.02rem var(--display-font); margin: 0 0 7px; border-bottom: 1px solid var(--line); padding-bottom: 5px; }
-    .prospect { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; font-size: .78rem; }
-    .prospect a { text-decoration: none; font-weight: 700; }
-    .prospect b { color: var(--rust); font-variant-numeric: tabular-nums; }
-    .prospect small { display: block; color: var(--muted); font-size: .66rem; }
-</style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_draft.css') }}">
 {% endblock %}
 
 {% block breadcrumb %}

@@ -26,10 +26,38 @@ class InlineStyleTests(unittest.TestCase):
             self.assertEqual(getattr(module, "STYLE", ""), "",
                              f"{name} is inlining CSS again")
 
-    def test_the_report_template_carries_no_stylesheet(self):
+    def test_no_page_template_carries_a_stylesheet(self):
+        """Each page's rules live in static/pages/, fetched once and cached.
+
+        They are separate files rather than one bundle on purpose: nine
+        selectors are defined differently by different pages -- `.hero` means
+        four things, `.logo` is display:none on one page and 92px on another --
+        and merging them would let the last one win everywhere.
+        """
         from pathlib import Path
-        source = Path("templates/cfb_box_score.html").read_text(encoding="utf-8")
-        self.assertNotIn("<style>", source)
+        for template in sorted(Path("templates").glob("cfb_*.html")):
+            source = template.read_text(encoding="utf-8")
+            if 'extends "_layout.html"' not in source:
+                continue
+            self.assertNotIn("<style>", source, f"{template.name} inlines CSS")
+
+    def test_every_page_stylesheet_exists_for_the_template_that_links_it(self):
+        import re
+        from pathlib import Path
+        for template in sorted(Path("templates").glob("cfb_*.html")):
+            source = template.read_text(encoding="utf-8")
+            for name in re.findall(r"filename='pages/([a-z_]+\.css)'", source):
+                self.assertTrue((Path("static/pages") / name).exists(),
+                                f"{template.name} links a missing {name}")
+
+    def test_the_layout_keeps_only_the_rule_that_must_be_inline(self):
+        """The <noscript> block cannot move: it applies only without scripting."""
+        import re
+        from pathlib import Path
+        source = Path("templates/_layout.html").read_text(encoding="utf-8")
+        blocks = re.findall(r"<style[^>]*>(.*?)</style>", source, re.S)
+        self.assertEqual(len(blocks), 1)
+        self.assertIn(".tabpanel[hidden]", blocks[0])
 
     def test_the_shared_stylesheet_covers_what_the_modules_use(self):
         from pathlib import Path

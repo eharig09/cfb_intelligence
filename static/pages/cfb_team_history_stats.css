@@ -1,0 +1,16 @@
+/* Presentation for cfb_team_history_stats.html.
+   Kept as its own file rather than merged into a shared one: several of
+   these selectors are named the same as another page's and mean something
+   different, and the isolation the inline block gave them is the point. */
+
+.history-rivalries { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+    .history-rivalry {
+        border:1px solid var(--line); background:var(--paper); padding:8px 10px;
+        min-width:min(100%, 220px); flex:1 1 220px;
+    }
+    .history-rivalry strong { display:block; font:800 .95rem var(--display-font); }
+    .history-rivalry strong::before { content:'★ '; color:var(--rust); }
+    .history-rivalry span { display:block; color:var(--muted); font-size:.68rem; margin-top:3px; }
+    .history-rivalry a { color:inherit; }
+    .wiki-overview { max-width: 78ch; line-height: 1.55; }
+    .source-links { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }

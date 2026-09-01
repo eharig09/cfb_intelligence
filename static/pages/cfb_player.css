@@ -1,0 +1,35 @@
+/* Presentation for cfb_player.html.
+   Kept as its own file rather than merged into a shared one: several of
+   these selectors are named the same as another page's and mean something
+   different, and the isolation the inline block gave them is the point. */
+
+.hero { border-left: 9px solid var(--team); padding: 8px 0 14px 22px; display: grid; grid-template-columns: 1fr auto; }
+    .logo { width: 86px; height: 86px; object-fit: contain; display: block; }
+    .facts { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .facts .fact { min-width: 0; padding-inline: 8px; }
+    .facts .fact b { white-space: nowrap; font-size: 1.05rem; }
+    .facts .fact span { font-size: .58rem; line-height: 1.15; }
+    .timeline { border-left: 3px solid var(--line); padding-left: 15px; }
+    .event { position: relative; margin-bottom: 9px; }
+    .event:before { content: ""; position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--rust); left: -21px; top: 17px; }
+    .story { margin-bottom: 9px; }
+    .story a { text-decoration: none; }
+    .story-head { display: flex; justify-content: space-between; gap: 10px; }
+    .player-game-log .table-wrap { max-height: 430px; overflow: auto; scrollbar-gutter: stable; }
+    .player-game-log thead th { position: sticky; top: 0; z-index: 2; background: var(--paper); }
+    .game-log-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+    .game-log-filters input, .game-log-filters select {
+        min-height: 34px; border: 1px solid var(--line); border-radius: 4px;
+        background: var(--paper); color: var(--ink); padding: 5px 8px;
+    }
+    .game-log-filters input { min-width: 210px; flex: 1 1 240px; }
+    .game-log-filters .game-log-count { margin-left: auto; font-size: .82rem; color: var(--muted); white-space: nowrap; }
+    @media (max-width: 760px) {
+        .logo { display: none; }
+        .hero { grid-template-columns: minmax(0, 1fr); padding-left: 14px; border-left-width: 5px; }
+        .game-log-filters .game-log-count { width: 100%; margin-left: 0; }
+    }
+    @media (max-width: 559px) {
+        .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .facts .fact:last-child { grid-column: 1 / -1; }
+    }

@@ -1,0 +1,91 @@
+/* Presentation for cfb_scoreboard.html.
+   Kept as its own file rather than merged into a shared one: several of
+   these selectors are named the same as another page's and mean something
+   different, and the isolation the inline block gave them is the point. */
+
+.board-nav {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+        margin: 12px 0 10px;
+    }
+    .board-nav a, .board-nav .board-day {
+        border: 1px solid var(--line); background: var(--paper);
+        padding: 7px 12px; text-decoration: none; font-size: .78rem; font-weight: 800;
+        min-height: 34px; display: inline-flex; align-items: center;
+    }
+    .board-nav .board-day { background: var(--surface-strong); color: var(--on-strong);
+                            border-color: var(--surface-strong); }
+    .board-nav a[aria-disabled="true"] { opacity: .45; pointer-events: none; }
+    .board-nav form { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+    .board-nav input[type="date"] {
+        border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+        padding: 6px 9px; font: inherit; font-size: .78rem; min-height: 34px;
+    }
+
+    /* Conference filter. Abbreviations only, so the row stays one line. */
+    .board-filter { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
+    .board-filter a { text-decoration: none; }
+    .board-filter .is-selected { outline: 2px solid var(--team); outline-offset: 1px; }
+    .filter-all {
+        display: inline-flex; align-items: center; padding: 2px 8px;
+        border-left: 3px solid var(--line-strong); background: var(--tint);
+        color: var(--ink); font: 900 .6rem/1.35 var(--display-font);
+        letter-spacing: .07em; text-transform: uppercase; white-space: nowrap;
+    }
+
+    /* Cards, not a table: a row here is two teams and a result, and columns
+       would put the away side and the home side in unrelated cells. */
+    .board { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    @media (min-width: 720px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1180px) { .board { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+    .game-card {
+        display: block; background: var(--paper); border: 1px solid var(--line);
+        border-left: 4px solid var(--team); border-radius: 7px; min-width: 0;
+        text-decoration: none; color: var(--ink);
+        transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .game-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-soft); }
+    .game-card:focus-visible { outline: 3px solid var(--team); outline-offset: 2px; }
+    .game-card-top {
+        display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+        padding: 6px 10px; border-bottom: 1px solid var(--line);
+        color: var(--muted); font-size: .64rem; text-transform: uppercase;
+        letter-spacing: .05em; font-weight: 800;
+    }
+    .game-side {
+        display: flex; align-items: center; gap: 8px; padding: 8px 10px; min-width: 0;
+    }
+    .game-side + .game-side { border-top: 1px solid var(--line); }
+    .game-side .team-mark { width: 26px; height: 26px; flex: 0 0 auto; }
+    .game-side .name {
+        flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap; font-weight: 700; font-size: .86rem;
+    }
+    .card-meta { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+    .card-meta .weather { white-space: nowrap; text-transform: none; }
+    .card-meta .tv { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* The spread sits against its own team; the total is context, so it is
+       quieter than the number it sits under. */
+    .game-side .market {
+        flex: 0 0 auto; white-space: nowrap; font-size: .7rem; font-weight: 700;
+        color: var(--muted); font-variant-numeric: tabular-nums;
+    }
+    .game-side .market.is-spread { color: var(--ink); font-weight: 800; }
+    .game-side .score {
+        font: 800 1.05rem/1 var(--display-font); font-variant-numeric: tabular-nums;
+        color: var(--muted);
+    }
+    .game-side.is-winner .score, .game-side.is-winner .name { color: var(--ink); }
+    .game-side.is-winner .score { color: var(--green); }
+    .game-card-foot {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+        padding: 6px 10px; border-top: 1px solid var(--line);
+        color: var(--muted); font-size: .64rem;
+    }
+    /* Deliberately quiet: the card goes to the matchup page, and this is a
+       second destination that must not compete with it. */
+    .preview-link {
+        margin-left: auto; color: var(--rust); font-weight: 800; font-size: .62rem;
+        text-transform: uppercase; letter-spacing: .06em; text-decoration: none;
+    }
+    .preview-link:hover { text-decoration: underline; }

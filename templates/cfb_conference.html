@@ -4,42 +4,7 @@
 {% block title %}{{ conference.conference }} | College Football{% endblock %}
 
 {% block head %}
-<style>
-    .fact-row { display:flex; gap:10px; flex-wrap:wrap; margin:24px 0 6px; }
-    .fact-row .fact { background:var(--surface-strong); color:var(--on-strong); border-right:0; border-bottom:0; padding:12px 17px; }
-    .stories { display:grid; gap:10px; }
-    .stories a { text-decoration:none; }
-    .schedule-elo-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:12px 0 4px; }
-    .schedule-elo-card { border:1px solid var(--line); background:var(--paper); padding:10px 12px; min-width:0; }
-    .schedule-elo-card span { display:block; color:var(--muted); font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
-    .schedule-elo-card b { display:block; margin-top:3px; font:800 1.15rem var(--display-font); font-variant-numeric:tabular-nums; }
-    .schedule-elo-card small { display:block; margin-top:2px; color:var(--muted); font-size:.62rem; }
-    .leader-state-key { display:flex; gap:10px 14px; flex-wrap:wrap; margin:6px 0 10px; color:var(--muted); font-size:.68rem; }
-    .leader-state-key span { display:inline-flex; gap:5px; align-items:center; }
-    .leader-state-key i { width:9px; height:12px; display:inline-block; border-left:3px solid; }
-    .leader-state-key .transferred i { border-color:var(--rust); }
-    .leader-state-key .incoming i { border-color:var(--green); }
-    .leader-state-key .in-conference i { border-image:linear-gradient(to bottom,var(--rust) 0 50%,var(--green) 50% 100%) 1; }
-    .conference-leaders-scroll { min-width:0; max-width:100%; }
-    .conference-leaders-scroll .tabpanel { max-height:34rem; overflow-y:auto; overflow-x:hidden; scrollbar-gutter:stable; border:1px solid var(--line); }
-    .conference-leaders-scroll .table-wrap { overflow-x:auto !important; max-width:100%; margin:0; border:0; scrollbar-gutter:stable; }
-    .conference-leaders-scroll table.data { width:max-content !important; min-width:100%; }
-    .conference-leaders-scroll table.data thead th { position:sticky; top:0; z-index:3; }
-    .conference-leaders-scroll td.state-transferred { border-left:3px solid var(--rust); }
-    .conference-leaders-scroll td.state-transferred .sub { color:var(--rust); }
-    .conference-leaders-scroll td.state-arrived { border-left:3px solid var(--green); }
-    .conference-leaders-scroll td.state-arrived .sub { color:var(--green); }
-    .conference-leaders-scroll td.state-transfer-in-conference { border-left:3px solid transparent; border-image:linear-gradient(to bottom,var(--rust) 0 50%,var(--green) 50% 100%) 1; }
-    .conference-leaders-scroll td.state-transfer-in-conference .sub { color:var(--rust); }
-    @media (max-width:760px) { .schedule-elo-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-    @media (max-width:559px) {
-        .fact-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; margin-inline:-12px; }
-        .fact-row .fact { padding:9px 8px; }
-        .schedule-elo-grid { margin-inline:-12px; gap:1px; }
-        .schedule-elo-card { padding:9px 8px; }
-        .conference-leaders-scroll .tabpanel { max-height:29rem; }
-    }
-</style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_conference.css') }}">
 {% endblock %}
 
 {% block body_attrs %} style="--team-light:{{ conference_color }};--team-dark:{{ conference_color_dark }};--conference-light:{{ conference_color }};--conference-dark:{{ conference_color_dark }}"{% endblock %}

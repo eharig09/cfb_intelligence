@@ -4,35 +4,7 @@
 {% block title %}{% if results.query %}{{ results.query }} &middot; {% endif %}Search | College Football{% endblock %}
 
 {% block head %}
-<style>
-    .search-form { display: flex; gap: 8px; margin: 14px 0 6px; max-width: 46rem; }
-    .search-form input {
-        flex: 1 1 auto; min-width: 0; padding: 11px 13px; font-size: 1rem;
-        border: 2px solid var(--ink); background: var(--paper); color: var(--ink);
-    }
-    .search-form button {
-        padding: 11px 20px; border: 2px solid var(--surface-strong); background: var(--surface-strong);
-        color: var(--on-strong); font-weight: 800; cursor: pointer;
-    }
-    .result-group { margin-top: 22px; }
-    .result-group h2 { font: 800 1.3rem var(--display-font); border-bottom: 2px solid var(--ink); padding-bottom: 6px; margin: 0 0 10px; }
-    .result { display: flex; align-items: center; gap: 11px; background: var(--paper);
-              border: 1px solid var(--line); border-left: 4px solid var(--row-team, var(--line-strong));
-              padding: 10px 12px; margin-bottom: 6px; text-decoration: none; }
-    .result :is(img, .team-mark) { width: 26px; height: 26px; object-fit: contain; flex: 0 0 auto; }
-    .result-body { flex: 1 1 auto; min-width: 0; }
-    .result-name { font-weight: 700; font-size: .92rem; }
-    .result-why { color: var(--muted); font-size: .66rem; margin-top: 2px; }
-    .result-aside { color: var(--muted); font-size: .7rem; white-space: nowrap; }
-    @media (max-width: 559px) {
-        .search-form { gap: 5px; }
-        .search-form button { padding-inline: 13px; }
-        .result { align-items: flex-start; flex-wrap: wrap; gap: 7px 9px; }
-        .result-body { flex-basis: calc(100% - 38px); }
-        .result-aside { flex: 1 1 100%; padding-left: 37px; white-space: normal; }
-        .result-why .linked-piece-meta { display: flex; margin-top: 3px; }
-    }
-</style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_search.css') }}">
 {% endblock %}
 
 {% block breadcrumb %}
