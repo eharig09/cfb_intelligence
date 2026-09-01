@@ -413,6 +413,19 @@ class RefreshWiringTests(unittest.TestCase):
             self.assertIn(name, by_name, f"{name} has no scheduled step")
             self.assertIn("refresh", by_name[name].phases)
 
+    def test_recruiting_is_backfilled_not_only_synced_for_this_season(self):
+        """A player who signed in an earlier class had no pedigree on his page.
+
+        Only the current season was ever synced, so a 2026 roster showed a rating
+        for its freshmen and nothing for everyone else.
+        """
+        from sports_aggregator.bootstrap import steps
+        names = [step.name for step in steps(2026)]
+        self.assertIn("cfbd-recruits", names)
+        history = [name for name in names if name.startswith("recruits-history-")]
+        self.assertGreaterEqual(len(history), 5,
+                                "a roster spans more classes than this reaches")
+
     def test_the_epa_step_builds_the_version_the_report_reads(self):
         from sports_aggregator.bootstrap import steps
         from sports_aggregator.cfb.team_game_advanced import MODEL_VERSION

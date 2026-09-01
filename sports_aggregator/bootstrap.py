@@ -243,6 +243,16 @@ def steps(season: int, *, history_from: int | None = None,
             ["sports_aggregator.cfb.history_cli", "--year", str(historical_year)],
             ("history",), requires_env=("CFBD_API_KEY",),
         ))
+        # Recruiting was synced for the current season only, so a player who
+        # signed in any earlier class had no pedigree on his page -- which is
+        # most of a roster. The detail window is the right one: a class stops
+        # mattering once nobody from it is still playing.
+        plan.append(Step(
+            f"recruits-history-{historical_year}",
+            f"Signing class ratings for {historical_year}",
+            ["sports_aggregator.cfb.cli", "sync-recruits", "--year", str(historical_year)],
+            ("history",), optional=True, requires_env=("CFBD_API_KEY",),
+        ))
         plan.append(Step(
             f"box-history-{historical_year}",
             f"Cached team and player box scores for {historical_year}",
