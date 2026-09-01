@@ -189,6 +189,42 @@ class PlannerStatisticsTests(unittest.TestCase):
             self.assertEqual(
                 CFBRepository._tables_missing_statistics(connection), [])
 
+    def _mtimes(self):
+        paths = (self.path, self.path + "-wal")
+        return tuple(os.stat(p).st_mtime_ns if os.path.exists(p) else 0 for p in paths)
+
+    def test_optimize_writes_nothing_when_nothing_has_changed(self):
+        """A refresh that never touched this database must not empty the cache.
+
+        The rendered-page cache is keyed on the database's modification time,
+        and `optimize` runs after every scheduled refresh -- including news
+        passes, which write to a different file entirely. ANALYZE writes, so
+        running it unconditionally would throw away every cached page on every
+        such pass.
+        """
+        repository = CFBRepository(self.path)
+        repository.initialize()
+        self._fill("teams")
+        repository.optimize()
+        self.assertTrue(self._rows_for("teams"))
+
+        before = self._mtimes()
+        repository.optimize()
+        self.assertEqual(self._mtimes(), before,
+                         "a second optimize with no write between must not touch the file")
+
+    def test_optimize_analyzes_again_once_the_data_has_moved(self):
+        repository = CFBRepository(self.path)
+        repository.initialize()
+        self._fill("teams")
+        repository.optimize()
+
+        self.assertEqual(self._rows_for("rankings"), 0)
+        self._fill("rankings")
+        repository.optimize()
+        self.assertTrue(self._rows_for("rankings"),
+                        "a write since the last ANALYZE means statistics are due")
+
     def test_optimize_analyzes_without_depending_on_what_it_queried_first(self):
         """`PRAGMA optimize` only considers tables the current connection has
         already read, and this opens a connection just to call it -- so the

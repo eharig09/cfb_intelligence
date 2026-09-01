@@ -745,25 +745,57 @@ class CFBRepository:
             # still answers every query.
             pass
 
+    def _statistics_stamp(self) -> str:
+        """What the rendered-page cache keys on: the database and its WAL."""
+        parts = []
+        for candidate in (self.path, self.path.with_name(self.path.name + "-wal")):
+            try:
+                parts.append(str(candidate.stat().st_mtime_ns))
+            except OSError:
+                parts.append("0")
+        return "-".join(parts)
+
     def optimize(self) -> None:
-        """Refresh planner statistics after a refresh has changed the data.
+        """Refresh planner statistics, but only once per change to the data.
 
         This called `PRAGMA optimize`, which only considers tables the *current
         connection* has already queried -- and this opens a connection purely
-        to run it, so it had queried nothing and the pragma did nothing, every
-        night, for as long as it has been scheduled. A bounded ANALYZE does the
-        job the name promises: `analysis_limit` samples rows per index instead
-        of scanning them all, which costs about a quarter of a second on a
-        1.8 GB database and does not depend on what this connection happened to
-        touch first.
+        to run it, so it had queried nothing and did nothing, every night, for
+        as long as it has been scheduled. Nor is the pragma usable here: on
+        SQLite 3.45 the bit that would make it consider every table is not
+        supported, and merely selecting a row from each does not register,
+        because a query answered without opening an index does not count as
+        having used one.
+
+        So it runs ANALYZE itself, with `analysis_limit` sampling rows per
+        index rather than scanning them all -- about a quarter of a second on
+        the 1.8 GB file. That writes, and the rendered-page cache is keyed on
+        the database's modification time, so doing it unconditionally would
+        throw away every cached page after a refresh that never touched this
+        database at all -- a news pass, most often. The marker beside the file
+        records what the database looked like when statistics were last
+        written; if nothing has been written since, there is nothing to do and
+        nothing to invalidate.
         """
         self.initialize()
+        marker = self.path.with_name(self.path.name + ".analyzed")
+        try:
+            if marker.read_text(encoding="utf-8").strip() == self._statistics_stamp():
+                return
+        except OSError:
+            pass
         try:
             with closing(self._connect()) as connection:
                 connection.execute(f"PRAGMA analysis_limit={self.ANALYSIS_LIMIT}")
                 connection.execute("ANALYZE")
                 connection.commit()
         except sqlite3.Error:
+            return
+        try:
+            # Written after the connection closes: closing checkpoints the WAL,
+            # which moves the very timestamps being recorded.
+            marker.write_text(self._statistics_stamp(), encoding="utf-8")
+        except OSError:
             pass
 
     @contextmanager
