@@ -34,6 +34,7 @@ MIN_SEASON_PLAYS = 25
 
 _RUN_SQL = """
   SELECT d.rush_direction AS direction, COUNT(*) AS plays,
+         SUM(p.yards_gained) AS total_yards,
          SUM(e.epa) AS total_epa,
          SUM(COALESCE(m.success, 0)) AS successes,
          SUM(CASE WHEN e.epa IS NOT NULL THEN 1 ELSE 0 END) AS scored
@@ -47,6 +48,7 @@ _RUN_SQL = """
 
 _PASS_SQL = """
   SELECT pp.pass_direction AS direction, COUNT(*) AS plays,
+         SUM(pp.total_yards) AS total_yards,
          SUM(e.epa) AS total_epa,
          SUM(COALESCE(m.success, 0)) AS successes,
          SUM(CASE WHEN e.epa IS NOT NULL THEN 1 ELSE 0 END) AS scored
@@ -59,7 +61,8 @@ _PASS_SQL = """
 
 
 def _blank() -> dict[str, Any]:
-    return {"plays": 0, "scored": 0, "total_epa": 0.0, "successes": 0}
+    return {"plays": 0, "scored": 0, "total_epa": 0.0, "successes": 0,
+            "total_yards": 0.0}
 
 
 def _accumulate(rows, into: dict[str, dict[str, Any]]) -> None:
@@ -69,11 +72,20 @@ def _accumulate(rows, into: dict[str, dict[str, Any]]) -> None:
         bucket["scored"] += row["scored"] or 0
         bucket["total_epa"] += row["total_epa"] or 0.0
         bucket["successes"] += row["successes"] or 0
+        bucket["total_yards"] += row["total_yards"] or 0.0
 
 
 def _finish(bucket: dict[str, Any]) -> dict[str, Any]:
+    """Both halves of the question: what was produced, and at what rate.
+
+    Totals answer "how much came from here" and rates answer "how good was it".
+    A team can lead the middle in yards because it ran there forty times and
+    still be worse per play than one that went there nine times.
+    """
     plays, scored = bucket["plays"], bucket["scored"]
     return {"plays": plays,
+            "yards": bucket["total_yards"],
+            "yards_per_play": (bucket["total_yards"] / plays) if plays else None,
             "epa_per_play": (bucket["total_epa"] / scored) if scored else None,
             "total_epa": bucket["total_epa"] if scored else None,
             "success_rate": (bucket["successes"] / plays) if plays else None,
@@ -97,7 +109,7 @@ def _pair(connection, model_version: str, run_scope: str, pass_scope: str,
     combined = {"middle": _blank(), "outside": _blank()}
     for side in ("middle", "outside"):
         for source in (run, passing):
-            for key in ("plays", "scored", "total_epa", "successes"):
+            for key in ("plays", "scored", "total_epa", "successes", "total_yards"):
                 combined[side][key] += source[side][key]
     result = {name: {side: _finish(buckets[side]) for side in ("middle", "outside")}
               for name, buckets in (("run", run), ("pass", passing), ("combined", combined))}

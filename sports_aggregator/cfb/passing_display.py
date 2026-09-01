@@ -20,6 +20,9 @@ from typing import Any
 
 from markupsafe import Markup
 
+from sports_aggregator.cfb.game_phases import (
+    HALVES, MIN_PHASE_PLAYS, QUARTERS, game_phases, phase_margin,
+)
 from sports_aggregator.cfb.middle_of_field import (
     MIN_GAME_PLAYS, MIN_SEASON_PLAYS, game_middle, middle_verdict, team_season_middle,
 )
@@ -63,6 +66,8 @@ STYLE = '''<style>
 .mof-cell strong{display:block;font-family:var(--display-font);font-size:.82rem;font-variant-numeric:tabular-nums}
 .mof-cell strong.best{color:var(--edge)}
 .mof-cell span{display:block;color:var(--muted);font-size:.5rem;margin-top:1px}
+.mof-phases .mof-row{grid-template-columns:minmax(88px,1fr) repeat(var(--mof-columns),minmax(0,1fr))}
+@media(max-width:820px){.mof-phases{overflow-x:auto}.mof-phases .mof-row{min-width:640px}}
 .pass-qb-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;
   background:var(--line);border:1px solid var(--line);margin:8px 0}
 @media(min-width:620px){.pass-qb-facts{grid-template-columns:repeat(5,minmax(0,1fr))}}
@@ -155,14 +160,30 @@ NOTE = ("Where each team attacked and what it returned, split between the middle
 
 
 def _cell(bucket, *, minimum, best=False):
+    """Rate on top, the totals it came from underneath.
+
+    Both, because they answer different questions and disagree often: a team can
+    lead the middle in yards by running there forty times and still be worse per
+    play than one that went nine times.
+    """
     plays = bucket.get("plays") or 0
     thin = plays < minimum
+    parts = ["%d plays" % plays]
+    yards = bucket.get("yards")
+    if plays and yards is not None:
+        parts.append("%d yds" % round(yards))
+        parts.append("%s/play" % _f1(bucket.get("yards_per_play")))
+    total_epa = bucket.get("total_epa")
+    if total_epa is not None:
+        parts.append("%s EPA" % _f1(total_epa))
     success = bucket.get("success_rate")
-    tail = "" if success is None else " \u00b7 %s success" % _pct(success)
+    if success is not None:
+        parts.append("%s succ" % _pct(success))
     mark = "best" if best and not thin else ""
     return ('<div class="mof-cell%s"><strong class="%s">%s</strong>'
-            '<span>%d plays%s</span></div>'
-            % (" pass-thin" if thin else "", mark, _f2(bucket.get("epa_per_play")), plays, tail))
+            '<span>%s</span></div>'
+            % (" pass-thin" if thin else "", mark, _f2(bucket.get("epa_per_play")),
+               escape(" \u00b7 ".join(parts))))
 
 
 def _matrix(columns, *, minimum, better_high=True):
@@ -263,6 +284,82 @@ def render_matchup(repository, game):
         "printing both teams twice." % MIN_SEASON_PLAYS)
 
 
+PHASE_COLUMNS = ((("quarters", 1), "Q1"), (("quarters", 2), "Q2"),
+                 (("quarters", 3), "Q3"), (("quarters", 4), "Q4"),
+                 (("halves", "first"), "1st half"), (("halves", "second"), "2nd half"),
+                 (("game", None), "Game"))
+
+
+def _phase_cell(bucket, *, best=False):
+    plays = bucket.get("plays") or 0
+    thin = plays < MIN_PHASE_PLAYS
+    yards = bucket.get("yards")
+    detail = "%d plays" % plays
+    if plays and yards is not None:
+        detail += " · %d yds" % round(yards)
+    return ('<div class="mof-cell%s"><strong class="%s">%s</strong><span>%s</span></div>'
+            % (" pass-thin" if thin else "", "best" if best and not thin else "",
+               _f2(bucket.get("epa_per_play")), escape(detail)))
+
+
+def render_phases(repository, game):
+    """EPA by quarter and by half, for both teams.
+
+    A final margin says who was better, not when. A team level for three quarters
+    that pulls away in the fourth and one that led throughout arrive at the same
+    number and are not the same team.
+    """
+    game_id = int(game.get("game_id") or 0)
+    if not game_id:
+        return Markup("")
+    try:
+        teams = game_phases(repository, game_id)
+    except Exception:
+        return Markup("")
+    order = [str(game.get("away_team") or ""), str(game.get("home_team") or "")]
+    rows = [(team, teams[team]) for team in order if team in teams] or list(teams.items())
+    if not rows or not any(data["game"]["plays"] for _team, data in rows):
+        return Markup("")
+
+    def bucket(data, scope, key):
+        return data["game"] if scope == "game" else data[scope].get(key) or {}
+
+    head = "".join('<div class="mof-head">%s</div>' % escape(label)
+                   for _spec, label in PHASE_COLUMNS)
+    body = []
+    for team, data in rows:
+        cells = []
+        for (scope, key), _label in PHASE_COLUMNS:
+            values = [bucket(other, scope, key).get("epa_per_play") for _t, other in rows]
+            counts = [bucket(other, scope, key).get("plays") or 0 for _t, other in rows]
+            usable = [v for v, c in zip(values, counts) if v is not None and c >= MIN_PHASE_PLAYS]
+            mine = bucket(data, scope, key)
+            best = (len(usable) == len(rows) and len(set(usable)) > 1
+                    and mine.get("epa_per_play") == max(usable))
+            cells.append(_phase_cell(mine, best=best))
+        body.append('<div class="mof-row"><div class="mof-label">%s</div>%s</div>'
+                    % (escape(team), "".join(cells)))
+    grid = ('<div class="mof-grid mof-phases" style="--mof-columns:%d">'
+            '<div class="mof-row mof-header"><div class="mof-label"></div>%s</div>%s</div>'
+            % (len(PHASE_COLUMNS), head, "".join(body)))
+
+    verdicts = []
+    for scope, key, label in (("halves", "second", "second half"), ("quarters", 4, "fourth quarter")):
+        margin = phase_margin(dict(rows), scope, key)
+        if margin:
+            verdicts.append("%s took the %s, %s EPA per play to %s"
+                            % (escape(margin["winner"]), label,
+                               _f2(margin["winner_epa"]), _f2(margin["loser_epa"])))
+    banner = ('<div class="mof-verdict">%s.</div>' % "; ".join(verdicts)) if verdicts else ""
+    return Markup(
+        STYLE + '<section class="section pass-map">'
+        '<div class="section-note">Regulation only: '
+        'overtime starts at the twenty-five with no clock, so folding it into the '
+        'fourth quarter would compare plays the model was never fitted on. Rates '
+        'are EPA per play on rush and pass snaps outside garbage time; a phase '
+        'under %d plays is greyed.</div>%s%s</section>' % (MIN_PHASE_PLAYS, banner, grid))
+
+
 _DEPTH_LABELS = {"behind_line": "Behind LOS", "short": "Short (0-9)",
                  "intermediate": "Intermediate (10-19)", "deep": "Deep (20+)"}
 
@@ -333,6 +430,8 @@ def install_passing_display(app) -> None:
         lambda game: render_game(repository, dict(game)))
     app.jinja_env.globals["passing_matchup_splits"] = (
         lambda game: render_matchup(repository, dict(game)))
+    app.jinja_env.globals["game_phase_epa"] = (
+        lambda game: render_phases(repository, dict(game)))
     app.jinja_env.globals["passing_passer_profile"] = (
         lambda player, season=None: render_passer(repository, dict(player), season))
     app.extensions["passing_display_installed"] = True
