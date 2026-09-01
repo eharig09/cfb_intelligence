@@ -1921,12 +1921,16 @@ def draft_watch_table(entries: Sequence[dict[str, Any]], season: int, *,
             item["next_game"] = ("vs " if entry.get("next_is_home") else "at ") + str(
                 entry["next_opponent"])
             item["next_game_url"] = url_for("cfb.game_preview", game_id=entry["next_game_id"])
-            if entry.get("next_week"):
-                item["next_game_sub"] = f"Week {entry['next_week']}"
-            item["opposing_group"] = entry.get("opposing_group")
-            grade = entry.get("opposing_grade")
-            if grade is not None:
-                item["opposing_group_sub"] = f"{grade:.1f} avg PFF"
+            # Week, opponent unit and its grade read as one thought -- "week 1,
+            # against a 64.8 pass rush" -- so they share the cell rather than
+            # spending a tenth column on the same matchup.
+            detail = [f"Wk {entry['next_week']}"] if entry.get("next_week") else []
+            if entry.get("opposing_group"):
+                grade = entry.get("opposing_grade")
+                detail.append(entry["opposing_group"]
+                              + ("" if grade is None else f" {grade:.1f}"))
+            if detail:
+                item["next_game_sub"] = " · ".join(detail)
             item["watch_score"] = entry.get("watch_score")
         brand_cell(item, "team", {"logo": entry.get("logo"), "logo_dark": entry.get("logo_dark"),
                             "color": entry.get("color")})
@@ -1943,10 +1947,8 @@ def draft_watch_table(entries: Sequence[dict[str, Any]], season: int, *,
         Column(key="profile", label="vs drafted", format="pct",
                title="Percentile against players actually drafted at this position"),
         Column(key="next_game", label="Next", align="left",
-               title="The player's next scheduled game"),
-        Column(key="opposing_group", label="Facing", align="left",
-               title="The opposing group this position spends the game against,"
-                     " with that unit's average PFF grade"),
+               title="The next scheduled game, the opposing group this position"
+                     " spends it against, and that unit's average PFF grade"),
         Column(key="watch_score", label="Watch", format="f1",
                title="The player's grade weighted 4:1 against how much the game"
                      " itself is worth watching"),

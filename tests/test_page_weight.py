@@ -47,6 +47,22 @@ class InlineStyleTests(unittest.TestCase):
         self.assertIn("max-height:none!important", css.replace(" ", ""))
 
 
+class InlineAttributeTests(unittest.TestCase):
+    """Presentation in a style attribute cannot be themed or overridden.
+
+    The shared shell is the one place where that matters most, because whatever
+    it carries appears on every page. Attributes the server computes are fine --
+    team identity genuinely varies per request -- so only static ones are barred.
+    """
+
+    def test_the_shared_layout_carries_no_static_style_attributes(self):
+        from pathlib import Path
+        source = Path("templates/_layout.html").read_text(encoding="utf-8")
+        static = [value for value in re.findall(r'style="([^"]{25,})"', source)
+                  if "{{" not in value and "{%" not in value]
+        self.assertEqual(static, [], "move these into a class")
+
+
 class ReportWeightTests(unittest.TestCase):
     def setUp(self):
         self.client = create_app({

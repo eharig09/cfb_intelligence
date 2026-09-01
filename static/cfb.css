@@ -173,6 +173,39 @@ img { max-width: 100%; }
     margin: -1px; padding: 0; border: 0;
     clip-path: inset(50%); overflow: hidden; white-space: nowrap;
 }
+/* The data-freshness pill. Was 180 characters of style attribute, which no
+   stylesheet could override and no theme could reach. */
+.data-pill {
+    margin-left: auto; white-space: nowrap; color: inherit; text-decoration: none;
+    font-size: .74rem; opacity: .62; border: 1px solid var(--on-strong-divider);
+    border-radius: 999px; padding: .28rem .52rem;
+}
+.data-pill:hover { opacity: 1; border-color: var(--on-strong-line); }
+
+/* Private moderation, shown only on the data-status page. */
+.moderation { max-width: 1180px; margin: 2rem auto 0; padding: 0 1rem 2.5rem; }
+.moderation-card { border: 1px solid var(--line); background: var(--paper); padding: 1rem; }
+.moderation-head {
+    display: flex; justify-content: space-between; gap: 1rem;
+    align-items: flex-start; flex-wrap: wrap;
+}
+.moderation-title { margin: .25rem 0 .4rem; }
+.moderation-note { margin-top: 0; }
+.moderation-link {
+    border: 1px solid var(--line-strong); padding: .45rem .65rem;
+    text-decoration: none; color: inherit; font-size: .8rem; font-weight: 800;
+}
+.moderation-form { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.moderation-input {
+    flex: 1 1 28rem; min-width: 16rem; background: var(--paper); color: var(--ink);
+    border: 1px solid var(--line-strong); padding: .6rem .7rem;
+}
+.moderation-danger {
+    border: 1px solid var(--red); background: transparent; color: var(--red);
+    padding: .6rem .8rem; font-weight: 800; cursor: pointer;
+}
+.moderation-danger:hover { background: color-mix(in srgb, var(--red) 12%, transparent); }
+
 .header-search { flex: 0 0 auto; }
 .header-search input {
     width: 8.5rem; padding: 6px 9px; font-size: .78rem;

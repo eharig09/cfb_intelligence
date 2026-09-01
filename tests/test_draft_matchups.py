@@ -129,8 +129,10 @@ class DraftTableTests(unittest.TestCase):
     def test_the_new_columns_are_offered(self):
         table = self.table({"rank": 1, "player_name": "A Player", "position": "WR"})
         labels = [column.label for column in table.columns]
-        for label in ("Next", "Facing", "Watch"):
+        for label in ("Next", "Watch"):
             self.assertIn(label, labels)
+        self.assertNotIn("Facing", labels,
+                         "the opposing group shares the Next cell, not a column")
 
     def test_a_row_carries_the_matchup_when_it_has_one(self):
         table = self.table({
@@ -141,15 +143,15 @@ class DraftTableTests(unittest.TestCase):
         row = table.rows[0]
         self.assertEqual(row["next_game"], "at Purdue")
         self.assertIn("/games/11/", row["next_game_url"])
-        self.assertEqual(row["next_game_sub"], "Week 2")
-        self.assertEqual(row["opposing_group"], "Secondary")
-        self.assertIn("63.5", row["opposing_group_sub"])
+        self.assertIn("Wk 2", row["next_game_sub"])
+        self.assertIn("Secondary", row["next_game_sub"])
+        self.assertIn("63.5", row["next_game_sub"])
         self.assertEqual(row["watch_score"], 71.0)
 
     def test_a_row_without_a_game_carries_none_of_it(self):
         """An offseason board should not print a dash pretending to be a matchup."""
         row = self.table({"rank": 1, "player_name": "A Player", "position": "WR"}).rows[0]
-        for key in ("next_game", "opposing_group", "watch_score"):
+        for key in ("next_game", "next_game_sub", "watch_score"):
             self.assertNotIn(key, row)
 
 
