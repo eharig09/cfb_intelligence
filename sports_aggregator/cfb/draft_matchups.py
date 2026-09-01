@@ -112,17 +112,36 @@ def _unit_grade(rows: Iterable[dict[str, Any]], codes: tuple[str, ...]) -> tuple
     return sum(grades) / len(grades), len(grades)
 
 
+def board_context(repository: CFBRepository, *, season: int,
+                  pff_season: int = 2025) -> dict[str, Any]:
+    """The schedule and grades every board on a page shares.
+
+    Neither depends on which prospects are being annotated -- they cover every
+    team with a game and every opponent of one -- so a page showing two boards
+    was fetching both twice. On the draft page that was the single largest cost
+    on the request.
+    """
+    upcoming = upcoming_by_team(repository, season)
+    opponents = {entry["opponent_id"] for entry in upcoming.values() if entry.get("opponent_id")}
+    return {"upcoming": upcoming,
+            "grades": repository.pff_matchup_rows(opponents, pff_season) if opponents else {}}
+
+
 def annotate_board(repository: CFBRepository, prospects: list[dict[str, Any]], *,
-                   season: int, pff_season: int = 2025) -> list[dict[str, Any]]:
+                   season: int, pff_season: int = 2025,
+                   context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Add next game, opposing group and watch score to each prospect in place.
 
     Prospects whose team has no scheduled game keep the rest of their row and
     simply carry nothing here, which is the honest answer in the offseason and
     for a team whose season is over.
+
+    Pass `context` from `board_context` when annotating more than one board on
+    a page; without it each call fetches the same schedule and grades again.
     """
-    upcoming = upcoming_by_team(repository, season)
-    opponents = {entry["opponent_id"] for entry in upcoming.values() if entry.get("opponent_id")}
-    grades = repository.pff_matchup_rows(opponents, pff_season) if opponents else {}
+    if context is None:
+        context = board_context(repository, season=season, pff_season=pff_season)
+    upcoming, grades = context["upcoming"], context["grades"]
 
     for prospect in prospects:
         # The profile board carries `team_id`; the consensus board carries

@@ -14,7 +14,7 @@ from sports_aggregator.social.roles import role_label
 from sports_aggregator.cfb.insights import games_to_watch
 from sports_aggregator.cfb.ats import matchup_ats
 from sports_aggregator.cfb.draft import position_targets, prospect_board
-from sports_aggregator.cfb.draft_matchups import annotate_board
+from sports_aggregator.cfb.draft_matchups import annotate_board, board_context
 from sports_aggregator.cfb.prospects import (
     board_with_profile, consensus_board, reconcile)
 from sports_aggregator.cfb.external import (
@@ -605,43 +605,42 @@ def game_preview(game_id: int):
         key = (unit["dataset"], unit["position_group"])
         unit["away_returning_share"] = (away_carry.get(key) or {}).get("returning_share")
         unit["home_returning_share"] = (home_carry.get(key) or {}).get("returning_share")
+    # Each of these answers one question, and the page asked several of them
+    # two to four times over while building a single template call.
+    fpi = fpi_for_game(repository, game_id)
+    weather = weather_for_game(repository, game_id)
+    away_arrivals = repository.roster_movements(game["away_team_id"], season)["arrivals"]
+    home_arrivals = repository.roster_movements(game["home_team_id"], season)["arrivals"]
     return render_template(
         "cfb_game.html",
         meta=page_meta_for.game_meta(
             game, away_identity, home_identity,
-            weather=weather_for_game(repository, game_id),
+            weather=weather,
             story_count=len(direct_stories)),
         away_brand=away_identity,
         home_brand=home_identity,
         situation=game_situation(repository, game, elo),
-        fpi=fpi_for_game(repository, game_id),
-        weather=views.weather_panel(weather_for_game(repository, game_id)),
+        fpi=fpi,
+        weather=views.weather_panel(weather),
         model_table=views.model_comparison_table(
-            game, fpi_for_game(repository, game_id),
-            market, elo, core_by_team),
+            game, fpi, market, elo, core_by_team),
         lines=market,
         market_table=views.market_table(market, game),
         # Every arrival ranked together, not portal additions alone: a team's
         # best signee belongs beside the transfers he is competing with.
         away_arrivals_table=views.arrivals_table(
             views.arrivals_of_kind(
-                repository.roster_movements(game["away_team_id"], season)["arrivals"],
-                ("TRANSFER_IN", "NEWCOMER"))[:5],
+                away_arrivals, ("TRANSFER_IN", "NEWCOMER"))[:5],
             season, caption=f"{game['away_team']} portal"),
         away_signees_table=views.arrivals_table(
-            views.arrivals_of_kind(
-                repository.roster_movements(game["away_team_id"], season)["arrivals"],
-                ("SIGNEE",))[:5],
+            views.arrivals_of_kind(away_arrivals, ("SIGNEE",))[:5],
             season, caption=f"{game['away_team']} signees"),
         home_arrivals_table=views.arrivals_table(
             views.arrivals_of_kind(
-                repository.roster_movements(game["home_team_id"], season)["arrivals"],
-                ("TRANSFER_IN", "NEWCOMER"))[:5],
+                home_arrivals, ("TRANSFER_IN", "NEWCOMER"))[:5],
             season, caption=f"{game['home_team']} portal"),
         home_signees_table=views.arrivals_table(
-            views.arrivals_of_kind(
-                repository.roster_movements(game["home_team_id"], season)["arrivals"],
-                ("SIGNEE",))[:5],
+            views.arrivals_of_kind(home_arrivals, ("SIGNEE",))[:5],
             season, caption=f"{game['home_team']} signees"),
         away_portal_in_table=views.transfer_impact_table(
             rank_transfers(repository, season=season, team_id=game["away_team_id"],
@@ -919,17 +918,25 @@ def draft_watch():
     season = _season()
     repository = _repository()
     conference = (request.args.get("conference") or "").strip() or None
-    board = prospect_board(repository, roster_season=season, limit=80, conference=conference)
     # The filter used to reach only the position cards. Everything below is
     # built from `full_board`, so a conference pill changed a corner of the page
     # and left the 250-row board it sits above completely alone -- which reads
     # as a filter that does not work.
     full_board = prospect_board(repository, roster_season=season, limit=500,
                                 conference=conference)
+    # `prospect_board` applies its limit only after querying, scoring and
+    # sorting the whole eligible pool, so asking for 80 and then 500 did the
+    # same work twice for a different final slice. The shorter board is that
+    # slice.
+    board = {**full_board, "prospects": (full_board.get("prospects") or [])[:80]}
     comparison = reconcile(repository, full_board, draft_year=2027)
-    annotate_board(repository, board.get("prospects") or [], season=season)
+    # Both boards want the same schedule and the same opponent grades.
+    context = board_context(repository, season=season)
+    annotate_board(repository, board.get("prospects") or [], season=season,
+                   context=context)
     watch_entries = annotate_board(
-        repository, board_with_profile(repository, full_board, limit=100), season=season)
+        repository, board_with_profile(repository, full_board, limit=100),
+        season=season, context=context)
     return render_template(
         "cfb_draft.html",
         season=season,

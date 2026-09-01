@@ -474,6 +474,9 @@ _CONNECTION_KEY = "_cfb_reader_"
 #: Same idea for the team table, which a single render reads a dozen times.
 _TEAMS_KEY = "_cfb_teams_"
 
+#: And for the season-wide indexes a page rebuilds once per team it shows.
+_SEASON_INDEX_KEY = "_cfb_season_index_"
+
 
 def _request_scope():
     """Flask's per-request scratch space, or None when there is no request.
@@ -486,6 +489,27 @@ def _request_scope():
     except ImportError:
         return None
     return g if has_app_context() else None
+
+
+def _request_cached(repository, name: str, build):
+    """Hold a season-wide index for the request, the way `_teams_by_id` does.
+
+    Several of these cover a whole season but are read once per team, so a page
+    showing two teams built the same dictionary from the same thousands of rows
+    two to eight times. Scoped to the request and not to the repository: a
+    refresh runs in another process, and a value cached past the end of the
+    request would put stale rows into a page the rendered-page cache believed
+    it had just rebuilt.
+    """
+    scope = _request_scope()
+    if scope is None:
+        return build()
+    key = f"{_SEASON_INDEX_KEY}{id(repository)}:{name}"
+    cached = getattr(scope, key, None)
+    if cached is None:
+        cached = build()
+        setattr(scope, key, cached)
+    return cached
 
 
 def schema_once(kind: str):
@@ -1177,7 +1201,42 @@ class CFBRepository:
         CFBD supplies an athlete id for most recruits, which is an exact link to
         the roster. The name key is a fallback for the rest and is only trusted
         when it is unique within the class.
+
+        Read once per request, like `_teams_by_id` and for the same reason: the
+        index covers a whole signing class and is keyed only by season, but a
+        matchup page asked for it eight times -- once per team per roster
+        section -- rebuilding several thousand rows into the same dictionary
+        each time, for a fifth of the page. Held for the request rather than
+        the life of the repository so a refresh in another process cannot leave
+        a stale class in a page the rendered-page cache believes is current.
         """
+        return _request_cached(self, f"recruits:{int(season)}",
+                               lambda: self._build_recruit_index(season))
+
+    def _pff_interest(self, season: int) -> tuple[dict[str, Any], dict[Any, Any]]:
+        """Interest scores by name and by CFBD id, for a whole season.
+
+        The query has no team filter -- it never had one -- so every caller was
+        reading all 10,000 rows for the season and building the same two
+        dictionaries. A team page calls `roster_movements` six times.
+        """
+        return _request_cached(self, f"pff_interest:{int(season)}",
+                               lambda: self._build_pff_interest(season))
+
+    def _build_pff_interest(self, season: int) -> tuple[dict[str, Any], dict[Any, Any]]:
+        self.initialize()
+        with self._reader() as connection:
+            rows = connection.execute(
+                """SELECT normalized_name,cfbd_player_id,interest_score
+                   FROM pff_players
+                   WHERE season=? AND interest_score IS NOT NULL""",
+                (season,)).fetchall()
+        by_name = {row["normalized_name"]: row["interest_score"] for row in rows}
+        by_id = {row["cfbd_player_id"]: row["interest_score"]
+                 for row in rows if row["cfbd_player_id"]}
+        return by_name, by_id
+
+    def _build_recruit_index(self, season: int) -> dict[str, dict[str, Any]]:
         self.initialize()
         with self._reader() as connection:
             rows = [dict(row) for row in connection.execute(
@@ -1939,13 +1998,8 @@ class CFBRepository:
                 "SELECT * FROM draft_picks WHERE draft_year=? AND college_team=?",
                 (season, team["school"]),
             )]
-            pff = [dict(row) for row in connection.execute(
-                """SELECT normalized_name,cfbd_player_id,interest_score
-                   FROM pff_players
-                   WHERE season=? AND interest_score IS NOT NULL""",
-                (previous_season,)
-            )]
         recruits = self.recruit_index(season)
+        interest, interest_by_id = self._pff_interest(previous_season)
         current_names = {normalize_alias(f"{row['first_name']} {row['last_name']}") for row in current}
         current_ids = {row["player_id"] for row in current}
         previous_names = {normalize_alias(f"{row['first_name']} {row['last_name']}") for row in previous}
@@ -1954,9 +2008,6 @@ class CFBRepository:
         transfer_out = {row["normalized_name"]: row for row in transfers if row["origin"] == team["school"]}
         draft_by_name = {row["normalized_name"]: row for row in picks}
         draft_by_id = {row["college_athlete_id"]: row for row in picks if row["college_athlete_id"]}
-        interest = {row["normalized_name"]: row["interest_score"] for row in pff}
-        interest_by_id = {row["cfbd_player_id"]: row["interest_score"]
-                          for row in pff if row["cfbd_player_id"]}
         produced = self.player_production_strength(previous_season)
         arrivals = []
         for row in current:
