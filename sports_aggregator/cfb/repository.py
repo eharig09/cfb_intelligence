@@ -662,9 +662,34 @@ class CFBRepository:
             self._ensure_statistics(connection)
         _mark_schema_current("cfb", self.path)
 
+    #: How many rows ANALYZE samples per index. Without a limit it scans every
+    #: index in the file; with one the whole database is analyzed in about a
+    #: quarter of a second at 1.8 GB, which is what makes it affordable to
+    #: check on startup and to redo after every refresh.
+    ANALYSIS_LIMIT = 400
+
     @staticmethod
-    def _ensure_statistics(connection: sqlite3.Connection) -> None:
-        """Give the query planner statistics, once per database.
+    def _tables_missing_statistics(connection: sqlite3.Connection) -> list[str]:
+        """Indexed tables that hold rows but have no entry in `sqlite_stat1`.
+
+        ANALYZE writes nothing for an empty table, so a table is only counted
+        when it actually has a row -- otherwise every empty table would look
+        unanalyzed forever and re-trigger the work on every startup.
+        """
+        analyzed = {row[0] for row in
+                    connection.execute("SELECT DISTINCT tbl FROM sqlite_stat1")}
+        missing = []
+        for (name,) in connection.execute(
+                "SELECT DISTINCT tbl_name FROM sqlite_master WHERE type='index'"):
+            if name in analyzed or name.startswith("sqlite_"):
+                continue
+            if connection.execute(f'SELECT 1 FROM "{name}" LIMIT 1').fetchone():
+                missing.append(name)
+        return missing
+
+    @classmethod
+    def _ensure_statistics(cls, connection: sqlite3.Connection) -> None:
+        """Give the query planner statistics for every table that has data.
 
         Without them SQLite guesses join order from defaults, and it guesses
         badly here: the continuity lookup drove from `pff_player_metrics`,
@@ -673,17 +698,23 @@ class CFBRepository:
         indexes. Five teams took 462ms; with statistics the same work takes
         16ms and the plan uses the index.
 
-        ANALYZE writes `sqlite_stat1` into the database, so this is paid once
-        for the life of the file rather than per process. `PRAGMA optimize`
-        keeps it current as tables grow -- see `optimize()`.
+        This used to run once and then skip forever if `sqlite_stat1` held any
+        row at all, which quietly meant "once, on whatever tables existed the
+        first time". The play tables were empty then and were still unanalyzed
+        650,000 rows later, so the box score's pace query drove from all of
+        `cfb_play_metrics` matching `metric_version` and filtered 650k rows
+        down to 166: 8.3 seconds for one game, against 4.6ms once the planner
+        could see the shape of the table. So the condition is now the real one
+        -- a table that has rows and no statistics -- rather than a proxy for
+        it that a growing database outlives.
         """
         try:
             has_stats = connection.execute(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
                 "AND name='sqlite_stat1'").fetchone()[0]
-            if has_stats and connection.execute(
-                    "SELECT COUNT(*) FROM sqlite_stat1").fetchone()[0]:
+            if has_stats and not cls._tables_missing_statistics(connection):
                 return
+            connection.execute(f"PRAGMA analysis_limit={cls.ANALYSIS_LIMIT}")
             connection.execute("ANALYZE")
         except sqlite3.Error:
             # Statistics are an optimization; a database that refuses them
@@ -691,15 +722,22 @@ class CFBRepository:
             pass
 
     def optimize(self) -> None:
-        """Refresh planner statistics for tables that have changed.
+        """Refresh planner statistics after a refresh has changed the data.
 
-        Cheap by design: PRAGMA optimize only analyzes what has moved enough to
-        matter, so it is safe to run at the end of every refresh.
+        This called `PRAGMA optimize`, which only considers tables the *current
+        connection* has already queried -- and this opens a connection purely
+        to run it, so it had queried nothing and the pragma did nothing, every
+        night, for as long as it has been scheduled. A bounded ANALYZE does the
+        job the name promises: `analysis_limit` samples rows per index instead
+        of scanning them all, which costs about a quarter of a second on a
+        1.8 GB database and does not depend on what this connection happened to
+        touch first.
         """
         self.initialize()
         try:
             with closing(self._connect()) as connection:
-                connection.execute("PRAGMA optimize")
+                connection.execute(f"PRAGMA analysis_limit={self.ANALYSIS_LIMIT}")
+                connection.execute("ANALYZE")
                 connection.commit()
         except sqlite3.Error:
             pass

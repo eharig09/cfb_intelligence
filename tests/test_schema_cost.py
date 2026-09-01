@@ -122,6 +122,89 @@ class PlannerStatisticsTests(unittest.TestCase):
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
                 "AND name='sqlite_stat1'").fetchone()[0])
 
+    ROWS = {
+        "rankings": ("INSERT INTO rankings"
+                     "(season, season_type, week, poll, is_final, rank, school) "
+                     "VALUES(?,?,?,?,?,?,?)",
+                     lambda n: (2025, "regular", 1, "AP", 0, n, f"Team {n}")),
+        "teams": ("INSERT INTO teams(team_id, school, logos_json, updated_at) "
+                  "VALUES(?,?,?,?)",
+                  lambda n: (n, f"Team {n}", "[]", "2025-01-01")),
+    }
+
+    def _fill(self, table):
+        statement, row = self.ROWS[table]
+        with closing(sqlite3.connect(self.path)) as connection:
+            connection.executemany(statement, [row(n) for n in range(600)])
+            connection.commit()
+
+    def _reinitialize(self):
+        forget_initialized_schemas()
+        CFBRepository(self.path).initialize()
+
+    def _rows_for(self, table):
+        with closing(sqlite3.connect(self.path)) as connection:
+            return connection.execute(
+                "SELECT COUNT(*) FROM sqlite_stat1 WHERE tbl=?", (table,)).fetchone()[0]
+
+    def test_a_table_filled_after_the_first_analyze_still_gets_statistics(self):
+        """The failure this is here to stop, in miniature.
+
+        Statistics used to be written once and then skipped forever if
+        `sqlite_stat1` held any row, so tables that were empty at that moment
+        stayed unanalyzed however large they grew. `cfb_plays` and
+        `cfb_play_metrics` reached 650,000 rows that way, and the box score's
+        pace query drove from all of `cfb_play_metrics` to return 166 rows:
+        8.3 seconds, against 4.6ms once the planner had statistics.
+        """
+        CFBRepository(self.path).initialize()
+
+        # One table is filled and analyzed first, exactly as `games` and the
+        # box-score tables were. This is what put rows in `sqlite_stat1`, and
+        # rows in `sqlite_stat1` were the whole of the old skip condition.
+        self._fill("teams")
+        self._reinitialize()
+        self.assertTrue(self._rows_for("teams"))
+
+        # A second table fills later, as the play tables did. The old check saw
+        # statistics already present and skipped, leaving this one unanalyzed
+        # however large it grew.
+        self.assertEqual(self._rows_for("rankings"), 0)
+        self._fill("rankings")
+        self._reinitialize()
+        self.assertTrue(self._rows_for("rankings"),
+                        "a table filled after the first ANALYZE still needs "
+                        "statistics -- this is the box score's 8.3 seconds")
+
+    def test_statistics_are_not_rewritten_once_every_filled_table_has_them(self):
+        """The check has to settle, or it pays for ANALYZE on every startup.
+
+        Empty tables are the trap: ANALYZE records nothing for them, so a test
+        of "has statistics" that ignored row counts would find them missing
+        forever.
+        """
+        repository = CFBRepository(self.path)
+        repository.initialize()
+        with closing(sqlite3.connect(self.path)) as connection:
+            self.assertEqual(
+                CFBRepository._tables_missing_statistics(connection), [])
+
+    def test_optimize_analyzes_without_depending_on_what_it_queried_first(self):
+        """`PRAGMA optimize` only considers tables the current connection has
+        already read, and this opens a connection just to call it -- so the
+        nightly refresh was running a guaranteed no-op. A bounded ANALYZE does
+        not care what the connection touched first.
+        """
+        repository = CFBRepository(self.path)
+        repository.initialize()
+        self._fill("teams")
+        repository.optimize()
+        self._fill("rankings")
+
+        repository.optimize()
+        self.assertTrue(self._rows_for("rankings"),
+                        "optimize must record statistics for the grown table")
+
     def test_statistics_failures_never_break_initialization(self):
         """A database that refuses ANALYZE still has to answer queries."""
         repository = CFBRepository(self.path)

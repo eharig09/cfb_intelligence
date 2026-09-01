@@ -67,6 +67,12 @@ def initialize(repository) -> None:
           ON cfb_plays(season,week,game_id);
         CREATE INDEX IF NOT EXISTS idx_cfb_plays_offense
           ON cfb_plays(season,offense);
+        -- Every question asked of a team's offence gets asked of its defence,
+        -- and without this the defence half fell back to the season prefix of
+        -- the index above and tested `defense` on all 180,000 plays in the
+        -- season: 475ms against 6.9ms, four times per matchup page.
+        CREATE INDEX IF NOT EXISTS idx_cfb_plays_defense
+          ON cfb_plays(season,defense);
 
         CREATE TABLE IF NOT EXISTS cfb_play_metrics (
           play_id TEXT NOT NULL,
