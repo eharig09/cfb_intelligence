@@ -44,6 +44,9 @@ WORKER_STACK_BYTES = 512 * 1024
 #: "degraded" stopped carrying information — three steps sat in that list every
 #: run while the refresh was working. A step now fails when it did not do its
 #: job, not when the internet was imperfect.
+ENDPOINT_FAILURE_TOLERANCE = 0.2
+
+
 #: How long ingest-local-reporting waits for its feeds before keeping what it has.
 #:
 #: Three hundred and fifty Google News feeds behind eight workers, against an

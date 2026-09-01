@@ -403,6 +403,91 @@ class QbAirYardsSourceTests(unittest.TestCase):
         self.assertNotEqual(rows[0]["parser_version"], CFBD_PARSER_VERSION)
 
 
+class ScoredPlayGuardTests(unittest.TestCase):
+    """Nothing built yet is a no-op; the wrong version is an error."""
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(handle)
+        os.unlink(self.path)
+        forget_initialized_schemas()
+        from sports_aggregator.cfb.expected_points_v2 import initialize
+        self.repository = CFBRepository(self.path)
+        self.repository.initialize()
+        initialize(self.repository)
+
+    def tearDown(self):
+        forget_initialized_schemas()
+        for path in (self.path, self.path + "-wal", self.path + "-shm"):
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def score(self, version):
+        with closing(sqlite3.connect(self.path)) as connection:
+            connection.execute(
+                "INSERT INTO cfb_play_epa(play_id,model_version,epa,possession_changed,"
+                "scored_at) VALUES (?,?,0.1,0,?)", (version, version, "now"))
+            connection.commit()
+
+    def test_an_empty_table_is_nothing_to_do_not_a_failure(self):
+        """A scheduled step ran before the pipeline reached it, which is normal.
+
+        Reporting that as a failure put team-advanced in the degraded list of a
+        refresh that was working.
+        """
+        from sports_aggregator.cfb.pbp_cli import _require_scored_plays
+        self.assertFalse(_require_scored_plays(self.repository, "ep-v2"))
+
+    def test_a_version_nobody_scored_while_another_is_scored_is_an_error(self):
+        """That is the wrong version, which is the trap this guard exists for."""
+        from sports_aggregator.cfb.pbp_cli import _require_scored_plays
+        self.score("ep-v1")
+        with self.assertRaises(SystemExit) as caught:
+            _require_scored_plays(self.repository, "ep-v2")
+        self.assertIn("ep-v1", str(caught.exception))
+
+    def test_a_scored_version_builds(self):
+        from sports_aggregator.cfb.pbp_cli import _require_scored_plays
+        self.score("ep-v2")
+        self.assertTrue(_require_scored_plays(self.repository, "ep-v2"))
+
+
+class EndpointToleranceTests(unittest.TestCase):
+    """One dead account must not report a working refresh as degraded.
+
+    A handle that has been renamed or deleted stays unresolved and fails on
+    every run: skhanjr.bsky.social marked 18 of 23 refreshes degraded.
+    """
+
+    class Result:
+        def __init__(self, handle, status):
+            self.requested_handle, self.status = handle, status
+
+    def resolve(self, verified, failed):
+        from sports_aggregator.social.cli import _endpoint_exit
+        return _endpoint_exit(
+            [self.Result(f"ok{i}", "verified") for i in range(verified)]
+            + [self.Result(f"dead{i}", "resolution_failed") for i in range(failed)],
+            kind="bluesky")
+
+    def test_one_dead_handle_among_many_is_tolerated(self):
+        self.assertEqual(self.resolve(39, 1), 0)
+
+    def test_a_wide_failure_still_fails(self):
+        """That is the API being down, which is worth waking up for."""
+        self.assertEqual(self.resolve(0, 40), 1)
+
+    def test_the_tolerance_is_the_documented_one(self):
+        from sports_aggregator.social.content_cli import ENDPOINT_FAILURE_TOLERANCE
+        total = 100
+        allowed = int(total * ENDPOINT_FAILURE_TOLERANCE)
+        self.assertEqual(self.resolve(total - allowed, allowed), 0)
+        self.assertEqual(self.resolve(total - allowed - 1, allowed + 1), 1)
+
+    def test_nothing_to_resolve_is_not_a_failure(self):
+        self.assertEqual(self.resolve(0, 0), 0)
+
+
 class RefreshWiringTests(unittest.TestCase):
     def test_the_analytics_pipeline_has_scheduled_steps(self):
         """It had none, which is why the whole layer was empty."""

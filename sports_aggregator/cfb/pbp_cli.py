@@ -93,26 +93,41 @@ def _ep_functions(version: str):
             f"{', '.join(sorted(_EP_MODULES))}") from None
 
 
-def _require_scored_plays(repository, version: str) -> None:
-    """Refuse to build from an EPA version nothing has scored.
+def _require_scored_plays(repository, version: str) -> bool:
+    """Whether there is anything to build from, and whether that is a problem.
 
     Building against an unscored version produced an empty table and a report
-    that said the metrics were "not available for this game yet", which reads as
-    missing data rather than as a step that has not been run.
+    saying the metrics were "not available for this game yet", which reads as
+    missing data rather than as a step nobody ran. So a version that has no
+    plays while another version does is an error worth stopping for -- that is
+    the wrong version, which is exactly the trap this guard exists for.
+
+    An empty table is different. Nothing scored at all means the pipeline has
+    not reached here yet, which is the normal state of a fresh database and of
+    a preseason. As a scheduled step that is a no-op, not a failure, and
+    reporting it as one put `team-advanced` in the degraded list of a refresh
+    that was working.
     """
     with closing(repository._connect()) as connection:
         try:
             scored = int(connection.execute(
                 "SELECT COUNT(*) FROM cfb_play_epa WHERE model_version=?",
                 (version,)).fetchone()[0])
+            other = [row[0] for row in connection.execute(
+                "SELECT DISTINCT model_version FROM cfb_play_epa WHERE model_version<>?",
+                (version,))]
         except sqlite3.Error:
-            scored = 0
+            scored, other = 0, []
     if scored:
-        return
-    raise SystemExit(
-        f"no plays scored for model version {version!r}. Run `score-epa"
-        f" --model-version {version}` first (ep-v2 is also scored by"
-        f" `python -m sports_aggregator.cfb.expected_points_event_cli score`).")
+        return True
+    if other:
+        raise SystemExit(
+            f"no plays scored for model version {version!r}, but {', '.join(sorted(other))}"
+            f" {'is' if len(other) == 1 else 'are'} scored. Either build that version or run"
+            f" `score-epa --model-version {version}` first (ep-v2 is also scored by"
+            f" `python -m sports_aggregator.cfb.expected_points_event_cli score`).")
+    print(f"no plays scored yet for {version}; nothing to build")
+    return False
 
 
 def _week_ready(repository: CFBRepository, year: int, week: int) -> tuple[bool, int]:
@@ -211,7 +226,8 @@ def main(argv: list[str] | None = None, *, client=None) -> int:
         return 0
     if args.command == "build-team-advanced":
         version = _model_version(args, "ep")
-        _require_scored_plays(repository, version)
+        if not _require_scored_plays(repository, version):
+            return 0
         print(json.dumps(build_team_game_advanced(
             repository, from_season=first, to_season=last, model_version=version), indent=2))
         return 0
