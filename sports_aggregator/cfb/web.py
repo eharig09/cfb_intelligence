@@ -178,9 +178,17 @@ def _with_matchup_edges(repository: CFBRepository, games: list[dict]) -> list[di
     actually watch inside it, which is the question the dashboard could not
     answer before.
     """
+    # One load for the whole slate, the way `_weekly_matchup_watches` does it:
+    # without this each game fetched its own two teams' grade rows, so the
+    # dashboard ran the pair of grade queries once per game.
+    prefetched = repository.pff_matchup_rows(
+        [team for game in games
+         for team in (game.get("home_team_id"), game.get("away_team_id"))],
+        2025)
     for game in games:
         report = game_matchup_report(
-            repository.pff_matchups(game["home_team_id"], game["away_team_id"], 2025),
+            repository.pff_matchups(game["home_team_id"], game["away_team_id"], 2025,
+                                    prefetched=prefetched),
             game["away_team"], game["home_team"], limit=1,
         )
         top = (report["matchups"] or [None])[0]
