@@ -85,3 +85,61 @@ def test_the_facts_strip_is_one_row_whatever_the_count(client):
 
     body = _page(client, 194)
     assert body.count('class="fact"') == 7
+
+
+# --------------------------------------------------------------------- identity
+
+def _identity_row(**overrides):
+    row = {"position_group": "RB", "season": 2025, "rush_yards": 1400.0,
+           "rush_yards_share": 62.5, "touchdowns": 18.0, "pff_grade": 81.2,
+           "pff_detail": "rushing 81.2; blocking 60.0"}
+    row.update(overrides)
+    return row
+
+
+def test_position_identity_shows_a_second_measure_for_the_group():
+    """One number does not describe a position: a back who runs for 1,400 and
+    one who runs for 1,400 and scores eighteen times are different players."""
+    from sports_aggregator.cfb import views
+    table = views.position_philosophy_table([_identity_row()], 2025)
+    keys = [column.key for column in table.columns]
+    assert "second" in keys
+    assert table.rows[0]["second"] == 18.0
+    assert table.rows[0]["second_sub"] == "TD"
+
+
+def test_the_season_to_date_column_appears_only_once_there_is_a_season():
+    from sports_aggregator.cfb import views
+    without = views.position_philosophy_table([_identity_row()], 2025)
+    assert "to_date" not in [column.key for column in without.columns]
+
+    with_season = views.position_philosophy_table(
+        [_identity_row()], 2025, current=[], current_season=2026)
+    assert "to_date" in [column.key for column in with_season.columns]
+    assert with_season.rows[0]["to_date"] is None, "nothing played yet"
+
+
+def test_season_to_date_is_reported_against_last_year_not_as_a_bare_number():
+    """A partial-season total compares to nothing on its own. What it is worth
+    knowing is how far through last year's figure the group already is."""
+    from sports_aggregator.cfb import views
+    table = views.position_philosophy_table(
+        [_identity_row()], 2025,
+        current=[_identity_row(season=2026, rush_yards=700.0)],
+        current_season=2026)
+
+    assert table.rows[0]["to_date"] == 700.0
+    assert table.rows[0]["to_date_sub"] == "50% of 2025"
+
+
+def test_a_group_with_no_individual_statistic_still_lists_its_grade():
+    from sports_aggregator.cfb import views
+    table = views.position_philosophy_table(
+        [_identity_row(position_group="OL", pff_grade=69.2,
+                       pff_detail="blocking 69.2")],
+        2025, current=[], current_season=2026)
+
+    row = table.rows[0]
+    assert row["production"] is None and row["second"] is None
+    assert row["to_date"] is None, "no metric means nothing to compare"
+    assert row["pff_grade"] == 69.2

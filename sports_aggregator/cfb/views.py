@@ -420,50 +420,83 @@ def opponent_performance_table(rows: Sequence[dict[str, Any]], *,
                  dense=True, empty="No cached player box score against this opponent.")
 
 
-def position_philosophy_table(rows: Sequence[dict[str, Any]], season: int | None) -> Table:
-    """One meaningful production measure per position group plus its PFF evidence."""
+def position_philosophy_table(rows: Sequence[dict[str, Any]], season: int | None, *,
+                              current: Sequence[dict[str, Any]] | None = None,
+                              current_season: int | None = None) -> Table:
+    """How a roster distributed its work, by position group.
+
+    Two production measures per group rather than one. A position is not
+    described by a single number -- a back who carries for 1,400 yards and one
+    who carries for 1,400 and scores eighteen times are different players, and
+    an edge with sacks but no tackles is a different one again -- and the table
+    had room for the second only after it moved out of the sidebar.
+
+    `current` is the same measurement for the season in progress. It is empty
+    in the preseason and fills in as games are played, which is the point: the
+    question is whether this year's distribution is following last year's.
+    """
     specs = {
-        "QB": ("pass_yards", "Pass yards", None),
-        "RB": ("rush_yards", "Rush yards", "rush_yards_share"),
-        "WR": ("receiving_yards", "Receiving yards", "receiving_yards_share"),
-        "TE": ("receiving_yards", "Receiving yards", "receiving_yards_share"),
-        "OL": (None, "No individual stat", None),
-        "DL": ("sacks", "Sacks", "sacks_share"),
-        "EDGE": ("sacks", "Sacks", "sacks_share"),
-        "LB": ("tackles", "Tackles", "tackles_share"),
-        "SECONDARY": ("interceptions", "Interceptions", "tackles_share"),
+        "QB": ("pass_yards", "Pass yards", None, "touchdowns", "TD"),
+        "RB": ("rush_yards", "Rush yards", "rush_yards_share", "touchdowns", "TD"),
+        "WR": ("receiving_yards", "Receiving yards", "receiving_yards_share",
+               "receptions", "Rec"),
+        "TE": ("receiving_yards", "Receiving yards", "receiving_yards_share",
+               "receptions", "Rec"),
+        "OL": (None, "No individual stat", None, None, None),
+        "DL": ("sacks", "Sacks", "sacks_share", "tackles", "Tkl"),
+        "EDGE": ("sacks", "Sacks", "sacks_share", "tackles", "Tkl"),
+        "LB": ("tackles", "Tackles", "tackles_share", "sacks", "Sack"),
+        "SECONDARY": ("interceptions", "Interceptions", "tackles_share",
+                      "tackles", "Tkl"),
     }
+    by_group_now = {row.get("position_group"): row for row in (current or [])}
     result = []
     for row in rows:
         group = row.get("position_group")
         if group not in specs:
             continue
-        metric, label, share = specs[group]
+        metric, label, share, second, second_label = specs[group]
+        now = by_group_now.get(group) or {}
         value = row.get(metric) if metric else None
+        to_date = now.get(metric) if metric else None
+        # Only a share of what the group did last year -- an absolute number
+        # part-way through a season compares nothing.
+        pace = (round(100 * to_date / value, 0)
+                if metric and value and to_date is not None else None)
         result.append({
             "group": group_label(group), "production": value,
             "production_sub": label, "share": row.get(share) if share else None,
+            "second": row.get(second) if second else None,
+            "second_sub": second_label,
+            "to_date": to_date,
+            "to_date_sub": (f"{pace:.0f}% of {season}" if pace is not None else None),
             "pff_grade": row.get("pff_grade"),
             # The full detail runs "coverage 70.8; defense 70.2; pass rush
-            # 64.2" -- three facets under a four-character number, in a column
-            # a third of the page wide. The best one is the one the number is.
+            # 64.2" -- three facets under a four-character number. The best one
+            # is the one the number is.
             "pff_grade_sub": (row.get("pff_detail") or "").split(";")[0] or None,
         })
+    columns = [Column("group", "Group", emphasis=True),
+               Column("production", "Production", format="big", align="right",
+                      title="The production statistic that means most at this "
+                            "position; the row says which"),
+               Column("share", "Share", format="pct", align="right",
+                      title="Share of the team's production in that statistic"),
+               Column("second", "Also", format="big", align="right",
+                      title="A second measure for the same group, because one "
+                            "number does not describe a position")]
+    if current_season:
+        columns.append(
+            Column("to_date", "To date", format="big", align="right",
+                   title=f"The same statistic so far in {current_season}, with "
+                         f"how much of the {season} figure it has reached"))
+    columns.append(
+        Column("pff_grade", "Top PFF", format="f1", align="right",
+               title="Best stored PFF dataset grade; the dataset is named below it"))
     return Table(
-        # This renders in the team page's aside, which is about a third of the
-        # page wide. A header wider than the number under it sets the column
-        # width, and four of those overflow the aside and scroll sideways
-        # inside it. Each says what it is in its title instead.
-        columns=[Column("group", "Group", emphasis=True),
-                 Column("production", "Production", format="big", align="right",
-                        title="The one production statistic that means most at "
-                              "this position; the row says which"),
-                 Column("share", "Share", format="pct", align="right",
-                        title="Share of the team's production in that statistic"),
-                 Column("pff_grade", "Top PFF", format="f1", align="right",
-                        title="Best stored PFF dataset grade; dataset details appear below")],
-        rows=result, caption=f"{season} production identity" if season else "Position identity",
-        note="Production and PFF remain separate evidence; no composite score is invented.",
+        columns=columns, rows=result,
+        caption=f"{season} production identity" if season else "Position identity",
+        note="Production and PFF stay separate; no composite is invented.",
         dense=True, empty="No historical position production is stored.")
 
 

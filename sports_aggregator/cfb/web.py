@@ -499,7 +499,12 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
                                   prior_season=2025, current_season=season),
             2025),
         "position_philosophy_table": views.position_philosophy_table(
-            history["identity"], history["latest_production_season"]),
+            history["identity"], history["latest_production_season"],
+            # Empty until the season starts producing, which is what the column
+            # is for: whether this year is following last year's distribution.
+            current=[row for row in history["positions"]
+                     if row.get("season") == season],
+            current_season=season),
         "position_philosophy_season": history["latest_production_season"],
         "draft_table": views.prospect_table(
             prospect_board(_repository(), roster_season=season, limit=10,
