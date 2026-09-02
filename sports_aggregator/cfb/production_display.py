@@ -281,6 +281,11 @@ def _raw_metrics_by_player(repository, player_ids: list[str], pff_season: int) -
     ids = list(dict.fromkeys(str(player_id) for player_id in player_ids if player_id))
     if not ids:
         return {}
+    # Every other reader in the repository does this first, and this one is the
+    # only path to the PFF tables from a page: without it a database that has
+    # not been initialized in this process 500s the conference page on a
+    # missing table rather than showing it without grades.
+    repository.initialize()
     placeholders = ",".join("?" for _ in ids)
     with repository._reader() as connection:
         rows = connection.execute(

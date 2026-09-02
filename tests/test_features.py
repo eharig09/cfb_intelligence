@@ -353,7 +353,14 @@ class RosterProductionTests(unittest.TestCase):
         self.assertIn("qb", evidence)
         self.assertIn("rb", evidence)
         self.assertNotIn("wr", evidence)
-        self.assertIn("Sacramento State", evidence["qb"]["summary"])
+        # `75b4941` replaced the pre-formatted "summary" line with the fields
+        # behind it, so the display layer can say it its own way. Where the
+        # production was earned is the part this test is about: an arriving
+        # quarterback brings what he did somewhere else, and the evidence has
+        # to name the somewhere else rather than imply it was earned here.
+        self.assertEqual(evidence["qb"]["state"], "ARRIVED")
+        self.assertEqual(evidence["qb"]["earned_at"], "Sacramento State")
+        self.assertEqual(evidence["qb"]["headline_value"], 3000.0)
 
 
 class ExpandedSituationTests(unittest.TestCase):

@@ -78,6 +78,11 @@ PLAYER_PAYLOAD = [
 class FakeCFBDClient:
     def teams(self, _year, _force=False): return TEAM_PAYLOAD
     def roster(self, _year, _force=False): return PLAYER_PAYLOAD
+    # The sync gained a recruits dataset after this stand-in was written,
+    # and a client that cannot answer it fails the whole run. Empty is a
+    # legitimate answer -- a class with nobody in it yet -- and keeps this
+    # test about the canonical entities it is named for.
+    def recruits(self, _year, _force=False): return []
     def games(self, _year, _force=False): return GAME_PAYLOAD
     def betting_lines(self, _year, _force=False): return []
     def game_media(self, _year, _force=False): return [{"id": 100, "outlet": "ABC"}]
