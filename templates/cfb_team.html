@@ -69,8 +69,7 @@
         <section class="section" id="tab-overview" data-mobile-tab-panel="overview">
             <h2>{% if schedule_is_upcoming %}Upcoming schedule{% else %}{{ schedule_year }} schedule{% endif %}</h2>
             <div class="section-note">
-                The team page defaults to remaining games. Completed seasons are available
-                here for quick comparison and in the full historical game log.
+                Completed seasons are in the full historical game log.
             </div>
             <nav class="schedule-switch" aria-label="Schedule season">
                 {% for option in schedule_options %}
@@ -85,8 +84,8 @@
             <h2>Team quality</h2>
             <div class="section-note">
                 {% if quality.state == 'PRESEASON' %}
-                Preseason context signals. Live {{ season }} efficiency replaces them after games are played.
-                {% else %}Live {{ season }} CFBD team metrics.{% endif %}
+                Preseason signals; live {{ season }} efficiency replaces them once games are played.
+                {% else %}Live {{ season }} CFBD metrics.{% endif %}
             </div>
             {% if quality.state == 'PRESEASON' %}{{ data_table(quality_table) }}{% endif %}
             <nav class="metric-switch" aria-label="Team statistics controls">
@@ -115,21 +114,19 @@
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Departures</h2>
             <div class="section-note">
-                Everyone out, with what each was worth. Impact blends prior production,
-                grade and recruiting rating; a blank means none of the three is on record,
-                which is not the same as low impact.
+                Impact blends prior production, grade and recruiting rating. A blank means
+                none of the three is on record, not that the impact was low.
             </div>
             {{ data_table(departures_table) }}
         </section>
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Player production</h2>
             <div class="section-note">
-                {{ production.stat_season }} production split by what is here and what is not.
-                Arrived production was earned at another school and says so; returning
-                production is shown neutral.
+                {{ production.stat_season }} production. Arrived production was earned at
+                another school.
                 {% if production.retained_share is not none %}
-                <strong>{{ production.retained_share }}%</strong> of listed production is on the
-                {{ season }} roster.{% endif %}
+                <strong>{{ production.retained_share }}%</strong> of it is on the {{ season }}
+                roster.{% endif %}
             </div>
             <div class="state-key">
                 <span><i class="is-returning"></i> Returning</span>
@@ -145,11 +142,8 @@
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Key arrivals</h2>
             <div class="section-note">
-                Transfers and signees joining for {{ season }}, each ranked by recruiting
-                composite. Both numbers are the same CFBD rating on the same scale, so a
-                team whose signees outrank its portal additions is telling you something
-                real — but a single list lets one group fill the table, so they are shown
-                side by side.
+                Transfers and signees for {{ season }}, both on the same CFBD composite, so
+                the two lists compare directly.
             </div>
             <div class="split">
                 <div>{{ data_table(portal_arrivals_table) }}</div>
@@ -159,30 +153,21 @@
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Signing class</h2>
             <div class="section-note">
-                Recruiting ratings are opinion about players who have not taken a college
-                snap. Class points sum the ratings of the best 20 signees, so the score
-                measures quality rather than class size, and the components are listed
-                below to be checked.
+                Class points sum the ratings of the best 20 signees, so the score measures
+                quality rather than class size.
             </div>
             {{ data_table(signing_class_table) }}
         </section>
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Unit continuity</h2>
-            <div class="section-note">Graded 2025 players still on the {{ season }} roster.</div>
+            <div class="section-note">How much of each unit's 2025 grade returns.</div>
             {{ data_table(unit_continuity_table) }}
         </section>
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Experience-first depth board</h2>
             <div class="section-note">
-                Roster architecture, not an official depth chart. Ordering favors production
-                signals, continuity, and class experience. An arriving player carries the
-                production he earned elsewhere, so a proven transfer is not buried behind
-                a returning reserve, and a highly rated signee is not buried behind a
-                backup who barely played. Ordering blends what a player produced, how he
-                was graded, and what he was rated, so a player who did it twice ranks
-                above one who did it once. Production is ranked against others at the
-                same job, and a recruiting rating is discounted because it describes
-                someone who has not played yet.
+                Not an official depth chart. Ordering blends production, grade and recruiting
+                rating, and discounts the rating: it describes someone who has not played.
             </div>
             {% for unit in depth_units %}
             <div class="depth-unit">
@@ -212,8 +197,7 @@
         <section class="section" data-mobile-tab-panel="news">
             <h2>Around the {{ team.conference or 'conference' }}</h2>
             <div class="section-note">
-                Conference-wide reporting about other programmes. These are not about
-                {{ team.school }} and each shows the team it concerns.
+                Other programmes in the conference; each shows the team it concerns.
             </div>
             {{ story_list(conference_stories, 'No other conference reporting is available.', context=true) }}
         </section>

@@ -152,9 +152,8 @@
 <section class="section" data-mobile-tab-panel="stats" id="tab-stats">
     <h2>Production &amp; schedule strength</h2>
     <div class="section-note">
-        Compact team totals with a season and per-game switch. Highlighted cells show
-        the better offense or defense in this two-team comparison; they are descriptive,
-        not a game prediction.
+        Highlighted cells show the better side of this two-team comparison. Descriptive,
+                not a prediction.
     </div>
     <nav class="metric-switch" aria-label="Matchup statistics controls">
         <span class="metric-switch-label">Season</span>
@@ -189,11 +188,9 @@
     {% if ats.away or ats.home %}
     <h3 class="subhead">Against the number</h3>
     <div class="section-note">
-        Three readings of the same question. This season is what the team is doing
-        now; the coach's tenure is what it has done since the program last changed
-        hands; and the last row applies <em>this game's</em> total to every game
-        played this year, which says whether tonight's number is a high one for
-        this team. Records of what happened, not forecasts.
+        The last row applies <em>this game's</em> total to every game the team has
+        played this year, which says whether tonight's number is a high one for them.
+        Records of what happened, not forecasts.
     </div>
     <div class="ats-pair">
         {% for side, record in [(game.away_team, ats.away), (game.home_team, ats.home)] %}
@@ -240,9 +237,8 @@
 
     <h3 class="subhead">Book by book</h3>
     <div class="section-note">
-        Each book with its movement since opening. A slate view has room for one
-        number and averages these; here there is room for all of them, and the
-        spread between them is the part worth reading.
+        Each book with its movement since opening. The spread between books is the part
+                worth reading.
     </div>
     {{ data_table(market_table) }}
 </section>
@@ -255,8 +251,7 @@
 <section class="section" data-mobile-tab-panel="overview">
     <h2>Situation</h2>
     <div class="section-note">
-        Conditions, schedule, travel and availability context. A trap spot describes
-        the calendar, not a prediction about the result.
+        A trap spot describes the calendar, not a prediction about the result.
         {% if weather and weather.snapshots > 1 %}The forecast has been taken
         {{ weather.snapshots }} times; the change since the first is shown where it
         moved.{% endif %}
@@ -330,9 +325,9 @@
 <section class="section" data-mobile-tab-panel="matchups">
     <h2>Matchups to watch</h2>
     <div class="section-note">
-        Ranked by how watchable each comparison is: whether the better unit is genuinely
-        good, how far apart the two are, and whether both are strong. 2025 PFF grades are
-        historical context, not a projected {{ game.season }} grade.
+        Ranked on whether the better unit is good, how far apart the two are, and
+        whether both are strong. 2025 PFF grades are historical, not a projected
+        {{ game.season }} grade.
     </div>
     {% if matchup_report.matchups %}
     <div class="matchup-summary">
@@ -358,9 +353,8 @@
 <section class="section" data-mobile-tab-panel="players">
     <h2>Players to know</h2>
     <div class="section-note">
-        Returning, arrived and departed, in that order. A departed star is context for
-        last season; an arrival brings production earned somewhere else. Every player
-        links through to his own page.
+        A departed star is context for last season; an arrival brings production earned
+                somewhere else.
     </div>
     <div class="state-key">
         <span><i class="is-returning"></i> Returning</span>
@@ -386,9 +380,8 @@
 <section class="section" data-mobile-tab-panel="players">
     <h2>Portal additions and departures</h2>
     <div class="section-note">
-        Every stored portal move for the current roster cycle is shown. Impact remains
-        blank when prior production or a linked grade is unavailable; that means unproven,
-        not low impact.
+        Impact is blank when no prior production or linked grade is on record: unproven,
+                not low impact.
     </div>
     <div class="split">
         <div>

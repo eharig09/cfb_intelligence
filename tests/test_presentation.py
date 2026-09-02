@@ -151,8 +151,10 @@ class ContextSeparationTests(unittest.TestCase):
         body = self.app.test_client().get("/college-football/teams/68/").get_data(as_text=True)
         self.assertIn("Team reporting", body)
         self.assertIn("Around the Mountain West", body)
-        # The wire section is explicit that its stories are about other programmes.
-        self.assertIn("not about", body)
+        # The wire section has to say whose stories these are, or the heading
+        # alone leaves a reader to assume they concern this team. The wording
+        # shortened; what it has to establish did not.
+        self.assertIn("Other programmes in the conference", body)
 
     def test_player_page_labels_team_reporting_as_context(self):
         body = self.app.test_client().get("/college-football/players/p1/").get_data(as_text=True)
