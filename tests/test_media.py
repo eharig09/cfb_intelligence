@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import os
 import sqlite3
 import tempfile
@@ -386,18 +386,24 @@ class SourceStreamTests(unittest.TestCase):
         self.assertEqual(rss["error_count"], 1)
 
     def test_a_stored_video_appears_in_the_video_stream(self):
+        # `source_streams` keeps a ten-day window measured against the real
+        # clock, so a fixture pinned to a fixed date ages out of it and the
+        # test starts failing ten days after it was written -- which is what
+        # happened. The video has to be recent for the stream to carry it; how
+        # recent is not what this test is about.
+        recent = datetime.now(timezone.utc) - timedelta(hours=1)
         endpoint = {"endpoint_id": None, "source_entity_id": None, "platform_id": "UC1",
                     "name": "Split Zone Duo", "classes": set()}
         self.repository.store_youtube_video(endpoint, {
             "video_id": "vid1", "title": "Ohio State college football preview", "description": "",
-            "published_at": NOW, "url": "https://www.youtube.com/watch?v=vid1",
+            "published_at": recent, "url": "https://www.youtube.com/watch?v=vid1",
             "duration": "PT30M"}, 2026)
         streams = {stream["key"]: stream for stream in self.repository.source_streams()}
         self.assertEqual(streams["video"]["total"], 1)
         self.assertEqual(streams["video"]["items"][0]["content_type"], "GAME_PREVIEW")
         self.assertEqual(streams["video"]["items"][0]["source_icon"], "▶️")
         self.assertTrue(streams["video"]["items"][0]["makes_sound"])
-        self.assertIn("2026", streams["video"]["items"][0]["published_exact"])
+        self.assertIn(str(recent.year), streams["video"]["items"][0]["published_exact"])
 
     def test_a_podcast_episode_without_a_date_is_skipped(self):
         endpoint = {"endpoint_id": None, "source_entity_id": None, "name": "Show", "classes": set()}

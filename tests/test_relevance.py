@@ -10,6 +10,9 @@ from sports_aggregator.social.content import (
     ContentRepository, links_externally, reddit_content_type,
 )
 from sports_aggregator.social.relevance import (
+    RECENCY_STRENGTH, VERY_FRESH_BOOST,
+)
+from sports_aggregator.social.relevance import (
     ROLE_WEIGHT, recency_factor, score_item, topic_profile,
 )
 
@@ -44,11 +47,33 @@ class RelevanceTests(unittest.TestCase):
         self.assertIsNone(topic)
         self.assertEqual(weight, 0.45)
 
-    def test_recency_halves_at_the_half_life(self):
-        self.assertAlmostEqual(recency_factor(ago(72), 3.0, NOW), 0.5, places=2)
-        self.assertAlmostEqual(recency_factor(ago(0), 3.0, NOW), 1.0, places=2)
+    def test_recency_decays_faster_than_the_nominal_half_life(self):
+        """The curve is raised to RECENCY_STRENGTH, so a topic's half-life is
+        no longer where the value halves: an item there keeps about a third of
+        its recency, and older material falls away faster still. Expressed
+        against the constant rather than the number it currently produces, so
+        retuning the curve does not need this rewritten -- only its shape is
+        being pinned.
+        """
+        at_halflife = recency_factor(ago(72), 3.0, NOW)
+        self.assertAlmostEqual(at_halflife, 0.5 ** RECENCY_STRENGTH, places=4)
+        self.assertLess(at_halflife, 0.5)
+
+    def test_something_just_published_carries_the_freshness_bump(self):
+        self.assertAlmostEqual(recency_factor(ago(0), 3.0, NOW),
+                               VERY_FRESH_BOOST, places=2)
+        self.assertGreater(recency_factor(ago(3), 3.0, NOW),
+                           recency_factor(ago(12), 3.0, NOW))
+
+    def test_a_longer_half_life_keeps_a_story_alive_longer(self):
         self.assertGreater(recency_factor(ago(24), 30.0, NOW),
                            recency_factor(ago(24), 1.5, NOW))
+
+    def test_the_curve_only_ever_falls(self):
+        values = [recency_factor(ago(hours), 3.0, NOW)
+                  for hours in (0, 3, 12, 24, 48, 72, 168)]
+        self.assertEqual(values, sorted(values, reverse=True))
+        self.assertGreaterEqual(values[-1], 0.03, "the floor still applies")
 
     def test_beat_writer_on_an_injury_outranks_a_pundit_on_the_same_story(self):
         common = {"source_role": "REPORTING_UNDETERMINED", "published_at": ago(4),

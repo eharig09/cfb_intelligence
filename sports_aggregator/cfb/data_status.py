@@ -126,10 +126,16 @@ def _safe_step(row: dict[str, Any]) -> dict[str, Any]:
         "at": row.get("at") or row.get("finished_at"),
         "message": str(row.get("message") or "")[:180],
     }
+    counts = []
     for key in ("added", "updated", "unchanged", "count"):
         value = row.get(key)
-        if isinstance(value, (int, float)):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
             result[key] = int(value)
+            counts.append(f"{int(value):,} {key}")
+    # Steps that report numbers rather than a sentence had them collected here
+    # and rendered nowhere, so "18 added, 9 updated" reached the page as the
+    # word "Completed".
+    result["changes"] = " · ".join(counts)
     return result
 
 

@@ -5,18 +5,23 @@ from pathlib import Path
 
 from flask import Flask
 
-from sports_aggregator.cfb.data_status import data_status_pages
+from app import create_app
 
 
 def _app(tmp_path: Path) -> Flask:
-    app = Flask(__name__, template_folder=str(Path(__file__).resolve().parents[1] / "templates"))
-    app.config.update(
-        TESTING=True,
-        CFB_DATABASE_PATH=str(tmp_path / "cfb.sqlite3"),
-        CFB_DISPLAY_TIMEZONE="America/New_York",
-    )
-    app.register_blueprint(data_status_pages)
-    return app
+    """The real application, not a Flask instance with one blueprint on it.
+
+    The page extends the shared layout, and the layout links the national RSS
+    feed, the index and the static bundle. A minimal app can build none of
+    those, so both tests here died in `url_for` before reaching anything they
+    were written to check.
+    """
+    return create_app({
+        "TESTING": True,
+        "REGISTER_LEGACY_DASHBOARDS": False,
+        "CFB_DATABASE_PATH": str(tmp_path / "cfb.sqlite3"),
+        "CFB_DISPLAY_TIMEZONE": "America/New_York",
+    })
 
 
 def test_data_status_renders_sanitized_refresh_metadata(tmp_path: Path):
