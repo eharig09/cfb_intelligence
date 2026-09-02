@@ -180,8 +180,13 @@ def _pace_for(repository, team_id: int, season: int,
     if coach_name:
         packet = coordinator_pace(repository, coach_name, through_season=int(season))
         if packet and (packet.get("career") or packet.get("recent")):
-            return (_pace_line(packet.get("recent"), f"Since {packet['recent_from']}")
-                    + _pace_line(packet.get("career"), "Career"),
+            recent, whole = packet.get("recent"), packet.get("career")
+            # Play-by-play starts well after `team_stats` does, so a career
+            # older than the plays is measured only over the part that has
+            # them -- and when that is the whole of it, one line says it.
+            same = (recent and whole and recent["games"] == whole["games"])
+            return (_pace_line(recent, f"Since {packet['recent_from']}")
+                    + ("" if same else _pace_line(whole, "Career")),
                     "under this coordinator")
     if not team:
         return "", ""
@@ -222,14 +227,17 @@ def _balance_card(repository, team_id: int, season: int) -> str:
         + f"{split['run_pct']:.0f}/{split['pass_pct']:.0f}</span>"
         for split in context.get("season_splits", [])[:HISTORY_SEASONS]
     ]
+    seasons = program["seasons"] if program else 0
     program_text = (
-        f"{escape(context['team'])} over {program['seasons']} seasons: "
+        f"{escape(context['team'])} over {seasons} season{'s' if seasons != 1 else ''}: "
         f"{program['run_pct']:.0f}% run / {program['pass_pct']:.0f}% pass"
         if program else ""
     )
+    # Saying it twice is not saying it louder: a coordinator with one stop has
+    # a career identical to his programme's.
     career_text = (
         f"Career assignments: {career['run_pct']:.0f}% run / {career['pass_pct']:.0f}% pass"
-        if career else ""
+        if career and (not program or career["seasons"] != program["seasons"]) else ""
     )
     pace, basis = _pace_for(repository, team_id, season, coach)
     title = escape(context["team"]) + (f" · {escape(coach)}" if coach else "")

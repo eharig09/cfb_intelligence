@@ -190,3 +190,27 @@ def test_the_matchup_card_appears_without_coordinator_data(repository):
     assert "Test U" in card
     assert "60/40" in card, "the tendency is the point of the card"
     assert "coordinator not on record" in card, "and it says whose it is"
+
+
+def test_a_one_stop_coordinator_is_not_told_twice(repository):
+    """His career and his programme are the same rows; printing both says
+    nothing the second time."""
+    from sports_aggregator.cfb import coordinator_display as display
+    with sqlite3.connect(repository.path) as connection:
+        connection.execute(
+            "INSERT INTO teams(team_id, school, logos_json, updated_at)"
+            " VALUES(?,?,?,?)", (8, "One Stop U", "[]", "2026-01-01"))
+        _team_stat(connection, 2025, "One Stop U", 600, 400)
+        connection.execute(
+            "INSERT INTO coordinator_seasons(season, team_id, team, side, role,"
+            " coach_name, source_name, source_url, verified_official, updated_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (2025, 8, "One Stop U", "offense", "OC", "Only Job",
+             "test", "http://example.invalid", 0, "2026-01-01"))
+        connection.commit()
+
+    card = display._balance_card(repository, 8, 2025)
+
+    assert "Only Job" in card
+    assert "over 1 season:" in card, "and not '1 seasons'"
+    assert "Career assignments" not in card
