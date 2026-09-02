@@ -64,7 +64,7 @@
     <button type="button" role="tab" data-mobile-tab="news" aria-selected="false">News</button>
 </nav>
 
-<div class="layout">
+<div class="layout team-layout">
     <div>
         <section class="section" id="tab-overview" data-mobile-tab-panel="overview">
             <h2>{% if schedule_is_upcoming %}Upcoming schedule{% else %}{{ schedule_year }} schedule{% endif %}</h2>
@@ -81,7 +81,6 @@
             {{ data_table(schedule_table) }}
             {{ data_table(opponent_quality_table) }}
         </section>
-
         <section class="section" id="tab-stats" data-mobile-tab-panel="stats">
             <h2>Team quality</h2>
             <div class="section-note">
@@ -104,7 +103,15 @@
             </nav>
             {{ data_table(team_stats_table) }}
         </section>
-
+        <section class="section" data-mobile-tab-panel="stats">
+            <h2>Position philosophy</h2>
+            <div class="section-note">
+                {{ position_philosophy_season or 'Latest stored' }} production identifies how
+                this roster distributed its work. Each row uses the statistic relevant to that
+                position; PFF is shown beside it as separate historical evidence.
+            </div>
+            {{ data_table(position_philosophy_table) }}
+        </section>
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Player production</h2>
             <div class="section-note">
@@ -126,33 +133,12 @@
                 <div class="empty">No prior-season production is stored for this roster.</div>
             {% endif %}
         </section>
-
         <section class="section" data-mobile-tab-panel="roster">
-            <h2>Key arrivals</h2>
-            <div class="section-note">
-                Transfers and signees joining for {{ season }}, each ranked by recruiting
-                composite. Both numbers are the same CFBD rating on the same scale, so a
-                team whose signees outrank its portal additions is telling you something
-                real — but a single list lets one group fill the table, so they are shown
-                side by side.
-            </div>
-            <div class="split">
-                <div>{{ data_table(portal_arrivals_table) }}</div>
-                <div>{{ data_table(signee_arrivals_table) }}</div>
-            </div>
+            <h2>Key returning production</h2>
+            <div class="section-note">Graded 2025 players still on the {{ season }} roster.</div>
+            {{ data_table(unit_continuity_table) }}
+            {{ data_table(pff_players_table) }}
         </section>
-
-        <section class="section" data-mobile-tab-panel="roster">
-            <h2>Signing class</h2>
-            <div class="section-note">
-                Recruiting ratings are opinion about players who have not taken a college
-                snap. Class points sum the ratings of the best 20 signees, so the score
-                measures quality rather than class size, and the components are listed
-                below to be checked.
-            </div>
-            {{ data_table(signing_class_table) }}
-        </section>
-
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Experience-first depth board</h2>
             <div class="section-note">
@@ -175,7 +161,35 @@
             <div class="empty">Roster data is not yet available.</div>
             {% endfor %}
         </section>
-
+        <section class="section" data-mobile-tab-panel="roster">
+            <h2>Key arrivals</h2>
+            <div class="section-note">
+                Transfers and signees joining for {{ season }}, each ranked by recruiting
+                composite. Both numbers are the same CFBD rating on the same scale, so a
+                team whose signees outrank its portal additions is telling you something
+                real — but a single list lets one group fill the table, so they are shown
+                side by side.
+            </div>
+            <div class="split">
+                <div>{{ data_table(portal_arrivals_table) }}</div>
+                <div>{{ data_table(signee_arrivals_table) }}</div>
+            </div>
+        </section>
+        <section class="section" data-mobile-tab-panel="roster">
+            <h2>Signing class</h2>
+            <div class="section-note">
+                Recruiting ratings are opinion about players who have not taken a college
+                snap. Class points sum the ratings of the best 20 signees, so the score
+                measures quality rather than class size, and the components are listed
+                below to be checked.
+            </div>
+            {{ data_table(signing_class_table) }}
+        </section>
+        <section class="section" data-mobile-tab-panel="roster">
+            <h2>Key departures</h2>
+            <div class="section-note">Graded 2025 players who left, and where they went.</div>
+            {{ data_table(pff_departed_table) }}
+        </section>
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Roster movement</h2>
             <div class="section-note">
@@ -190,38 +204,6 @@
                 <div>{{ data_table(departures_table) }}</div>
             </div>
         </section>
-
-    </div>
-
-    <aside>
-        <section class="section" data-mobile-tab-panel="news">
-            <h2>Team reporting</h2>
-            <div class="section-note">Stories that resolved to {{ team.school }} specifically.</div>
-            {{ story_list(stories, 'No story has resolved to this team yet.') }}
-        </section>
-
-        <section class="section" data-mobile-tab-panel="news">
-            <h2>Around the {{ team.conference or 'conference' }}</h2>
-            <div class="section-note">
-                Conference-wide reporting about other programmes. These are not about
-                {{ team.school }} and each shows the team it concerns.
-            </div>
-            {{ story_list(conference_stories, 'No other conference reporting is available.', context=true) }}
-        </section>
-
-        <section class="section" data-mobile-tab-panel="roster">
-            <h2>Key returning production</h2>
-            <div class="section-note">Graded 2025 players still on the {{ season }} roster.</div>
-            {{ data_table(unit_continuity_table) }}
-            {{ data_table(pff_players_table) }}
-        </section>
-
-        <section class="section" data-mobile-tab-panel="roster">
-            <h2>Key departures</h2>
-            <div class="section-note">Graded 2025 players who left, and where they went.</div>
-            {{ data_table(pff_departed_table) }}
-        </section>
-
         <section class="section" data-mobile-tab-panel="roster">
             <h2>{{ board_year | default(2027) }} draft watch</h2>
             <div class="section-note">
@@ -230,15 +212,21 @@
             </div>
             {{ data_table(draft_table) }}
         </section>
+    </div>
 
-        <section class="section" data-mobile-tab-panel="stats">
-            <h2>Position philosophy</h2>
+    <aside>
+        <section class="section" data-mobile-tab-panel="news">
+            <h2>Team reporting</h2>
+            <div class="section-note">Stories that resolved to {{ team.school }} specifically.</div>
+            {{ story_list(stories, 'No story has resolved to this team yet.') }}
+        </section>
+        <section class="section" data-mobile-tab-panel="news">
+            <h2>Around the {{ team.conference or 'conference' }}</h2>
             <div class="section-note">
-                {{ position_philosophy_season or 'Latest stored' }} production identifies how
-                this roster distributed its work. Each row uses the statistic relevant to that
-                position; PFF is shown beside it as separate historical evidence.
+                Conference-wide reporting about other programmes. These are not about
+                {{ team.school }} and each shows the team it concerns.
             </div>
-            {{ data_table(position_philosophy_table) }}
+            {{ story_list(conference_stories, 'No other conference reporting is available.', context=true) }}
         </section>
     </aside>
 </div>

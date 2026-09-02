@@ -32,3 +32,17 @@
         .hero-context .item { white-space:normal; }
         .schedule-switch a { flex: 1 1 auto; text-align: center; }
     }
+
+/* The sidebar holds the two story lists and nothing else now that the roster
+   and stats sections sit with their own kind, so it runs out well before the
+   eleven-section column beside it. `align-self` is what makes sticky work
+   here: a grid item is stretched to its row's height by default, which leaves
+   it nothing to travel within. Scoped to this page because it is this page
+   whose columns became lopsided. */
+@media (min-width: 860px) {
+    .team-layout > aside {
+        position: sticky; top: 12px; align-self: start;
+        max-height: calc(100vh - 24px); overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+}
