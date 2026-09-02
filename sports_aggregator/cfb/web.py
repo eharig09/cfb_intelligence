@@ -466,9 +466,17 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
         "depth_units": views.depth_chart_tables(
             packet["depth_chart"], season,
             projected_depth(_repository(), packet["team"]["team_id"], season)),
-        "production_groups": views.production_groups(packet["production"], season),
-        "arrivals_key_table": views.arrivals_table(movements["arrivals"][:20], season),
-        "arrivals_table": views.movements_table(movements["arrivals"][:20], season, arrivals=True),
+        # The interest score the dropped "Key returning production" table
+        # carried, keyed both ways because a PFF row links to a roster by id
+        # when it can and by name when it cannot.
+        "production_groups": views.production_groups(
+            packet["production"], season,
+            interest={key: row["interest_score"]
+                      for row in packet["pff"]["players"]
+                      if row.get("interest_score") is not None
+                      for key in (str(row.get("cfbd_player_id") or ""),
+                                  row.get("normalized_name") or "")
+                      if key}),
         "departures_table": views.movements_table(
             movements["departures"][:20], season, arrivals=False
         ),
@@ -490,14 +498,6 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
             units_with_continuity(_repository(), packet["team"]["team_id"],
                                   prior_season=2025, current_season=season),
             2025),
-        "pff_players_table": views.pff_players_table(
-            [row for row in packet["pff"]["players"]
-             if row.get("roster_status") == "RETURNING"],
-            season, caption="Key returning production", dense=True),
-        "pff_departed_table": views.pff_departures_table(
-            [row for row in packet["pff"]["players"]
-             if row.get("roster_status") not in (None, "RETURNING")],
-            season, caption="Key departures"),
         "position_philosophy_table": views.position_philosophy_table(
             history["identity"], history["latest_production_season"]),
         "position_philosophy_season": history["latest_production_season"],

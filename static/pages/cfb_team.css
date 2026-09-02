@@ -46,3 +46,11 @@
         overscroll-behavior: contain;
     }
 }
+
+/* A returning player the 2025 snapshot graded. `state-returning` is
+   deliberately transparent -- returning is the neutral case -- so the mark has
+   to be its own class, or the ones actually worth finding look like everyone
+   else. This is what the separate "Key returning production" table was for. */
+table.data td.state-returning.state-graded { border-left-color: var(--team); }
+table.data td.state-returning.state-graded b,
+table.data td.state-returning.state-graded a { color: var(--team); }

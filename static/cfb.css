@@ -705,7 +705,11 @@ table.data tbody tr:hover td.box-group { background: var(--head-bg); }
 @media (min-width: 860px) {
     :root { --gap: 14px; }
     main { padding-top: 28px; }
-    .facts { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    /* One row, whatever the count. Six was hardcoded here while the number
+       of facts is decided at render time -- the team page adds staff
+       continuity from a template loader, making seven, so the last one
+       dropped onto a line of its own with five empty cells beside it. */
+    .facts { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
     .fact { border-bottom: 0; }
     .fact:last-child { border-right: 0; }
     .layout { grid-template-columns: minmax(0, 1.6fr) minmax(280px, .78fr); gap: 24px; }

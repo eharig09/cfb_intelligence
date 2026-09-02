@@ -13,6 +13,7 @@ import json
 from typing import Any
 
 from sports_aggregator.cfb import views
+from sports_aggregator.cfb.models import normalize_alias
 from sports_aggregator.tables import Column, Table
 
 
@@ -47,7 +48,30 @@ def _state_sub(entry: dict[str, Any]) -> str | None:
     return text
 
 
-def _defense_production_group(production: dict[str, Any], season: int) -> dict[str, Any] | None:
+def _interest_for(entry: dict[str, Any], interest: dict[str, Any]):
+    """The same two-way lookup the view uses: by roster id, then by name."""
+    return (interest.get(str(entry.get("player_id") or ""))
+            or interest.get(normalize_alias(entry.get("player") or "")))
+
+
+def _state_class(entry: dict[str, Any], interest: dict[str, Any]) -> str | None:
+    state = str(entry.get("state") or "")
+    if not state:
+        return None
+    graded = state == "RETURNING" and _interest_for(entry, interest) is not None
+    return f"state-{state.lower()}" + (" state-graded" if graded else "")
+
+
+def _defense_production_group(production: dict[str, Any], season: int,
+                              interest: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Tackles and takeaways from three categories, folded into one table.
+
+    Because it rebuilds its rows rather than decorating the view's, every
+    per-row signal the view adds has to be added again here or it reaches
+    only offensive players -- which is how the graded-returner mark came out
+    invisible on a team whose graded returners are all defenders.
+    """
+    interest = interest or {}
     groups = {group.get("category"): group for group in production.get("groups") or []}
     if not any(groups.get(category) for category in DEFENSE_CATEGORIES):
         return None
@@ -75,7 +99,8 @@ def _defense_production_group(production: dict[str, Any], season: int) -> dict[s
             "player": entry.get("player"),
             "player_url": views._player_url(entry.get("player_id"), season),
             "player_sub": _state_sub(entry),
-            "player_class": f"state-{str(entry.get('state') or '').lower()}" if entry.get("state") else None,
+            "player_class": _state_class(entry, interest),
+            "interest": _interest_for(entry, interest),
             "state": entry.get("state_label"),
             "state_class": f"state-{str(entry.get('state') or '').lower()}" if entry.get("state") else None,
             "position": entry.get("position"),
@@ -114,6 +139,10 @@ def _defense_production_group(production: dict[str, Any], season: int) -> dict[s
                 Column(key="player", label="Player", align="left", emphasis=True),
                 Column(key="state", label="Status", align="left"),
                 Column(key="position", label="Pos", align="left"),
+                Column(key="interest", label="PFF", format="f1",
+                       title="Application interest score from the 2025 PFF "
+                             "snapshot; discounts small samples. Present only "
+                             "for players it graded."),
                 Column(key="SOLO", label="Solo", format="int"),
                 Column(key="TOT", label="Tkl", format="int"),
                 Column(key="TFL", label="TFL", format="f1"),
@@ -130,9 +159,9 @@ def _defense_production_group(production: dict[str, Any], season: int) -> dict[s
     }
 
 
-def _ordered_production_groups(original, production, season):
+def _ordered_production_groups(original, production, season, **kwargs):
     raw_groups = production.get("groups") or []
-    rendered = original(production, season)
+    rendered = original(production, season, **kwargs)
     by_category = {
         raw.get("category"): rendered[index]
         for index, raw in enumerate(raw_groups)
@@ -146,7 +175,7 @@ def _ordered_production_groups(original, production, season):
             "Returning": 0, "Arrived": 1, "Departed": 2
         }.get(str(row.get("state") or ""), 9))
 
-    defense = _defense_production_group(production, season)
+    defense = _defense_production_group(production, season, kwargs.get("interest"))
     result = []
     for category in PRIMARY_ORDER:
         if category == "defense":
@@ -392,8 +421,12 @@ def install_production_display(app) -> None:
     original_production = views.production_groups
     original_leaders = views.leader_groups
 
-    def production_groups(production, season):
-        return _ordered_production_groups(original_production, production, season)
+    def production_groups(production, season, **kwargs):
+        # Pass keywords through rather than naming them: this wrapper only
+        # reorders what the view returns and has no interest in what the
+        # view was asked for.
+        return _ordered_production_groups(
+            original_production, production, season, **kwargs)
 
     def leader_groups(leaders, season, *, include_team=True, limit=None):
         return _ordered_leader_groups(

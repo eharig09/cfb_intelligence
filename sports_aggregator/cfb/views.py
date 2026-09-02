@@ -20,6 +20,7 @@ from flask import url_for
 
 from sports_aggregator.cfb.draft import position_abbreviation
 from sports_aggregator.cfb.identity import conference_identity, dark_accent
+from sports_aggregator.cfb.models import normalize_alias
 from sports_aggregator.cfb.recruiting import evidence_score
 from sports_aggregator.cfb.repository import _logo_pair
 from sports_aggregator.cfb.statlines import (
@@ -2078,17 +2079,28 @@ def divergence_table(entries: list[dict[str, Any]], season: int, *, caption: str
     return Table(columns=columns, rows=rows, caption=caption, note=note, empty=empty)
 
 
-def production_groups(production, season):
+def production_groups(production, season, *, interest=None):
     """Preseason production split into returning, arrived and departed.
 
     Each row carries a state class so departed and arrived production are
-    visually distinct from returning production, which stays neutral.
+    visually distinct from returning production -- which stays neutral unless
+    the player is graded, in which case he is one of the ones worth finding.
+
+    `interest` folds in the one column a separate "Key returning production"
+    table was carrying. That table listed graded returners with their position,
+    their team and their status, and on a team page the last two are the same
+    value on every row, so it repeated this table to add a single number. The
+    number is now here, on the player it describes.
     """
     from sports_aggregator.cfb.statlines import category_columns
+    interest = interest or {}
     groups = []
     for group in production.get("groups") or []:
         rows = []
         for entry in group["players"]:
+            score = interest.get(str(entry.get("player_id") or "")) or interest.get(
+                normalize_alias(entry.get("player") or ""))
+            graded_returner = score is not None and entry["state"] == "RETURNING"
             row = {
                 **entry["stats"],
                 "player": entry["player"],
@@ -2097,10 +2109,12 @@ def production_groups(production, season):
                                + (f" from {entry['earned_at']}" if entry["earned_at"] else "")
                                + (f" → {entry['counterpart']}"
                                   if entry["state"] == "DEPARTED" and entry["counterpart"] else "")),
-                "player_class": f"state-{entry['state'].lower()}",
+                "player_class": (f"state-{entry['state'].lower()}"
+                                 + (" state-graded" if graded_returner else "")),
                 "position": entry.get("position"),
                 "state": entry["state_label"],
                 "state_class": f"state-{entry['state'].lower()}",
+                "interest": score,
             }
             rows.append(row)
         counts = group["counts"]
@@ -2113,6 +2127,10 @@ def production_groups(production, season):
                     Column(key="player", label="Player", align="left", emphasis=True),
                     Column(key="state", label="Status", align="left"),
                     Column(key="position", label="Pos", align="left"),
+                    Column(key="interest", label="PFF", format="f1",
+                           title="Application interest score from the 2025 PFF "
+                                 "snapshot; discounts small samples. Present "
+                                 "only for players it graded."),
                     *category_columns(group["category"]),
                 ],
                 rows=rows,
