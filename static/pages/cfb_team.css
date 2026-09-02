@@ -54,3 +54,8 @@
 table.data td.state-returning.state-graded { border-left-color: var(--team); }
 table.data td.state-returning.state-graded b,
 table.data td.state-returning.state-graded a { color: var(--team); }
+
+/* A bye is a row with nothing in it but the week it took. Dimmed so the eye
+   passes over it, present so the reader does not have to infer it from a gap
+   in the numbering. */
+table.data td.bye { color: var(--muted); font-style: italic; }

@@ -21,6 +21,7 @@ from flask import url_for
 from sports_aggregator.cfb.draft import position_abbreviation
 from sports_aggregator.cfb.identity import conference_identity, dark_accent
 from sports_aggregator.cfb.models import normalize_alias
+from sports_aggregator.cfb.schedule_shape import with_byes
 from sports_aggregator.cfb.recruiting import evidence_score
 from sports_aggregator.cfb.repository import _logo_pair
 from sports_aggregator.cfb.statlines import (
@@ -558,10 +559,25 @@ def schedule_table(schedule: Iterable[dict[str, Any]], team_id: int, season: int
                    brands: dict[int, dict[str, Any]] | None = None,
                    elo: dict[int, dict[str, Any]] | None = None,
                    market: dict[int, dict[str, Any]] | None = None, *,
-                   caption: str | None = None, empty: str | None = None) -> Table:
-    """One team season: opponent, site, broadcast, and result in one line."""
+                   caption: str | None = None, empty: str | None = None,
+                   week_zero_cutoff=None) -> Table:
+    """One team season: opponent, site, broadcast, and result in one line.
+
+    Byes get a row of their own. A bye is the absence of a game, so nothing
+    arrives for one and the schedule simply jumped from 3 to 5, leaving the
+    reader to notice. `week_zero_cutoff` separates the opening weekend from
+    week 1, which the source numbers the same.
+    """
     rows = []
-    for game in schedule:
+    for game in with_byes(list(schedule), week_zero_cutoff):
+        if game.get("is_bye"):
+            rows.append({
+                "week": game["display_week"],
+                "opponent": "Bye",
+                "opponent_class": "bye",
+                "result": "—",
+            })
+            continue
         at_home = game.get("home_team_id") == team_id
         opponent = game["away_team"] if at_home else game["home_team"]
         opponent_id = game.get("away_team_id") if at_home else game.get("home_team_id")
@@ -573,7 +589,8 @@ def schedule_table(schedule: Iterable[dict[str, Any]], team_id: int, season: int
             result = f"{outcome} {team_points}-{opponent_points}"
             result_class = {"W": "win", "L": "loss"}.get(outcome, "pending")
         entry = {
-            "week": game.get("week"),
+            "game_id": game.get("game_id"),
+            "week": game.get("display_week", game.get("week")),
             "date": game.get("date_label") or game.get("start_label"),
             "date_sub": game.get("time_label"),
             "site": "vs" if at_home else "at",
@@ -601,7 +618,9 @@ def schedule_table(schedule: Iterable[dict[str, Any]], team_id: int, season: int
         rows.append(entry)
     return Table(
         columns=[
-            Column(key="week", label="Wk", format="rank", align="right"),
+            Column(key="week", label="Wk", align="right",
+                   title="Week 0 is the opening weekend, which arrives from "
+                         "the source numbered the same as week 1"),
             Column(key="date", label="Date", align="left"),
             Column(key="site", label="", align="right", title="Home or away"),
             Column(key="opponent", label="Opponent", align="left", emphasis=True),
@@ -627,6 +646,7 @@ def games_table(games: Iterable[dict[str, Any]], caption: str,
     rows = []
     for game in games:
         entry = {
+            "game_id": game.get("game_id"),
             "week": game.get("week"),
             "date": game.get("date_label") or game.get("start_label"),
             "date_sub": game.get("time_label"),

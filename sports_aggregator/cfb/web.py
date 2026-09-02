@@ -33,6 +33,7 @@ from sports_aggregator.cfb.search import search as search_entities
 from sports_aggregator.cfb.situations import game_situation
 from sports_aggregator.cfb.recruiting import signing_class
 from sports_aggregator.cfb.roster_production import projected_depth, team_production
+from sports_aggregator.cfb.schedule_shape import season_week_zero_cutoff
 from sports_aggregator.cfb.transfers import notable_transfers, rank_transfers
 from sports_aggregator.cfb.unit_continuity import (
     unit_continuity, units_with_continuity)
@@ -460,6 +461,7 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
             lines_by_game(_repository(), schedule_year),
             caption=(f"Upcoming {schedule_year} schedule" if schedule_is_upcoming
                      else f"{schedule_year} schedule"),
+            week_zero_cutoff=season_week_zero_cutoff(_repository(), schedule_year),
             empty=(f"No remaining {schedule_year} games are stored." if schedule_is_upcoming
                    else f"No {schedule_year} schedule is stored."),
         ),
