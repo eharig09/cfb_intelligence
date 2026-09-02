@@ -14,6 +14,7 @@ to a table the established importers do not already own.
 
 from __future__ import annotations
 
+import csv
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -265,6 +266,23 @@ def _plural(count: int, noun: str) -> str:
     return f"{count} {noun}{'s' if count != 1 else ''}"
 
 
+def _described(path: Path) -> str:
+    """A filename with its row count, for the files preflight could not tell apart.
+
+    The copies in a download folder are not copies. A real one holds
+    `pass_rush_summary (1).csv` at 88 rows beside `pass_rush_summary.csv` at
+    4,211: a filtered export sitting next to the full season. Names alone
+    cannot distinguish those, and keeping the wrong one imports a fortieth of
+    the data without anything looking wrong afterwards.
+    """
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as source:
+            rows = max(0, sum(1 for _ in csv.reader(source)) - 1)
+    except (OSError, UnicodeError, csv.Error):
+        return path.name
+    return f"{path.name} ({rows:,} rows)"
+
+
 @data_import_pages.post("/college-football/data-import/pff")
 def import_pff():
     season = request.form.get("season", type=int) or _default_season(_repository())
@@ -301,7 +319,8 @@ def import_pff():
         if check.missing_primary:
             notes.append("missing: " + ", ".join(check.missing_primary))
         for dataset, names in sorted(check.duplicates.items()):
-            notes.append(f"{dataset} matched {len(names)} files: " + ", ".join(names))
+            notes.append(f"{dataset} matched {len(names)} files: "
+                         + ", ".join(_described(staging / name) for name in names))
 
         if not check.ready:
             # The established importer refuses a partial batch, and refuses it

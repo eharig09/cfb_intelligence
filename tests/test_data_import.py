@@ -113,7 +113,9 @@ def test_duplicate_downloads_name_the_datasets_that_collided(client):
 
     assert response.status_code == 400
     assert "primary:passing matched 2 files" in body
-    assert "passing (1).csv" in body
+    # Row counts, not just names: the copies in a real download folder are a
+    # filtered export beside a full season, and the names cannot say which.
+    assert "passing (1).csv (1 rows)" in body
     assert _metric_rows(client) == 0
 
 

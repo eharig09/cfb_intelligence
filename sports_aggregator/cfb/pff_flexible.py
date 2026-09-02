@@ -71,16 +71,77 @@ def _headers(path: Path) -> set[str]:
         return set()
 
 
+def _candidates(headers: set[str]) -> list[tuple[str, str]]:
+    """Every dataset whose signature this file satisfies, not just the first.
+
+    Supplemental shapes are listed first, keeping the precedence the
+    single-answer version documented: those schemas carry the generic summary
+    columns too, so they are the more specific reading when both fit.
+    """
+    matches = [("supplemental", dataset)
+               for dataset, signature in SUPPLEMENTAL_SIGNATURES.items()
+               if signature.issubset(headers)]
+    matches += [("primary", dataset)
+                for dataset, signature in PRIMARY_SIGNATURES.items()
+                if signature.issubset(headers)]
+    return matches
+
+
 def _classify(headers: set[str]) -> tuple[str, str] | None:
-    # Supplemental schemas can contain generic summary columns too, so test the
-    # more specific shapes first.
-    for dataset, signature in SUPPLEMENTAL_SIGNATURES.items():
-        if signature.issubset(headers):
-            return "supplemental", dataset
-    for dataset, signature in PRIMARY_SIGNATURES.items():
-        if signature.issubset(headers):
-            return "primary", dataset
-    return None
+    """The single best reading of one file, with no batch around it.
+
+    Order-dependent where a file fits more than one signature, which is why
+    `preflight_pff_directory` resolves the batch together instead.
+    """
+    matches = _candidates(headers)
+    return matches[0] if matches else None
+
+
+def _assign(pool: dict[Path, list[tuple[str, str]]]) -> dict[tuple[str, str], Path]:
+    """Resolve files to datasets, assigning only what the batch forces.
+
+    PFF's summary exports are supersets of one another: `defense_summary`
+    carries the coverage and pass-rush columns as well as its own, and
+    `rushing_summary` carries the receiving columns. Testing signatures one
+    file at a time and taking the first hit therefore made the answer depend on
+    dictionary order -- it read `defense_summary` as coverage, which collided
+    with the real coverage export and left `defense` reported missing. Two of
+    the seven primary datasets could not be imported from a complete batch.
+
+    Resolving the batch together removes the guesswork without introducing any:
+    a dataset only one file can satisfy takes that file, which withdraws it
+    from every other dataset's candidates and usually forces the next one. On a
+    real export that cascade is enough -- `defense` is forced, which frees
+    `coverage`; `passing` is forced, which frees `rushing`, which frees
+    `receiving`.
+
+    Nothing is ever assigned on a preference. A dataset still holding two
+    possible files when the cascade stops is left unassigned for the caller to
+    report, because at that point the batch genuinely does not say which file
+    is which, and picking one would silently file a season of grades under the
+    wrong dataset.
+    """
+    assigned: dict[tuple[str, str], Path] = {}
+    remaining = {path: list(matches) for path, matches in pool.items()}
+    forced = True
+    while forced:
+        forced = False
+        claims: dict[tuple[str, str], list[Path]] = {}
+        for path, matches in remaining.items():
+            for key in matches:
+                claims.setdefault(key, []).append(path)
+        # Supplemental before primary, then by name: the loop takes one
+        # assignment at a time and recomputes, so this only fixes the order in
+        # which equally forced datasets are settled, keeping the result
+        # independent of how the filesystem happened to list the directory.
+        for key in sorted(claims, key=lambda item: (item[0] != "supplemental", item[1])):
+            if len(claims[key]) != 1:
+                continue
+            assigned[key] = claims[key][0]
+            del remaining[claims[key][0]]
+            forced = True
+            break
+    return assigned
 
 
 def preflight_pff_directory(directory: str | Path) -> PFFBatchPreflight:
@@ -88,26 +149,35 @@ def preflight_pff_directory(directory: str | Path) -> PFFBatchPreflight:
     if not root.is_dir():
         raise FileNotFoundError(f"PFF export directory does not exist: {root}")
 
-    found: dict[tuple[str, str], list[Path]] = {}
     unclassified: list[str] = []
+    pool: dict[Path, list[tuple[str, str]]] = {}
     csv_paths = sorted(path for path in root.glob("*.csv") if path.is_file())
     for path in csv_paths:
-        classification = _classify(_headers(path))
-        if classification is None:
+        matches = _candidates(_headers(path))
+        if not matches:
             unclassified.append(path.name)
             continue
-        found.setdefault(classification, []).append(path)
+        pool[path] = matches
 
+    assigned = _assign(pool)
+    primary = {dataset: str(path) for (kind, dataset), path in assigned.items()
+               if kind == "primary"}
+    supplemental = {dataset: str(path) for (kind, dataset), path in assigned.items()
+                    if kind == "supplemental"}
+
+    # Whatever the cascade could not settle: the files that could still be this
+    # dataset, which is what an operator needs in order to remove the copies.
+    taken = set(assigned.values())
     duplicates: dict[str, tuple[str, ...]] = {}
-    primary: dict[str, str] = {}
-    supplemental: dict[str, str] = {}
-    for (kind, dataset), paths in found.items():
-        names = tuple(path.name for path in paths)
-        if len(paths) > 1:
-            duplicates[f"{kind}:{dataset}"] = names
-            continue
-        target = primary if kind == "primary" else supplemental
-        target[dataset] = str(paths[0])
+    for kind, signatures in (("supplemental", SUPPLEMENTAL_SIGNATURES),
+                             ("primary", PRIMARY_SIGNATURES)):
+        for dataset in signatures:
+            if (kind, dataset) in assigned:
+                continue
+            names = tuple(sorted(path.name for path, matches in pool.items()
+                                 if (kind, dataset) in matches and path not in taken))
+            if len(names) > 1:
+                duplicates[f"{kind}:{dataset}"] = names
 
     missing = tuple(sorted(set(PRIMARY_SIGNATURES) - set(primary)))
     return PFFBatchPreflight(

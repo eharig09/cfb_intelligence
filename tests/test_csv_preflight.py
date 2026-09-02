@@ -55,3 +55,92 @@ def test_cfbdepth_upload_rejects_wrong_slot():
 
     assert check.ready is False
     assert check.missing_required
+
+
+def _write(path: Path, *signatures) -> None:
+    """A file carrying the union of several dataset signatures.
+
+    Which is what PFF actually ships: `defense_summary` is a superset of the
+    coverage and pass-rush exports, not a disjoint file.
+    """
+    columns = sorted(set().union(*signatures))
+    path.write_text(",".join(columns) + "\n" + ",".join("1" for _ in columns) + "\n")
+
+
+def test_a_superset_export_does_not_steal_the_dataset_it_merely_contains(tmp_path: Path):
+    """The bug this replaced: `defense_summary` read as coverage.
+
+    Testing signatures one file at a time and taking the first hit made the
+    answer depend on dictionary order, so the summary export claimed `coverage`
+    -- colliding with the real coverage file -- and `defense` was reported
+    missing from a batch that contained it.
+    """
+    _write(tmp_path / "defense_summary.csv",
+           PRIMARY_SIGNATURES["defense"], PRIMARY_SIGNATURES["coverage"])
+    _write(tmp_path / "defense_coverage_summary.csv", PRIMARY_SIGNATURES["coverage"])
+
+    report = preflight_pff_directory(tmp_path)
+
+    assert report.primary["defense"].endswith("defense_summary.csv")
+    assert report.primary["coverage"].endswith("defense_coverage_summary.csv")
+    assert "primary:coverage" not in report.duplicates
+
+
+def test_resolving_one_dataset_frees_the_next(tmp_path: Path):
+    """`passing` is forced, which frees `rushing`, which frees `receiving`."""
+    _write(tmp_path / "passing_summary.csv",
+           PRIMARY_SIGNATURES["passing"], PRIMARY_SIGNATURES["rushing"])
+    _write(tmp_path / "rushing_summary.csv",
+           PRIMARY_SIGNATURES["rushing"], PRIMARY_SIGNATURES["receiving"])
+    _write(tmp_path / "receiving_summary.csv", PRIMARY_SIGNATURES["receiving"])
+
+    report = preflight_pff_directory(tmp_path)
+
+    assert report.primary["passing"].endswith("passing_summary.csv")
+    assert report.primary["rushing"].endswith("rushing_summary.csv")
+    assert report.primary["receiving"].endswith("receiving_summary.csv")
+
+
+def test_an_ambiguity_the_batch_cannot_settle_is_reported_not_guessed(tmp_path: Path):
+    """Two files that could each be either dataset, and nothing to break the tie.
+
+    Choosing one would file a season of grades under the wrong dataset without
+    saying so, so the batch is refused instead.
+    """
+    both = (PRIMARY_SIGNATURES["rushing"], PRIMARY_SIGNATURES["receiving"])
+    _write(tmp_path / "one.csv", *both)
+    _write(tmp_path / "two.csv", *both)
+
+    report = preflight_pff_directory(tmp_path)
+
+    assert report.ready is False
+    assert "rushing" in report.missing_primary
+    assert "receiving" in report.missing_primary
+    assert report.duplicates["primary:rushing"] == ("one.csv", "two.csv")
+    assert "rushing" not in report.primary
+    assert "receiving" not in report.primary
+
+
+def test_the_assignment_does_not_depend_on_filesystem_order(tmp_path: Path):
+    """Same batch, names that sort the other way: same answer."""
+    _write(tmp_path / "zzz_defense_summary.csv",
+           PRIMARY_SIGNATURES["defense"], PRIMARY_SIGNATURES["coverage"])
+    _write(tmp_path / "aaa_coverage.csv", PRIMARY_SIGNATURES["coverage"])
+
+    report = preflight_pff_directory(tmp_path)
+
+    assert report.primary["defense"].endswith("zzz_defense_summary.csv")
+    assert report.primary["coverage"].endswith("aaa_coverage.csv")
+
+
+def test_duplicate_copies_of_one_export_are_still_refused(tmp_path: Path):
+    """Resolving the batch together must not paper over real duplicates: three
+    downloads of the same export are three files nobody can tell apart."""
+    for index in range(3):
+        _write(tmp_path / f"pass_rush_summary ({index}).csv",
+               PRIMARY_SIGNATURES["pass_rush"])
+
+    report = preflight_pff_directory(tmp_path)
+
+    assert report.ready is False
+    assert len(report.duplicates["primary:pass_rush"]) == 3
