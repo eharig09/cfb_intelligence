@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 
@@ -12,7 +13,7 @@ class ContentAuditTests(unittest.TestCase):
     def setUp(self):
         handle, self.path = tempfile.mkstemp(suffix=".sqlite3")
         os.close(handle)
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             connection.executescript(
                 """
                 CREATE TABLE teams (
@@ -88,7 +89,7 @@ class ContentAuditTests(unittest.TestCase):
             "reason": "Regional story; not about North Texas football",
         })
         self.assertEqual(response.status_code, 200)
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             self.assertIsNone(connection.execute(
                 "SELECT 1 FROM content_teams WHERE content_id=10 AND team_id=1"
             ).fetchone())
@@ -107,7 +108,7 @@ class ContentAuditTests(unittest.TestCase):
 
         response = self._post({"content_id": 10, "team_id": 1, "action": "undo"})
         self.assertEqual(response.status_code, 200)
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             restored = connection.execute(
                 "SELECT confidence, method FROM content_teams WHERE content_id=10 AND team_id=1"
             ).fetchone()

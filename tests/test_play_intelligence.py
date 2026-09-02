@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import os
+from contextlib import closing
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -87,10 +88,10 @@ class PlayMetricTests(IntelligenceFixture):
 
     def test_raw_plays_survive_rederivation(self):
         replace_week_plays(self.repository, self.plays(), season=2026, week=1)
-        with self.repository._connect() as connection:
+        with closing(self.repository._connect()) as connection, connection:
             before = connection.execute("SELECT COUNT(*) FROM cfb_plays").fetchone()[0]
         derive_week(self.repository, season=2026, week=1)
-        with self.repository._connect() as connection:
+        with closing(self.repository._connect()) as connection, connection:
             after = connection.execute("SELECT COUNT(*) FROM cfb_plays").fetchone()[0]
             metrics = connection.execute(
                 "SELECT COUNT(*) FROM cfb_play_metrics WHERE metric_version=?", (METRIC_VERSION,)

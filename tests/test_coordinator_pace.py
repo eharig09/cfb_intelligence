@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -41,7 +42,7 @@ def _drive(connection, *, game_id, season, offense, drive, plays, gap,
 
 
 def _seed(repository, stops):
-    with sqlite3.connect(repository.path) as connection:
+    with closing(sqlite3.connect(repository.path)) as connection, connection:
         for index, (season, team, games, gap) in enumerate(stops):
             for game in range(games):
                 # Enough snaps that the tempo clears MIN_INTERVALS.
@@ -63,7 +64,7 @@ def test_tempo_is_the_gap_to_the_previous_snap_on_the_same_drive(repository):
 
 def test_a_new_drive_does_not_inherit_the_previous_one_s_clock(repository):
     """Otherwise the opponent's possession lands inside an offence's tempo."""
-    with sqlite3.connect(repository.path) as connection:
+    with closing(sqlite3.connect(repository.path)) as connection, connection:
         _drive(connection, game_id=1, season=2025, offense="Test U", drive=1,
                plays=25, gap=20, start=3600)
         # A second drive starting much later in the game: the gap between the
@@ -96,7 +97,7 @@ def test_thin_tempo_is_withheld_but_the_counts_are_not(repository):
 
 def test_a_coordinator_is_measured_across_every_stop(repository):
     _seed(repository, [(2023, "Old School", 5, 30), (2025, "New School", 5, 20)])
-    with sqlite3.connect(repository.path) as connection:
+    with closing(sqlite3.connect(repository.path)) as connection, connection:
         for season, team in ((2023, "Old School"), (2025, "New School")):
             connection.execute(
                 "INSERT INTO coordinator_seasons(season, team_id, team, side, role,"
@@ -143,7 +144,7 @@ def test_run_pass_tendency_does_not_need_a_coordinator(repository):
     time.
     """
     from sports_aggregator.cfb.coordinator_balance import team_run_pass_context
-    with sqlite3.connect(repository.path) as connection:
+    with closing(sqlite3.connect(repository.path)) as connection, connection:
         for season in range(2015, 2026):
             _team_stat(connection, season, "Test U", 500, 500)
         connection.commit()
@@ -159,7 +160,7 @@ def test_run_pass_tendency_does_not_need_a_coordinator(repository):
 
 def test_the_history_window_is_bounded(repository):
     from sports_aggregator.cfb.coordinator_balance import team_run_pass_context
-    with sqlite3.connect(repository.path) as connection:
+    with closing(sqlite3.connect(repository.path)) as connection, connection:
         for season in range(2000, 2026):
             _team_stat(connection, season, "Test U", 400, 600)
         connection.commit()
@@ -177,7 +178,7 @@ def test_the_matchup_card_appears_without_coordinator_data(repository):
     """The regression this restores: both halves of the card blank, so the
     section removed itself from the page."""
     from sports_aggregator.cfb import coordinator_display as display
-    with sqlite3.connect(repository.path) as connection:
+    with closing(sqlite3.connect(repository.path)) as connection, connection:
         connection.execute(
             "INSERT INTO teams(team_id, school, logos_json, updated_at)"
             " VALUES(?,?,?,?)", (7, "Test U", "[]", "2026-01-01"))
@@ -196,7 +197,7 @@ def test_a_one_stop_coordinator_is_not_told_twice(repository):
     """His career and his programme are the same rows; printing both says
     nothing the second time."""
     from sports_aggregator.cfb import coordinator_display as display
-    with sqlite3.connect(repository.path) as connection:
+    with closing(sqlite3.connect(repository.path)) as connection, connection:
         connection.execute(
             "INSERT INTO teams(team_id, school, logos_json, updated_at)"
             " VALUES(?,?,?,?)", (8, "One Stop U", "[]", "2026-01-01"))

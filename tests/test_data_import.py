@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -57,7 +58,7 @@ def _metric_rows(client) -> int:
     path = client.application.config["CFB_DATABASE_PATH"]
     if not Path(path).exists():
         return 0
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         try:
             return connection.execute(
                 "SELECT COUNT(*) FROM pff_player_metrics").fetchone()[0]
@@ -163,7 +164,7 @@ ROSTER_CSV = (
 
 def _cfbdepth_rows(client, table: str) -> int:
     path = client.application.config["CFB_DATABASE_PATH"]
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         try:
             return connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         except sqlite3.OperationalError:

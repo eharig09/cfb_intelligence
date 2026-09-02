@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+from contextlib import closing
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -229,7 +230,10 @@ def _audit_model(*, limit: int = 80, platform: str = "", sample_mode: str = "ran
         return _audit_empty("database not found", platform=platform, sample_mode=sample_mode,
                             limit=limit, connection_limit=connection_limit)
     try:
-        with sqlite3.connect(database, timeout=5) as connection:
+        # `closing`, not the Connection's own context manager: that one
+        # commits and does not close, so this leaked a file handle on
+        # every render of the page.
+        with closing(sqlite3.connect(database, timeout=5)) as connection:
             connection.row_factory = sqlite3.Row
             if not all(_table_exists(connection, table) for table in ("content_items", "content_teams", "teams")):
                 return _audit_empty("content linkage tables are not available", platform=platform,
@@ -528,7 +532,9 @@ def team_link_feedback():
     if action not in {"bad", "undo"}:
         abort(400, description="action must be bad or undo")
 
-    with sqlite3.connect(_database_path()) as connection:
+    # Closes and commits: the Connection's own context manager only does
+    # the second, and this one writes.
+    with closing(sqlite3.connect(_database_path())) as connection, connection:
         connection.row_factory = sqlite3.Row
         _ensure_feedback_schema(connection)
         if action == "bad":

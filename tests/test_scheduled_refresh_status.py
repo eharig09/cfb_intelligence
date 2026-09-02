@@ -183,12 +183,22 @@ def test_a_scores_pass_narrows_both_the_steps_and_the_datasets(
     assert runner.captured[0]["datasets"] == SCORES_DATASETS
 
 
-def test_a_heavy_pass_scopes_nothing(tmp_path: Path, monkeypatch):
+def test_a_heavy_pass_takes_everything_but_the_news_crawl(tmp_path: Path, monkeypatch):
+    """Heavy used to scope nothing at all. `local-articles` walked 350 Google
+    News feeds and ate the run, so it was given its own bounded profile and
+    heavy now names every other refresh step rather than sweeping it back in.
+    """
+    from sports_aggregator.bootstrap import steps
     monkeypatch.setenv("CFB_REFRESH_STATE_PATH", str(tmp_path / "instance"))
     runner = _phase_runner([])
     run_scheduled_refresh(2026, profile="heavy", repo_root=tmp_path,
                           phase_runner=runner)
-    assert runner.captured[0]["only"] is None
+
+    scoped = runner.captured[0]["only"]
+    expected = [step.name for step in steps(2026) if "refresh" in step.phases]
+    assert "local-articles" not in scoped
+    assert set(scoped) == set(expected) - {"local-articles"}
+    # Datasets stay unscoped: heavy is the pass that refreshes all of them.
     assert runner.captured[0]["datasets"] is None
 
 

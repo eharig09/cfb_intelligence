@@ -23,7 +23,9 @@ from sports_aggregator.cfb.cfbd import FINISHED_WEEK_TTL, LIVE_WEEK_TTL
 from sports_aggregator.cfb.cli import main as cli_main
 from sports_aggregator.cfb.models import Game, Team
 from sports_aggregator.cfb.repository import CFBRepository, forget_initialized_schemas
-from sports_aggregator.scheduled_refresh import SCORES_REFRESH_STEPS
+from sports_aggregator.scheduled_refresh import (
+    RESULTS_REFRESH_STEPS, SCORES_REFRESH_STEPS,
+)
 
 
 THIS_YEAR = datetime.now().year
@@ -138,9 +140,14 @@ class RefreshWiringTests(unittest.TestCase):
         self.assertIn("--recent-weeks", command)
         self.assertIn("sync-box-scores", command)
 
-    def test_a_game_day_pass_runs_it(self):
-        """Otherwise a finished game's box score waits for the next heavy run."""
-        self.assertIn("cfbd-box-scores", SCORES_REFRESH_STEPS)
+    def test_a_finished_game_does_not_wait_for_the_next_heavy_run(self):
+        """`f007590` split the game-day work in two. The live-scores pass runs
+        the games dataset and the market and stops -- two steps instead of
+        twenty-two, five seconds, so a score appears when it happens. Box
+        scores are not live and belong to the pass that follows the game.
+        """
+        self.assertNotIn("cfbd-box-scores", SCORES_REFRESH_STEPS)
+        self.assertIn("cfbd-box-scores", RESULTS_REFRESH_STEPS)
 
 
 if __name__ == "__main__":

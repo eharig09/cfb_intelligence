@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 from datetime import datetime, timezone
 import json
 import os
@@ -149,7 +150,7 @@ def _sqlite_values(database: Path, sql: str) -> list[str]:
     if not database.exists():
         return []
     try:
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database)) as connection:
             return [str(row[0]) for row in connection.execute(sql).fetchall() if row[0]]
     except sqlite3.Error:
         return []

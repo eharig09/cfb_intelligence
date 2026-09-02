@@ -98,7 +98,11 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.get_json()["status"], "accepted")
         command = popen.call_args.args[0]
-        self.assertIn("sports_aggregator.scheduled_refresh", command)
+        # The hook spawns the tracked driver, which calls
+        # `run_scheduled_refresh` itself; what matters here is that the request
+        # started a real refresh in the background rather than doing it inline.
+        self.assertIn("sports_aggregator.tracked_refresh", command)
+        self.assertIn("--profile", command)
 
 
 if __name__ == "__main__":
