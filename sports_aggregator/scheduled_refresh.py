@@ -206,8 +206,43 @@ def _write_progress(instance: Path, record: dict[str, Any]) -> None:
         pass
 
 
+def _log_end(log) -> int:
+    """Where this step's output will start in the shared log."""
+    try:
+        log.flush()
+        return os.fstat(log.fileno()).st_size
+    except OSError:
+        return -1
+
+
+def _last_line(log, mark: int) -> str:
+    """The step's own last line of output, which is usually its summary.
+
+    Steps write straight into the shared log rather than through a pipe, so
+    nothing here held on to what they said and every successful step reported
+    "exit code 0" -- which the status page then showed in the column meant for
+    what changed. Reading back from where this step started costs one seek and
+    keeps the subprocess's output unbuffered, which is why it goes to the file
+    in the first place.
+    """
+    if mark < 0:
+        return ""
+    try:
+        log.flush()
+        with open(log.name, "r", encoding="utf-8", errors="replace") as source:
+            source.seek(mark)
+            lines = [line.strip() for line in source.read().splitlines()]
+    except (OSError, ValueError):
+        return ""
+    for line in reversed(lines):
+        if line:
+            return line[:240]
+    return ""
+
+
 def _run_command(command: list[str], *, timeout: int, log) -> tuple[str, str, float]:
     started = datetime.now(timezone.utc)
+    mark = _log_end(log)
     try:
         completed = subprocess.run(
             [sys.executable, "-m", *command], stdout=log, stderr=subprocess.STDOUT,
@@ -215,7 +250,8 @@ def _run_command(command: list[str], *, timeout: int, log) -> tuple[str, str, fl
         )
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
         return ("success" if completed.returncode == 0 else "failed",
-                f"exit code {completed.returncode}", round(elapsed, 1))
+                _last_line(log, mark) or f"exit code {completed.returncode}",
+                round(elapsed, 1))
     except subprocess.TimeoutExpired:
         return "timeout", f"exceeded {timeout}s", float(timeout)
     except Exception as exc:

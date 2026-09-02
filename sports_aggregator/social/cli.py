@@ -27,25 +27,44 @@ def _import_team_reddit(unified, database):
     return {"registered": registered, "promoted": promoted}
 
 def _endpoint_exit(results, *, kind: str) -> int:
-    """Fail only when resolution stopped working, not when one account is gone.
+    """Fail when resolution stopped working, not when one account is gone.
 
-    A handle that has been renamed or deleted stays in the unresolved list and
-    fails on every run, so treating any failure as a failed step made "degraded"
-    the permanent state of a healthy refresh. A wide failure still fails: that is
-    the API being down, which is worth waking up for.
+    The first version of this divided the failures by the number of handles
+    attempted, which cannot work: the list handed to the resolver is the list
+    of handles that are *not yet verified*, so it is by construction almost all
+    failures. One dead seed among forty working ones came out as "100% failed"
+    and marked every refresh degraded -- the very thing the tolerance was
+    added to stop.
+
+    What actually separates the two cases is the platform's own answer. A 4xx
+    on resolveHandle means the handle is not a handle: it will fail on every
+    run forever and no amount of retrying will change it. Anything else -- a
+    timeout, a connection error, a 5xx -- means the platform is unreachable,
+    and that is worth failing over even for a single handle, because it says
+    nothing about whether the account exists.
     """
     total = len(results)
     if not total:
         print(f"{kind}: nothing to resolve")
         return 0
     failed = [r for r in results if r.status != "verified"]
-    share = len(failed) / total
+    gone = [r for r in failed if getattr(r, "permanent", False)]
+    unreachable = [r for r in failed if not getattr(r, "permanent", False)]
+
     print(f"{kind}: {total - len(failed)}/{total} verified"
-          + (f", unresolved: {', '.join(r.requested_handle for r in failed[:5])}"
-             f"{'...' if len(failed) > 5 else ''}" if failed else ""))
-    if share > ENDPOINT_FAILURE_TOLERANCE:
-        print(f"{kind}: {share:.0%} failed, above the {ENDPOINT_FAILURE_TOLERANCE:.0%}"
-              " tolerance -- treating this as a failure")
+          + (f", gone: {', '.join(r.requested_handle for r in gone[:5])}"
+             f"{'...' if len(gone) > 5 else ''}" if gone else "")
+          + (f", unreachable: {', '.join(r.requested_handle for r in unreachable[:5])}"
+             f"{'...' if len(unreachable) > 5 else ''}" if unreachable else ""))
+    if gone:
+        print(f"{kind}: {len(gone)} handle{'s' if len(gone) != 1 else ''} no longer "
+              "exist and will not resolve again -- remove or correct them in the "
+              "seed list; not treated as a step failure")
+
+    share = len(unreachable) / total
+    if unreachable and share > ENDPOINT_FAILURE_TOLERANCE:
+        print(f"{kind}: {share:.0%} of this run could not be reached, above the "
+              f"{ENDPOINT_FAILURE_TOLERANCE:.0%} tolerance -- treating this as a failure")
         return 1
     return 0
 

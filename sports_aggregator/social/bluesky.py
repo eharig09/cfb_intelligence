@@ -36,6 +36,16 @@ class BlueskyIdentityClient:
                 status="verified" if valid else "identity_mismatch",
                 description=profile.get("description") or "",
             )
+        except requests.HTTPError as exc:
+            # A 4xx from resolveHandle is the platform telling us the handle is
+            # not a handle -- `skhanjr.bsky.social` has answered 400 on every
+            # run since it was seeded and has never once resolved. A 5xx is the
+            # platform having a bad day, which is worth failing over.
+            response = getattr(exc, "response", None)
+            code = getattr(response, "status_code", None)
+            permanent = code is not None and 400 <= code < 500
+            return IdentityResolution(handle, None, None, None, "resolution_failed",
+                                      str(exc), permanent=permanent)
         except Exception as exc:
             return IdentityResolution(handle, None, None, None, "resolution_failed", str(exc))
 

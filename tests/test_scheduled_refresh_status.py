@@ -251,3 +251,51 @@ def test_a_long_message_is_trimmed_before_it_reaches_the_file(
         (tmp_path / "instance" / "refresh_progress.json").read_text(encoding="utf-8")
     )["steps"]
     assert len(steps["weather"]["message"]) == 240
+
+
+def test_a_step_reports_its_own_last_line_not_its_exit_code(tmp_path: Path):
+    """Steps write into the shared log rather than through a pipe, so nothing
+    held on to what they said and every successful step reported "exit code 0"
+    -- in the column meant for what changed."""
+    from sports_aggregator.scheduled_refresh import _run_command
+
+    log_path = tmp_path / "refresh.log"
+    with log_path.open("w", encoding="utf-8") as log:
+        print("[ ] bluesky-resolve: starting", file=log, flush=True)
+        # A real subprocess that prints a summary line, the way these steps do.
+        status, message, _seconds = _run_command(
+            ["timeit", "-n", "1", "-r", "1", "pass"], timeout=60, log=log)
+
+    assert status == "success"
+    assert message and not message.startswith("exit code"), message
+    # And the line it reported is genuinely the last thing the step printed.
+    tail = [line.strip() for line in
+            log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert message == tail[-1][:240]
+
+
+def test_a_step_that_prints_nothing_still_reports_something(tmp_path: Path):
+    from sports_aggregator.scheduled_refresh import _run_command
+
+    log_path = tmp_path / "refresh.log"
+    with log_path.open("w", encoding="utf-8") as log:
+        status, message, _ = _run_command(["compileall", "-q", str(tmp_path)],
+                                          timeout=60, log=log)
+
+    assert status == "success"
+    assert message  # falls back to the exit code rather than an empty column
+
+
+def test_one_step_does_not_report_the_previous_step_s_output(tmp_path: Path):
+    """Every step appends to the same file, so the read has to start where
+    this step started rather than at the top."""
+    from sports_aggregator.scheduled_refresh import _run_command
+
+    log_path = tmp_path / "refresh.log"
+    with log_path.open("w", encoding="utf-8") as log:
+        _run_command(["timeit", "-n", "1", "-r", "1", "pass"], timeout=60, log=log)
+        print("SENTINEL FROM THE HARNESS", file=log, flush=True)
+        _status, message, _ = _run_command(["compileall", "-q", str(tmp_path)],
+                                           timeout=60, log=log)
+
+    assert "SENTINEL" not in message

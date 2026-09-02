@@ -38,6 +38,11 @@ class IdentityResolution:
     display_name: str | None
     status: str
     description: str = ""
+    #: True when retrying cannot help: the platform answered, and its answer
+    #: was that this handle does not exist. A renamed or deleted account fails
+    #: on every run forever, which is a different thing from the API being
+    #: unreachable, and only one of the two is worth waking someone for.
+    permanent: bool = False
 
 
 @dataclass(frozen=True, slots=True)
