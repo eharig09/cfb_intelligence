@@ -144,3 +144,9 @@ h1 b { color: var(--rust); }
         .matchup-versus span { font-size: .46rem; }
         .matchup-event-line { font-size: .64rem; line-height: 1.3; margin-inline: 6px; }
     }
+
+/* Tempo lines inside a coordinator card: several short facts that should wrap
+   as a group rather than stack one per line. */
+.situation-card .pace-lines { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
+.situation-card .pace-lines b { font-weight: 800; }
+.situation-card .pace-lines i { color: var(--muted); font-style: normal; }

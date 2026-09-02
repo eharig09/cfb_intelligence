@@ -9,6 +9,9 @@ from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
 from sports_aggregator.cfb.coordinator_balance import coordinator_run_pass_context
+from sports_aggregator.cfb.coordinator_pace import (
+    RECENT_SEASONS, coordinator_pace, team_pace,
+)
 from sports_aggregator.cfb.coordinator_context import coordinator_context
 from sports_aggregator.cfb.player_injury_display import install_player_injury_display
 
@@ -147,10 +150,61 @@ def _continuity_fact(repository, team_id: int, season: int) -> Markup:
     )
 
 
+def _pace_line(packet: dict | None, label: str) -> str:
+    """Tempo in the two units people actually argue about."""
+    if not packet:
+        return ""
+    parts = []
+    if packet.get("seconds_per_play") is not None:
+        parts.append(f"{packet['seconds_per_play']:.1f}s per play")
+    if packet.get("plays_per_game") is not None:
+        parts.append(f"{packet['plays_per_game']:.0f} plays/game")
+    if not parts:
+        return ""
+    return (f"<span><b>{label}</b> " + " · ".join(parts)
+            + f" <i>({packet['games']} games)</i></span>")
+
+
+def _pace_for(repository, team_id: int, season: int,
+              coach_name: str | None) -> tuple[str, str]:
+    """Pace for the coordinator when he is known, for the offence when he is not.
+
+    `coordinator_seasons` is filled by a command no refresh profile runs, so on
+    most databases there is no name to attribute an offence to. The tempo is a
+    property of the offence either way; what changes is whose it can honestly
+    be called.
+    """
+    team = (repository.get_team(int(team_id)) or {}).get("school")
+    if coach_name:
+        packet = coordinator_pace(repository, coach_name, through_season=int(season))
+        if packet and (packet.get("career") or packet.get("recent")):
+            return (_pace_line(packet.get("recent"), f"Since {packet['recent_from']}")
+                    + _pace_line(packet.get("career"), "Career"),
+                    "under this coordinator")
+    if not team:
+        return "", ""
+    seasons = [int(season) - offset for offset in range(1, RECENT_SEASONS + 1)]
+    return (_pace_line(team_pace(repository, team, seasons),
+                       f"{min(seasons)}–{max(seasons)}"),
+            "this offence, coordinator not on record")
+
+
 def _balance_card(repository, team_id: int, season: int) -> str:
     context = coordinator_run_pass_context(repository, int(team_id), int(season))
     if not context:
-        return ""
+        # No coordinator on record, but the offence still has a tempo, and that
+        # is the half of this card that does not need a name.
+        pace, basis = _pace_for(repository, team_id, season, None)
+        if not pace:
+            return ""
+        team = escape((repository.get_team(int(team_id)) or {}).get("school") or "")
+        return (
+            '<article class="situation-card">'
+            f"<h3>{team}</h3>"
+            f"<div class='meta pace-lines'>{pace}</div>"
+            f"<div class='meta'>{escape(basis)}</div>"
+            '</article>'
+        )
     career = context.get("career")
     program = context.get("program")
     headline = program or career
@@ -170,12 +224,14 @@ def _balance_card(repository, team_id: int, season: int) -> str:
         f"Career assignments: {career['run_pct']:.0f}% run / {career['pass_pct']:.0f}% pass"
         if career else ""
     )
+    pace, _basis = _pace_for(repository, team_id, season, context.get("coach_name"))
     return (
         '<article class="situation-card">'
         f"<h3>{escape(context['team'])} · {escape(context['coach_name'])}</h3>"
         f"<p><strong>{headline['run_pct']:.0f}/{headline['pass_pct']:.0f}</strong> observed run/pass balance</p>"
-        f"<div class='meta'>{program_text}{' · ' if career_text and program_text else ''}{career_text}</div>"
-        f"<div class='meta' style='display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px'>{''.join(rows)}</div>"
+        + (f"<div class='meta pace-lines'>{pace}</div>" if pace else "")
+        + f"<div class='meta'>{program_text}{' · ' if career_text and program_text else ''}{career_text}</div>"
+        f"<div class='meta pace-lines'>{''.join(rows)}</div>"
         '</article>'
     )
 
@@ -190,9 +246,10 @@ def _matchup_balance(repository, away_team_id: int, home_team_id: int, season: i
         return Markup("")
     return Markup(
         '<section class="section" data-mobile-tab-panel="overview">'
-        '<h2>Offensive coordinator tendencies</h2>'
-        '<div class="section-note">Observed team rushing and passing attempts from seasons assigned to each current OC. '
-        'These describe the offenses they coordinated; they do not prove who called each play.</div>'
+        '<h2>Offensive tempo and balance</h2>'
+        '<div class="section-note">Snap-to-snap tempo within a drive, so the other '
+        'side&rsquo;s possession does not count. Describes the offence, not who '
+        'called the play.</div>'
         '<div class="split">' + "".join(cards) + '</div></section>'
     )
 
