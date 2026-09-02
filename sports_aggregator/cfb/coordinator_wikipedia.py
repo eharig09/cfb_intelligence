@@ -41,24 +41,65 @@ WIKI_SCHOOL_ALIASES = {
 }
 
 
+#: A mid-season change is written as two names split by a line break. Keeping
+#: that break as a newline is what lets the names be told apart once the tags
+#: come out; stripping it first ran them together into one 70-character name.
+_LINE_BREAK = re.compile(r"<br\s*/?>", re.I)
+
+#: Horizontal whitespace only. `\s` matches newlines, so `\s*=\s*` walked past
+#: the end of its own line and an empty field captured the *next* infobox line
+#: as its value: `| oc_year =` was stored as the name of 38 offensive
+#: coordinators, and one team's read `| off_scheme = Up-tempo spread`.
+_H = r"[^\S\r\n]*"
+
+#: Anything still carrying template punctuation is not a name.
+_NOT_A_NAME = re.compile(r"[|={}\[\]]")
+
+
 def _clean_wikitext(value: str | None) -> str:
     text = str(value or "")
     text = re.sub(r"<ref\b[^>]*>.*?</ref>", "", text, flags=re.I | re.S)
     text = re.sub(r"<ref\b[^>]*/>", "", text, flags=re.I)
+    text = _LINE_BREAK.sub("\n", text)
     text = re.sub(r"\{\{[^{}]*\}\}", "", text)
     text = re.sub(r"\[\[([^\]|]+)\|([^\]]+)\]\]", r"\2", text)
     text = re.sub(r"\[\[([^\]]+)\]\]", r"\1", text)
     text = re.sub(r"''+", "", text)
     text = re.sub(r"<[^>]+>", "", text)
     text = html_lib.unescape(text)
-    return re.sub(r"\s+", " ", text).strip(" ,;\n\t")
+    # Collapse runs of spaces but keep the breaks: they separate one name from
+    # the next.
+    return re.sub(r"[^\S\n]+", " ", text).strip(" ,;\n\t")
+
+
+def coach_name(value: str | None) -> str:
+    """The coordinator's name out of a field that may hold more than one.
+
+    Wikipedia records a mid-season change as both names, each with a
+    parenthetical tenure note, so a field reads "Bobby Petrino (2nd season;
+    first 5 games)" then "Kolby Smith (interim; remainder of season)". The
+    first is the one who started the season in the job, which is the one that
+    season's tendencies belong to. The note is not part of anybody's name.
+
+    Returns "" for anything that still looks like markup: a wrong name on a
+    matchup page is worse than no name at all.
+    """
+    first = next((part.strip() for part in str(value or "").split("\n")
+                  if part.strip()), "")
+    first = re.sub(r"\s*\([^)]*\)?\s*$", "", first).strip(" ,;")
+    if not first or len(first) > 60 or _NOT_A_NAME.search(first):
+        return ""
+    if not re.search(r"[A-Za-z]", first):
+        return ""
+    return first
 
 
 def _infobox_value(wikitext: str, keys: tuple[str, ...]) -> str | None:
     for key in keys:
-        match = re.search(rf"(?im)^\s*\|\s*{re.escape(key)}\s*=\s*(.*?)\s*$", wikitext)
+        match = re.search(
+            rf"(?im)^{_H}\|{_H}{re.escape(key)}{_H}={_H}(.*)$", wikitext)
         if match:
-            value = _clean_wikitext(match.group(1))
+            value = coach_name(_clean_wikitext(match.group(1)))
             if value:
                 return value
     return None

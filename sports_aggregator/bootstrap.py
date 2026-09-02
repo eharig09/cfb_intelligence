@@ -113,6 +113,15 @@ def steps(season: int, *, history_from: int | None = None,
         Step("transfer-grades", "Confirm PFF identities using portal evidence",
              ["sports_aggregator.cfb.cli", "link-transfer-grades", "--year", year],
              ("initial", "refresh")),
+        # Nothing has ever run this. `coordinator_seasons` was empty, so the
+        # matchup's run/pass section returned None for every team and removed
+        # itself from the page, and there was no name to attribute a tempo or a
+        # tendency to. Wikipedia needs no key, which is why this asks for no
+        # environment; optional because one encyclopedia being unreachable is
+        # not a reason to fail a refresh.
+        Step("coordinators", "Offensive and defensive coordinators",
+             ["sports_aggregator.cfb.coordinator_cli", "--year", year],
+             ("initial", "refresh"), optional=True, timeout_seconds=600),
         Step("prospects", "Import consensus NFL draft board",
              ["sports_aggregator.cfb.prospects_cli", "2027_nfl_mock_draft_database_top_100.csv",
               "--draft-year", str(season + 1), "--roster-season", year,
@@ -234,6 +243,17 @@ def steps(season: int, *, history_from: int | None = None,
             f"Closing betting lines for {historical_year}",
             ["sports_aggregator.cfb.cli", "sync-lines", "--year", str(historical_year)],
             ("history",), requires_env=("CFBD_API_KEY",),
+        ))
+        # In this loop rather than the detail one below: a coordinator's career
+        # is the point of the measurement, so it has to reach as far back as
+        # the tendencies it explains, and `team_stats` carries the rushing and
+        # passing attempts from RESULT_HISTORY_FLOOR. The detail window is
+        # seven seasons, which would have stopped at 2019.
+        plan.append(Step(
+            f"coordinators-history-{historical_year}",
+            f"Coordinators for {historical_year}",
+            ["sports_aggregator.cfb.coordinator_cli", "--year", str(historical_year)],
+            ("history",), optional=True, timeout_seconds=600,
         ))
 
     for historical_year in range(first_detail, last_history + 1):

@@ -61,3 +61,40 @@ class WeatherQuotaTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CoordinatorStepTests(unittest.TestCase):
+    """The step that was never there.
+
+    `coordinator_seasons` was empty because nothing filled it, so the matchup's
+    run/pass section returned None for every team and deleted itself from the
+    page, and no tempo or tendency could be attributed to a name.
+    """
+
+    def _names(self, phase, season=2026):
+        return [step.name for step in steps(season) if phase in step.phases]
+
+    def test_coordinators_are_refreshed_with_everything_else(self):
+        self.assertIn("coordinators", self._names("refresh"))
+        self.assertIn("coordinators", self._names("initial"))
+
+    def test_the_history_reaches_as_far_back_as_the_tendencies_it_explains(self):
+        """`team_stats` carries the attempts from RESULT_HISTORY_FLOOR, and a
+        coordinator's career is the point of the measurement. The detail window
+        is seven seasons, which would have stopped at 2019."""
+        from sports_aggregator.bootstrap import RESULT_HISTORY_FLOOR
+        history = [name for name in self._names("history")
+                   if name.startswith("coordinators-history-")]
+        years = sorted(int(name.rsplit("-", 1)[1]) for name in history)
+        self.assertEqual(years[0], RESULT_HISTORY_FLOOR)
+        self.assertEqual(years[-1], 2025)
+
+    def test_one_encyclopedia_being_down_does_not_fail_a_refresh(self):
+        step = next(s for s in steps(2026) if s.name == "coordinators")
+        self.assertTrue(step.optional)
+        self.assertEqual(step.timeout_seconds, 600)
+
+    def test_it_asks_for_no_api_key_because_wikipedia_needs_none(self):
+        step = next(s for s in steps(2026) if s.name == "coordinators")
+        self.assertEqual(step.requires_env, ())
+        self.assertEqual(step.requires_all_env, ())
