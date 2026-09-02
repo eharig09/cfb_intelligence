@@ -118,3 +118,38 @@ def coordinator_run_pass_context(repository, team_id: int, season: int) -> dict[
         "career": _aggregate(splits),
         "season_splits": sorted(splits, key=lambda row: (row["season"], row["team"]), reverse=True),
     }
+
+#: How far back the run/pass history runs. `team_stats` carries rushing and
+#: passing attempts from 2015 for every team, and the tendency is worth reading
+#: over a decade rather than the five seasons the card used to show.
+HISTORY_SEASONS = 12
+
+
+def team_run_pass_context(repository, team: str, season: int, *,
+                          history_seasons: int = HISTORY_SEASONS) -> dict[str, Any] | None:
+    """Run/pass tendency for one programme, with no coordinator attached.
+
+    The coordinator version returns nothing at all when `coordinator_seasons`
+    has no row for the team -- which is every team on a database where that
+    table was never filled, and it is filled by a command no refresh profile
+    runs. The tendency itself never needed a name: it comes from `team_stats`,
+    which has the attempts back to 2015. This reports it as the programme's,
+    which is what it can honestly be called until the coordinator is known.
+    """
+    initialize(repository)
+    first = int(season) - int(history_seasons) + 1
+    with repository._reader() as connection:
+        splits = [split for year in range(first, int(season) + 1)
+                  for split in [_season_split(connection, year, str(team))] if split]
+    if not splits:
+        return None
+    return {
+        "coach_name": None,
+        "role": None,
+        "team": str(team),
+        "season": int(season),
+        "current": next((row for row in splits if row["season"] == int(season)), None),
+        "program": _aggregate(splits),
+        "career": None,
+        "season_splits": sorted(splits, key=lambda row: row["season"], reverse=True),
+    }

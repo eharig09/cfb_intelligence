@@ -8,7 +8,9 @@ from typing import Any
 from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
-from sports_aggregator.cfb.coordinator_balance import coordinator_run_pass_context
+from sports_aggregator.cfb.coordinator_balance import (
+    HISTORY_SEASONS, coordinator_run_pass_context, team_run_pass_context,
+)
 from sports_aggregator.cfb.coordinator_pace import (
     RECENT_SEASONS, coordinator_pace, team_pace,
 )
@@ -190,49 +192,57 @@ def _pace_for(repository, team_id: int, season: int,
 
 
 def _balance_card(repository, team_id: int, season: int) -> str:
+    """Run/pass balance and tempo for one offence.
+
+    The coordinator reading is preferred and the programme's is the fallback,
+    rather than the coordinator reading being the only one. `coordinator_seasons`
+    is filled by a command no refresh profile runs, so on most databases it is
+    empty, `coordinator_run_pass_context` returns None for every team, both
+    cards came back blank and the whole section vanished from the page. The
+    tendency never needed a coordinator: `team_stats` carries the attempts from
+    2015, which is where both readings get it from anyway.
+    """
+    team = (repository.get_team(int(team_id)) or {}).get("school")
     context = coordinator_run_pass_context(repository, int(team_id), int(season))
+    if not context and team:
+        context = team_run_pass_context(repository, team, int(season))
     if not context:
-        # No coordinator on record, but the offence still has a tempo, and that
-        # is the half of this card that does not need a name.
-        pace, basis = _pace_for(repository, team_id, season, None)
-        if not pace:
-            return ""
-        team = escape((repository.get_team(int(team_id)) or {}).get("school") or "")
-        return (
-            '<article class="situation-card">'
-            f"<h3>{team}</h3>"
-            f"<div class='meta pace-lines'>{pace}</div>"
-            f"<div class='meta'>{escape(basis)}</div>"
-            '</article>'
-        )
+        return ""
     career = context.get("career")
     program = context.get("program")
-    headline = program or career
+    headline = context.get("current") or program or career
     if not headline:
         return ""
-    rows = []
-    for split in context.get("season_splits", [])[:5]:
-        rows.append(
-            f"<span>{int(split['season'])} {escape(split['team'])}: "
-            f"{split['run_pct']:.0f}/{split['pass_pct']:.0f}</span>"
-        )
+    coach = context.get("coach_name")
+    rows = [
+        f"<span>{int(split['season'])} "
+        # The team is only worth naming when it can change between rows, which
+        # it can for a coordinator and cannot for a programme.
+        + (f"{escape(split['team'])} " if coach else "")
+        + f"{split['run_pct']:.0f}/{split['pass_pct']:.0f}</span>"
+        for split in context.get("season_splits", [])[:HISTORY_SEASONS]
+    ]
     program_text = (
-        f"At {escape(context['team'])}: {program['run_pct']:.0f}% run / {program['pass_pct']:.0f}% pass"
-        if program else "No program split stored yet"
+        f"{escape(context['team'])} over {program['seasons']} seasons: "
+        f"{program['run_pct']:.0f}% run / {program['pass_pct']:.0f}% pass"
+        if program else ""
     )
     career_text = (
         f"Career assignments: {career['run_pct']:.0f}% run / {career['pass_pct']:.0f}% pass"
         if career else ""
     )
-    pace, _basis = _pace_for(repository, team_id, season, context.get("coach_name"))
+    pace, basis = _pace_for(repository, team_id, season, coach)
+    title = escape(context["team"]) + (f" · {escape(coach)}" if coach else "")
     return (
         '<article class="situation-card">'
-        f"<h3>{escape(context['team'])} · {escape(context['coach_name'])}</h3>"
-        f"<p><strong>{headline['run_pct']:.0f}/{headline['pass_pct']:.0f}</strong> observed run/pass balance</p>"
+        f"<h3>{title}</h3>"
+        f"<p><strong>{headline['run_pct']:.0f}/{headline['pass_pct']:.0f}</strong> "
+        f"run/pass, {int(headline['season']) if headline.get('season') else season}</p>"
         + (f"<div class='meta pace-lines'>{pace}</div>" if pace else "")
         + f"<div class='meta'>{program_text}{' · ' if career_text and program_text else ''}{career_text}</div>"
-        f"<div class='meta pace-lines'>{''.join(rows)}</div>"
-        '</article>'
+        + f"<div class='meta pace-lines'>{''.join(rows)}</div>"
+        + (f"<div class='meta'>{escape(basis)}</div>" if basis and not coach else "")
+        + '</article>'
     )
 
 

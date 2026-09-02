@@ -125,3 +125,68 @@ def test_an_unknown_coordinator_yields_nothing_rather_than_guessing(repository):
 
 def test_a_team_with_no_plays_yields_nothing(repository):
     assert cp.team_pace(repository, "Test U", [2025]) is None
+
+
+# ------------------------------------------------------- run/pass without a name
+
+def _team_stat(connection, season, team, rush, passes):
+    for name, value in (("rushingAttempts", rush), ("passAttempts", passes)):
+        connection.execute(
+            "INSERT INTO team_stats(season, team, stat_name, stat_value)"
+            " VALUES(?,?,?,?)", (season, team, name, value))
+
+
+def test_run_pass_tendency_does_not_need_a_coordinator(repository):
+    """The section it feeds rendered nothing at all on a database whose
+    `coordinator_seasons` is empty -- which is every database where the command
+    that fills it has not been run. The attempts were in `team_stats` the whole
+    time.
+    """
+    from sports_aggregator.cfb.coordinator_balance import team_run_pass_context
+    with sqlite3.connect(repository.path) as connection:
+        for season in range(2015, 2026):
+            _team_stat(connection, season, "Test U", 500, 500)
+        connection.commit()
+
+    context = team_run_pass_context(repository, "Test U", 2025)
+
+    assert context is not None
+    assert context["coach_name"] is None
+    assert len(context["season_splits"]) == 11, "history reaches back to 2015"
+    assert context["program"]["run_pct"] == pytest.approx(50.0)
+    assert context["current"]["season"] == 2025
+
+
+def test_the_history_window_is_bounded(repository):
+    from sports_aggregator.cfb.coordinator_balance import team_run_pass_context
+    with sqlite3.connect(repository.path) as connection:
+        for season in range(2000, 2026):
+            _team_stat(connection, season, "Test U", 400, 600)
+        connection.commit()
+
+    context = team_run_pass_context(repository, "Test U", 2025, history_seasons=5)
+    assert [row["season"] for row in context["season_splits"]] == [2025, 2024, 2023, 2022, 2021]
+
+
+def test_a_team_with_no_stored_attempts_yields_nothing(repository):
+    from sports_aggregator.cfb.coordinator_balance import team_run_pass_context
+    assert team_run_pass_context(repository, "Test U", 2025) is None
+
+
+def test_the_matchup_card_appears_without_coordinator_data(repository):
+    """The regression this restores: both halves of the card blank, so the
+    section removed itself from the page."""
+    from sports_aggregator.cfb import coordinator_display as display
+    with sqlite3.connect(repository.path) as connection:
+        connection.execute(
+            "INSERT INTO teams(team_id, school, logos_json, updated_at)"
+            " VALUES(?,?,?,?)", (7, "Test U", "[]", "2026-01-01"))
+        for season in range(2020, 2026):
+            _team_stat(connection, season, "Test U", 600, 400)
+        connection.commit()
+
+    card = display._balance_card(repository, 7, 2025)
+
+    assert "Test U" in card
+    assert "60/40" in card, "the tendency is the point of the card"
+    assert "coordinator not on record" in card, "and it says whose it is"
