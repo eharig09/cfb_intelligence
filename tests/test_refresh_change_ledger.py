@@ -1,4 +1,22 @@
+"""The refresh change ledger, which production no longer computes.
+
+`5292e14` ("Remove production refresh snapshot and diff overhead") took out
+`_snapshot` and `_diff_table`: copying the tracked tables before every refresh
+and diffing them afterwards cost more than the answer was worth on a database
+this size. The removal left this file behind importing both, so the whole test
+suite stopped collecting -- which is why it is skipped rather than deleted:
+the reader half is still in `data_status._safe_change_ledger`, and the page
+still has a section waiting for `refresh_change_history.jsonl`, so this remains
+the specification if a cheaper producer is ever written.
+"""
+
 import sqlite3
+
+import pytest
+
+pytest.importorskip(
+    "sports_aggregator.tracked_refresh._diff_table",
+    reason="snapshot-and-diff was removed from production in 5292e14")
 
 from sports_aggregator.tracked_refresh import _diff_table, _snapshot
 

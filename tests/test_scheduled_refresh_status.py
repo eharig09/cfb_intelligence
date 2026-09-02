@@ -190,3 +190,64 @@ def test_a_heavy_pass_scopes_nothing(tmp_path: Path, monkeypatch):
                           phase_runner=runner)
     assert runner.captured[0]["only"] is None
     assert runner.captured[0]["datasets"] is None
+
+
+def test_what_each_step_did_is_written_down_not_just_that_it_finished(
+        tmp_path: Path, monkeypatch):
+    """The status page's "What changed" column read "Completed" for every row.
+
+    Not because nothing changed: every step reports what it did, and the page
+    renders it. The progress file recorded only status and time and dropped the
+    rest, so a refresh that quietly did nothing looked exactly like one that
+    did the work.
+    """
+    monkeypatch.setenv("CFB_REFRESH_STATE_PATH", str(tmp_path / "instance"))
+    runner = _phase_runner([
+        {"step": "weather", "status": "success", "message": "9 forecasts updated",
+         "seconds": 0.4, "updated": 9},
+        {"step": "cfbd-lines", "status": "success",
+         "message": "scoped datasets complete: betting_lines", "seconds": 0.5},
+    ])
+
+    run_scheduled_refresh(2026, repo_root=tmp_path, phase_runner=runner)
+
+    steps = json.loads(
+        (tmp_path / "instance" / "refresh_progress.json").read_text(encoding="utf-8")
+    )["steps"]
+    assert steps["weather"]["message"] == "9 forecasts updated"
+    assert steps["weather"]["updated"] == 9
+    assert steps["cfbd-lines"]["message"] == "scoped datasets complete: betting_lines"
+
+
+def test_a_failing_step_records_why_it_failed(tmp_path: Path, monkeypatch):
+    """The column matters most when something went wrong, and that is exactly
+    when "Completed" was the least true thing the page could say."""
+    monkeypatch.setenv("CFB_REFRESH_STATE_PATH", str(tmp_path / "instance"))
+    runner = _phase_runner([
+        {"step": "cfbd-current-player-stats", "status": "failed",
+         "message": "0 rows across 10 conferences", "seconds": 2.0, "optional": True},
+    ])
+
+    run_scheduled_refresh(2026, repo_root=tmp_path, phase_runner=runner)
+
+    steps = json.loads(
+        (tmp_path / "instance" / "refresh_progress.json").read_text(encoding="utf-8")
+    )["steps"]
+    assert steps["cfbd-current-player-stats"]["message"] == "0 rows across 10 conferences"
+
+
+def test_a_long_message_is_trimmed_before_it_reaches_the_file(
+        tmp_path: Path, monkeypatch):
+    """A step that lists every failure can produce a very long line, and this
+    file is rewritten after each step."""
+    monkeypatch.setenv("CFB_REFRESH_STATE_PATH", str(tmp_path / "instance"))
+    runner = _phase_runner([
+        {"step": "weather", "status": "failed", "message": "x" * 4000, "seconds": 1.0},
+    ])
+
+    run_scheduled_refresh(2026, repo_root=tmp_path, phase_runner=runner)
+
+    steps = json.loads(
+        (tmp_path / "instance" / "refresh_progress.json").read_text(encoding="utf-8")
+    )["steps"]
+    assert len(steps["weather"]["message"]) == 240

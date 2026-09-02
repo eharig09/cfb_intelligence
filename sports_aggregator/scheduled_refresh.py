@@ -404,12 +404,33 @@ def run_scheduled_refresh(season: int, *, profile: str = "heavy",
                                  window_hours=resume_hours, now=started)
     progress = {"season": season, "profile": normalized_profile, "started_at": started.isoformat(),
                 "completed": False, "resumed_from": sorted(completed),
-                "steps": {name: {"status": "success", "resumed": True} for name in sorted(completed)}}
+                "steps": {name: {"status": "success", "resumed": True,
+                                 "message": "carried over from an earlier attempt"}
+                          for name in sorted(completed)}}
     _write_progress(instance, progress)
 
     def record_step(result: dict[str, Any]) -> None:
-        progress["steps"][str(result.get("step"))] = {
-            "status": str(result.get("status")), "at": datetime.now(timezone.utc).isoformat()}
+        """Persist what the step did, not only that it finished.
+
+        Every step already reports it -- "9 forecasts updated", "failed teams:
+        ...", "scoped datasets complete: ..." -- and the status page has a
+        column for exactly that, which falls back to the word "Completed" when
+        there is nothing to show. Only status and time were written here, so
+        that column read "Completed" for every row of every run, and a refresh
+        that quietly did nothing looked identical to one that did the work.
+        """
+        recorded: dict[str, Any] = {"status": str(result.get("status")),
+                                    "at": datetime.now(timezone.utc).isoformat()}
+        message = str(result.get("message") or "").strip()
+        if message:
+            recorded["message"] = message[:240]
+        # The counts the status page renders beside the message, when a step
+        # reports them as numbers rather than prose.
+        for key in ("added", "updated", "unchanged", "count"):
+            value = result.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                recorded[key] = value
+        progress["steps"][str(result.get("step"))] = recorded
         _write_progress(instance, progress)
 
     try:
@@ -425,7 +446,13 @@ def run_scheduled_refresh(season: int, *, profile: str = "heavy",
                     "refresh", season, root=root, only=only, datasets=datasets, log=log,
                     heartbeat=lambda: _touch_lock(lock), completed=completed, on_step=record_step)
             else:
+                # The other two branches record each step as it finishes. This
+                # one returns them all at once, and recorded none of them, so
+                # the seam the tests run through produced an empty progress
+                # file and could not have caught anything about its contents.
                 results = phase_runner("refresh", season, only=only, datasets=datasets)
+                for result in results:
+                    record_step(result)
 
         _refresh_statistics(instance)
         finished = datetime.now(timezone.utc)
