@@ -48,6 +48,7 @@ from sports_aggregator.client_cache import install_client_caching
 from sports_aggregator.compression import install_compression
 from sports_aggregator.page_cache import cache
 from sports_aggregator.scheduled_refresh import REFRESH_PROFILES
+from sports_aggregator.tracked_refresh import SEGMENTS
 from sports_aggregator.web import league_pages
 load_dotenv()
 
@@ -205,12 +206,24 @@ def create_app(test_config: dict | None = None) -> Flask:
         elif profile not in REFRESH_PROFILES:
             abort(400, description="profile must be auto or one of " + ", ".join(sorted(REFRESH_PROFILES)))
 
+        # A named segment runs now rather than when its hour comes round. The
+        # analytics segment in particular exists to be backfilled on demand:
+        # its steps are the expensive ones and they only have an hour a day.
+        segment = (request.args.get("segment") or "").strip().casefold() or None
+        if segment and segment not in SEGMENTS:
+            abort(400, description="segment must be one of " + ", ".join(sorted(SEGMENTS)))
+
         root = Path(__file__).resolve().parent
+        command = [sys.executable, "-m", "sports_aggregator.tracked_refresh",
+                   "--season", str(season), "--profile", profile]
+        if segment:
+            command += ["--segment", segment]
         subprocess.Popen(
-            [sys.executable, "-m", "sports_aggregator.tracked_refresh", "--season", str(season), "--profile", profile],
+            command,
             cwd=str(root), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True,
         )
         return jsonify({"status": "accepted", "season": season, "profile": profile,
+                        **({"segment": segment} if segment else {}),
                         **({"reason": decision["reason"], "games": decision["games"]} if decision else {})}), 202
 
     @app.post("/internal/cfb-content-zap")

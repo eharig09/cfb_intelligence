@@ -56,7 +56,7 @@ services:
       # Seven bounded maintenance segments/day: core twice, content twice, and
       # roster/stats/models once each. News gets three separate shards below.
       - key: CFB_REFRESH_HOURS
-        value: 6,10,12,16,18,22,23
+        value: 2,6,10,12,16,18,22,23
       - key: CFB_REFRESH_HEAVY_HOURS
         value: ""
       - key: CFB_REFRESH_CORE_HOURS
@@ -69,6 +69,12 @@ services:
         value: "22"
       - key: CFB_REFRESH_MODEL_HOURS
         value: "23"
+      # Play-by-play and everything derived from it. Nothing ran these in
+      # production: no segment named them, and asking the hook for "heavy"
+      # lands on the core segment. Given the quietest hour of the day because
+      # they are the most expensive steps in the refresh.
+      - key: CFB_REFRESH_ANALYTICS_HOURS
+        value: "2"
       - key: CFB_REFRESH_NEWS_HOURS
         value: 3,8,20
       - key: CFB_LOCAL_NEWS_SHARD_SIZE

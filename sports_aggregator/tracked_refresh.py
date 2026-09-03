@@ -39,6 +39,29 @@ CONTENT_STEPS = ["articles", "bluesky", "reddit", "youtube", "podcasts", "retag"
 ROSTER_STEPS = ["cfbd-roster-context", "cfbd-recruits", "transfer-grades"]
 MODEL_STEPS = ["cfbd-models", "cfbd-box-scores", "cfbd-lines", "weather"]
 
+#: Play-by-play and everything derived from it, plus the coordinator sync.
+#:
+#: None of these had a way to run in production. The cron drives the segments
+#: in this file and none of them named these steps, and the only other route --
+#: asking the web hook for a "heavy" profile -- lands on the core segment two
+#: functions below. So the box score's EPA, the turning points, the middle-of-
+#: field splits and the coordinator tendencies had no path to the deployed
+#: database at all, however long it ran.
+#:
+#: Ordered by the plan rather than by this list: `pbp` has to land before
+#: anything derives from it, and `_run_low_memory_phase` keeps the plan's own
+#: order. They are the most expensive steps in the refresh, which is why they
+#: get a segment to themselves rather than a place inside another one.
+ANALYTICS_STEPS = [
+    "pbp", "pbp-derive", "epa", "team-advanced", "win-probability",
+    "passing-detail", "passing-qb", "coordinators",
+]
+
+#: The maintenance segments, which the hourly trigger reaches one at a time by
+#: the clock. Nameable directly so a segment can also be run on demand: a
+#: backfill should not have to wait for its hour to come round.
+SEGMENTS = ("core", "rosters", "stats", "models", "content", "analytics", "news")
+
 
 def _hours(name: str, default: str) -> set[int]:
     return {
@@ -57,6 +80,7 @@ def _segment_for_light(now: datetime | None = None) -> str:
         ("rosters", _hours("CFB_REFRESH_ROSTER_HOURS", "12")),
         ("stats", _hours("CFB_REFRESH_STATS_HOURS", "22")),
         ("models", _hours("CFB_REFRESH_MODEL_HOURS", "23")),
+        ("analytics", _hours("CFB_REFRESH_ANALYTICS_HOURS", "2")),
     )
     for name, hours in schedule:
         if moment.hour in hours:
@@ -139,6 +163,20 @@ def _segment_results(segment: str, season: int, *, root: Path, log, heartbeat) -
             root=root,
             only=MODEL_STEPS,
             timeout=600,
+            log=log,
+            heartbeat=heartbeat,
+        )
+
+    if segment == "analytics":
+        # Each step carries its own budget -- 1,800 seconds for the play
+        # ingest, less for what reads it -- so the driver's timeout here is
+        # only a backstop.
+        return _run_low_memory_phase(
+            "refresh",
+            season,
+            root=root,
+            only=ANALYTICS_STEPS,
+            timeout=1800,
             log=log,
             heartbeat=heartbeat,
         )
@@ -267,6 +305,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=tuple(sorted(REFRESH_PROFILES)),
         default="light",
     )
+    parser.add_argument(
+        "--segment",
+        choices=SEGMENTS,
+        default=None,
+        help="Run one maintenance segment now instead of the one this hour is for",
+    )
     args = parser.parse_args(argv)
 
     database = Path(
@@ -277,7 +321,9 @@ def main(argv: list[str] | None = None) -> int:
         database = root / database
     instance = database.parent
 
-    if args.profile in {"scores", "results"}:
+    if args.segment:
+        report = _run_segment(args.segment, args.season, root=root, instance=instance)
+    elif args.profile in {"scores", "results"}:
         report = run_scheduled_refresh(
             args.season,
             profile=args.profile,
