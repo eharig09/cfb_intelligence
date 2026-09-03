@@ -78,9 +78,21 @@ GT,Jordan Allen,Georgia Tech,WR,Questionable,80.1,0.2,,8/27/2026,Tweaked an ankl
     css = (Path(__file__).resolve().parent.parent / "static" / "cfb.css").read_text(encoding="utf-8")
     flag = css.split(".cfbdepth-player-flag {", 1)[1].split("}", 1)[0]
     assert "gap:" in flag, "the chip must space its fields so they do not run together"
-    assert "STYLE_INSERT" not in Path(
-        Path(__file__).resolve().parent.parent
-        / "sports_aggregator" / "cfb" / "cfbdepth_enhancements.py").read_text(encoding="utf-8")
+
+
+def test_the_template_insert_modules_no_longer_ship_dead_style_blocks():
+    """coordinator_display and the two cfbdepth_* modules each spliced their CSS
+    into a `<style>` block the CFB templates dropped when styling moved to
+    static/cfb.css. The rules belong to the sheet now; the splice is gone."""
+    package = Path(__file__).resolve().parent.parent / "sports_aggregator" / "cfb"
+    for name in ("cfbdepth_enhancements.py", "cfbdepth_display.py", "coordinator_display.py"):
+        body = (package / name).read_text(encoding="utf-8")
+        assert "STYLE_INSERT" not in body and "STYLE_ANCHOR" not in body, name
+        assert "</style>" not in body, name
+
+    css = (Path(__file__).resolve().parent.parent / "static" / "cfb.css").read_text(encoding="utf-8")
+    for selector in (".cfbdepth-player-flag", ".cfbdepth-update", ".cfbdepth-strip", ".team-facts"):
+        assert selector in css, selector
 
 
 def test_player_update_name_fallback_requires_one_source_team(tmp_path):

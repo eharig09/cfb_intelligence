@@ -29,20 +29,10 @@ PLAYER_NEWS_INSERT = (
     '            <div class="section-note">Stories in which this player was resolved by exact name.</div>\n'
     '            {{ cfbdepth_player_update_cards(player.name, player.team) }}\n'
 )
-STYLE_ANCHOR = '\n</style>'
-STYLE_INSERT = '''
-    .cfbdepth-strip { margin: 8px 0 14px; padding: 7px 10px; border: 1px solid var(--line); background: var(--paper); }
-    .cfbdepth-strip-head { display:flex; justify-content:space-between; gap:8px; align-items:baseline; margin-bottom:5px; }
-    .cfbdepth-strip-head strong { font-size:.68rem; text-transform:uppercase; letter-spacing:.06em; }
-    .cfbdepth-strip-head span { color:var(--muted); font-size:.58rem; }
-    .cfbdepth-strip-items { display:flex; flex-wrap:wrap; gap:5px 18px; font-size:.68rem; }
-    .cfbdepth-strip-items b { font-family:var(--display-font); }
-    .cfbdepth-update { margin:8px 0; border-left:3px solid var(--rust); }
-    .cfbdepth-update .status { color:var(--rust); font-weight:900; text-transform:uppercase; letter-spacing:.05em; font-size:.58rem; }
-    .cfbdepth-update p { margin:.3rem 0 0; font-size:.75rem; line-height:1.35; }
-    .cfbdepth-private { color:var(--muted); font-size:.57rem; }
-
-</style>'''
+# The `.cfbdepth-strip*`, `.cfbdepth-update*` and `.cfbdepth-private` rules
+# these fragments use live in static/cfb.css. They were once spliced in here as
+# a page-local <style> block, which stopped applying when the CFB templates
+# moved their styling out to that sheet.
 
 
 class _CFBDepthTemplateLoader(BaseLoader):
@@ -59,8 +49,6 @@ class _CFBDepthTemplateLoader(BaseLoader):
             source = source.replace(GAME_SITUATION_ANCHOR, GAME_SITUATION_INSERT, 1)
         elif template == "cfb_player.html" and "cfbdepth_player_update_cards(" not in source:
             source = source.replace(PLAYER_NEWS_ANCHOR, PLAYER_NEWS_INSERT, 1)
-        if template in {"cfb_team.html", "cfb_game.html", "cfb_player.html"} and ".cfbdepth-strip" not in source:
-            source = source.replace(STYLE_ANCHOR, STYLE_INSERT, 1)
         return source, filename, uptodate
 
     def list_templates(self):

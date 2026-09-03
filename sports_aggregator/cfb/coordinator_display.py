@@ -37,18 +37,9 @@ GAME_BALANCE_INSERT = (
     '<section class="section" data-mobile-tab-panel="overview">\n'
     '    <h2>Players with history against this opponent</h2>'
 )
-TEAM_STYLE_ANCHOR = '\n</style>'
-TEAM_STYLE_INSERT = '''
-    /* Seven team-summary cards stay on one desktop row. Shared fact rows elsewhere
-       retain the six-column site default. */
-    @media (min-width: 860px) {
-        .team-facts { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-        .team-facts .fact { padding-inline: 8px; min-width: 0; }
-        .team-facts .fact b { font-size: 1.05rem; }
-        .team-facts .fact span { font-size: .54rem; line-height: 1.2; }
-    }
-
-</style>'''
+# `.team-facts` (seven cards on one desktop row) is styled in static/cfb.css.
+# It used to be spliced in here as a page-local <style> block, which quietly
+# stopped applying once the CFB templates moved their styles to that sheet.
 
 
 class _CoordinatorTemplateLoader(BaseLoader):
@@ -66,8 +57,6 @@ class _CoordinatorTemplateLoader(BaseLoader):
                 source = source.replace(TEAM_FACTS_ANCHOR, TEAM_FACTS_INSERT, 1)
             if 'class="facts team-facts"' not in source:
                 source = source.replace(TEAM_FACTS_CLASS_ANCHOR, TEAM_FACTS_CLASS_INSERT, 1)
-            if ".team-facts" not in source:
-                source = source.replace(TEAM_STYLE_ANCHOR, TEAM_STYLE_INSERT, 1)
         elif template == "cfb_game.html" and "coordinator_matchup_balance(" not in source:
             source = source.replace(GAME_BALANCE_ANCHOR, GAME_BALANCE_INSERT, 1)
         return source, filename, uptodate

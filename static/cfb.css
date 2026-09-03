@@ -481,24 +481,34 @@ table.data td.state-departed .sub { color: var(--red); }
 .situation-card .meta { margin-top: 5px; }
 .situation-list { margin: 5px 0 0; padding-left: 15px; font-size: .72rem; line-height: 1.45; }
 
-/* ---------- CFBDepth private-export surfaces ----------
-   cfbdepth_enhancements.py splices this markup into the shared templates: the
-   roster-breakdown fact strip on the team page, and a row of availability
-   chips just above the player-matchup table on the game page. It follows the
-   situation band it sits next to -- paper ground, hairline border, one gold
-   edge -- and the chip children are spaced so the status, impact and
-   team/position read as separate fields rather than one run-on string. */
+/* ---------- CFBDepth & coordinator template inserts ----------
+   coordinator_display and the two cfbdepth_* modules splice extra markup into
+   the shared team / game / player templates through the Jinja loader. Their
+   styling used to ride along as a page-local <style> block, which stopped
+   applying once these templates moved their CSS out to this sheet -- so the
+   rules live here now, next to the situation band most of them follow. */
+
+/* Team-summary and CFBDepth roster fact strips carry seven cards; the shared
+   .facts grid tops out at six, so both widen a step at the desktop breakpoint. */
+.cfbdepth-roster-facts { margin-bottom: 14px; }
+@media (min-width: 860px) {
+    .cfbdepth-roster-facts,
+    .team-facts { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .cfbdepth-roster-facts .fact,
+    .team-facts .fact { min-width: 0; padding-inline: 8px; }
+    .cfbdepth-roster-facts .fact b,
+    .team-facts .fact b { font-size: 1.05rem; white-space: nowrap; }
+    .cfbdepth-roster-facts .fact span,
+    .team-facts .fact span { font-size: .54rem; line-height: 1.2; }
+}
 .cfbdepth-roster-note {
     display: flex; justify-content: space-between; gap: 8px; margin: 8px 0 4px;
     color: var(--muted); font-size: .58rem; text-transform: uppercase; letter-spacing: .055em;
 }
-.cfbdepth-roster-facts { margin-bottom: 14px; }
-@media (min-width: 860px) {
-    .cfbdepth-roster-facts { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-    .cfbdepth-roster-facts .fact { min-width: 0; padding-inline: 8px; }
-    .cfbdepth-roster-facts .fact b { font-size: 1.05rem; white-space: nowrap; }
-    .cfbdepth-roster-facts .fact span { font-size: .54rem; line-height: 1.2; }
-}
+
+/* Availability chips above the player-matchup table (cfbdepth_enhancements):
+   spaced fields so the status, impact and team/position read as separate
+   values rather than one run-on string. */
 .cfbdepth-player-flags { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 10px 0 14px; }
 .cfbdepth-player-flags-label {
     width: 100%; color: var(--muted); font-size: .58rem; font-weight: 800;
@@ -519,6 +529,28 @@ table.data td.state-departed .sub { color: var(--red); }
     color: var(--muted); font-size: .62rem; font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .cfbdepth-player-flag .meta { color: var(--muted); font-size: .62rem; }
+
+/* Roster-breakdown strip (cfbdepth_display): the compact sibling of the fact
+   strip, rendered when the enhancement layer's card version is not substituted. */
+.cfbdepth-strip { margin: 8px 0 14px; padding: 7px 10px; border: 1px solid var(--line); background: var(--paper); }
+.cfbdepth-strip-head {
+    display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 5px;
+}
+.cfbdepth-strip-head strong { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; }
+.cfbdepth-strip-head span { color: var(--muted); font-size: .58rem; }
+.cfbdepth-strip-items { display: flex; flex-wrap: wrap; gap: 5px 18px; font-size: .68rem; }
+.cfbdepth-strip-items b { font-family: var(--display-font); }
+
+/* Imported player-availability update cards on the player page (cfbdepth_display). */
+.cfbdepth-update { margin: 8px 0; border-left: 3px solid var(--rust); }
+.cfbdepth-update .story-head {
+    display: flex; gap: 8px; align-items: baseline; margin-bottom: 3px;
+}
+.cfbdepth-update .status {
+    color: var(--rust); font-weight: 900; text-transform: uppercase; letter-spacing: .05em; font-size: .58rem;
+}
+.cfbdepth-update p { margin: .3rem 0 0; font-size: .75rem; line-height: 1.35; }
+.cfbdepth-private { color: var(--muted); font-size: .57rem; }
 
 /* ---------- story lists ---------- */
 
