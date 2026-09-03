@@ -396,6 +396,31 @@ def _numeric(value: Any) -> float | None:
         return None
 
 
+#: CFBD's returning-production percentage is returning PPA over last season's
+#: team PPA. When an offense's season PPA nets near zero -- true of the three or
+#: four worst teams in the country every year -- that denominator is unstable and
+#: the ratio stops being a percentage of anything: Massachusetts came through for
+#: 2026 at -56.7%, with the rushing split reading 221%. Returning *usage* has a
+#: non-negative denominator by construction and sits within a few points of the
+#: PPA figure for every healthy offense, so it is the honest stand-in on the rare
+#: row where the ratio breaks.
+_RETURNING_PPA_MAX = 1.25
+
+
+def _returning_production_signal(row: dict[str, Any],
+                                have_row: bool) -> tuple[float | None, str]:
+    """Value and source label for the "Returning production" context card."""
+    percent_ppa = row.get("percent_ppa")
+    usage = row.get("usage")
+    if percent_ppa is not None and 0.0 <= percent_ppa <= _RETURNING_PPA_MAX:
+        return percent_ppa, "CFBD returning PPA"
+    if usage is not None and 0.0 < usage <= _RETURNING_PPA_MAX:
+        return usage, "CFBD returning usage (PPA base near zero)"
+    if have_row:
+        return None, "CFBD returning production not interpretable this year"
+    return None, "Awaiting CFBD returning production"
+
+
 def _hex_color(value: str | None) -> str | None:
     """Normalize a CFBD color to a single-hash CSS hex value.
 
@@ -2313,12 +2338,13 @@ class CFBRepository:
         if metrics["advanced"] or metrics["core"]:
             return {"state": "LIVE", "season": season, "cards": [], "metrics": metrics}
         row = dict(returning) if returning else {}
+        returning_value, returning_source = _returning_production_signal(row, bool(returning))
         # Formats name the scale explicitly: "rate" is a 0-1 fraction, "pct" is
         # already 0-100. Leaving both as "percent" forced callers to guess, and
         # a 45.9% continuity figure rendered as 4590%.
         cards = [
-            {"label": "Returning production", "value": row.get("percent_ppa"), "format": "rate",
-             "source": "CFBD returning PPA" if returning else "Awaiting CFBD returning production"},
+            {"label": "Returning production", "value": returning_value, "format": "rate",
+             "source": returning_source},
             {"label": "Roster continuity", "value": depth["summary"].get("continuity_pct"), "format": "pct",
              "source": f"{season - 1} to {season} roster IDs"},
             {"label": "Transfer arrivals", "value": depth["summary"].get("transfer_arrivals"), "format": "int",

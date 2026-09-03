@@ -363,6 +363,41 @@ class RosterProductionTests(unittest.TestCase):
         self.assertEqual(evidence["qb"]["headline_value"], 3000.0)
 
 
+class ReturningProductionSignalTests(unittest.TestCase):
+    """CFBD's returning-production percentage divides by last year's team PPA,
+    which is near zero for the worst offenses -- Massachusetts read -56.7% for
+    2026. The context card falls back to returning usage on those rows."""
+
+    def _signal(self, **row):
+        from sports_aggregator.cfb.repository import _returning_production_signal
+        return _returning_production_signal(row, have_row=True)
+
+    def test_a_healthy_ppa_share_is_shown_as_is(self):
+        value, source = self._signal(percent_ppa=0.683, usage=0.709)
+        self.assertEqual(value, 0.683)
+        self.assertEqual(source, "CFBD returning PPA")
+
+    def test_a_negative_ppa_share_falls_back_to_usage(self):
+        value, source = self._signal(percent_ppa=-0.567, usage=0.135)
+        self.assertEqual(value, 0.135)
+        self.assertIn("usage", source)
+
+    def test_a_blown_up_ppa_share_falls_back_to_usage(self):
+        value, _ = self._signal(percent_ppa=2.209, usage=0.30)
+        self.assertEqual(value, 0.30)
+
+    def test_neither_figure_usable_leaves_the_card_empty(self):
+        value, source = self._signal(percent_ppa=-0.5, usage=None)
+        self.assertIsNone(value)
+        self.assertNotIn("Awaiting", source)
+
+    def test_no_row_at_all_still_reads_as_waiting(self):
+        from sports_aggregator.cfb.repository import _returning_production_signal
+        value, source = _returning_production_signal({}, have_row=False)
+        self.assertIsNone(value)
+        self.assertIn("Awaiting", source)
+
+
 class ExpandedSituationTests(unittest.TestCase):
     def test_a_routine_friday_turnaround_is_not_a_short_week(self):
         from sports_aggregator.cfb.situations import SHORT_WEEK_DAYS
