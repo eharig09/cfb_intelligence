@@ -93,14 +93,11 @@ def _number(value: Any, fallback: str = "—") -> str:
         return _text(value, fallback)
 
 
-def _performance(item: dict[str, Any], scope: str) -> tuple[str, str]:
+def _performance(item: dict[str, Any], scope: str) -> tuple[Any, Any]:
     performance = item.get(
         "career_performance" if scope == "career" else "program_performance"
     ) or {}
-    return (
-        _number(performance.get("points_per_game")),
-        _number(performance.get("yards_per_game")),
-    )
+    return performance.get("points_per_game"), performance.get("yards_per_game")
 
 
 def _balance_inline(balance: dict[str, Any] | None) -> str:
@@ -113,16 +110,37 @@ def _balance_inline(balance: dict[str, Any] | None) -> str:
 
 
 def _summary_line(item: dict[str, Any] | None, balance: dict[str, Any] | None = None) -> str:
+    """One coordinator: what his offence has done here, and what it has done.
+
+    A coordinator in his first season at a school has no record at it, and
+    leading with two dashes and hiding the career behind them read as no data
+    at all -- "— PPG · — YPG (24.0 · 348.6)". Where there is nothing at the
+    school yet, the career is the line, and it says so.
+    """
     if not item:
         return ""
     career_ppg, career_ypg = _performance(item, "career")
     team_ppg, team_ypg = _performance(item, "program")
+    here = team_ppg is not None or team_ypg is not None
+    anywhere = career_ppg is not None or career_ypg is not None
+    if not here and not anywhere:
+        # A coordinator arriving from outside college football has no record
+        # to show, and "career — PPG · — YPG" claims one.
+        numbers = "<span class='muted'>no stored record</span>"
+    elif not here:
+        numbers = (f"<span title='Across every stop he has held'>career "
+                   f"{_number(career_ppg)} PPG · {_number(career_ypg)} YPG</span>")
+    elif (team_ppg, team_ypg) == (career_ppg, career_ypg):
+        # His first stop: the career and the school are the same games.
+        numbers = f"{_number(team_ppg)} PPG · {_number(team_ypg)} YPG"
+    else:
+        numbers = (f"{_number(team_ppg)} PPG · {_number(team_ypg)} YPG "
+                   f"(<span title='Across every stop he has held'>career "
+                   f"{_number(career_ppg)} · {_number(career_ypg)}</span>)")
     return (
         f"<span class='item'><span class='label'>{_text(item.get('role'))}</span>"
         f"<strong>{_text(item.get('coach_name'))}</strong>"
-        f"<span>{team_ppg} PPG · {team_ypg} YPG "
-        f"(<span title='Career PPG and YPG'>{career_ppg} · {career_ypg}</span>)"
-        f"{_balance_inline(balance)}</span></span>"
+        f"<span>{numbers}{_balance_inline(balance)}</span></span>"
     )
 
 
