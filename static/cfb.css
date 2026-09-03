@@ -481,6 +481,45 @@ table.data td.state-departed .sub { color: var(--red); }
 .situation-card .meta { margin-top: 5px; }
 .situation-list { margin: 5px 0 0; padding-left: 15px; font-size: .72rem; line-height: 1.45; }
 
+/* ---------- CFBDepth private-export surfaces ----------
+   cfbdepth_enhancements.py splices this markup into the shared templates: the
+   roster-breakdown fact strip on the team page, and a row of availability
+   chips just above the player-matchup table on the game page. It follows the
+   situation band it sits next to -- paper ground, hairline border, one gold
+   edge -- and the chip children are spaced so the status, impact and
+   team/position read as separate fields rather than one run-on string. */
+.cfbdepth-roster-note {
+    display: flex; justify-content: space-between; gap: 8px; margin: 8px 0 4px;
+    color: var(--muted); font-size: .58rem; text-transform: uppercase; letter-spacing: .055em;
+}
+.cfbdepth-roster-facts { margin-bottom: 14px; }
+@media (min-width: 860px) {
+    .cfbdepth-roster-facts { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .cfbdepth-roster-facts .fact { min-width: 0; padding-inline: 8px; }
+    .cfbdepth-roster-facts .fact b { font-size: 1.05rem; white-space: nowrap; }
+    .cfbdepth-roster-facts .fact span { font-size: .54rem; line-height: 1.2; }
+}
+.cfbdepth-player-flags { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 10px 0 14px; }
+.cfbdepth-player-flags-label {
+    width: 100%; color: var(--muted); font-size: .58rem; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .06em;
+}
+.cfbdepth-player-flag {
+    display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 9px;
+    background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--gold);
+    font-size: .7rem; cursor: help;
+}
+.cfbdepth-player-flag a { font-weight: 800; text-decoration: none; }
+.cfbdepth-player-flag a:hover { text-decoration: underline; }
+.cfbdepth-player-flag .status {
+    color: var(--gold); font-size: .56rem; font-weight: 900;
+    text-transform: uppercase; letter-spacing: .05em;
+}
+.cfbdepth-player-flag .impact {
+    color: var(--muted); font-size: .62rem; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.cfbdepth-player-flag .meta { color: var(--muted); font-size: .62rem; }
+
 /* ---------- story lists ---------- */
 
 .story-list { background: var(--paper); border: 1px solid var(--line); }

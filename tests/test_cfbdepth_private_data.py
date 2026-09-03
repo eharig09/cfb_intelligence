@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sports_aggregator.cfb.cfbdepth_data import (
     import_player_updates,
     import_roster_breakdown,
@@ -8,7 +10,7 @@ from sports_aggregator.cfb.cfbdepth_data import (
 )
 from sports_aggregator.cfb.coordinator_balance import coordinator_run_pass_context
 from sports_aggregator.cfb.coordinators import initialize as initialize_coordinators
-from sports_aggregator.cfb.models import Team
+from sports_aggregator.cfb.models import Player, Team
 from sports_aggregator.cfb.repository import CFBRepository
 
 
@@ -46,6 +48,39 @@ Bama,Jorden Edmonds,Alabama,DB,Questionable,13.6,1.25695,,8/27/2026,Missing time
     assert len(updates) == 1
     assert updates[0]["status"] == "Questionable"
     assert updates[0]["update_text"] == "Missing time in camp."
+
+
+def test_matchup_flags_render_as_themed_chips(tmp_path):
+    """The availability strip on the game page used to ship unstyled -- its CSS
+    was spliced into a `<style>` block the CFB templates no longer carry, so the
+    name, status, impact and team/position ran together as one string. The rules
+    live in `static/cfb.css` now, next to the situation band they follow."""
+    from app import create_app
+    from sports_aggregator.cfb.cfbdepth_enhancements import _matchup_flags
+
+    repository = _repo(tmp_path)
+    repository.replace_players(2026, [
+        Player("p1", 2026, "Jordan", "Allen", "Georgia Tech", "WR", 1, 72.0, 190, 3),
+    ])
+    import_player_updates(repository, """Abb,Name,Team,Pos,Status,Rating,Impact,New,Last Update,Update
+GT,Jordan Allen,Georgia Tech,WR,Questionable,80.1,0.2,,8/27/2026,Tweaked an ankle Tuesday.
+""")
+
+    app = create_app({"TESTING": True})
+    with app.test_request_context():
+        markup = str(_matchup_flags(repository, "Colorado", "Georgia Tech", 2026))
+
+    assert 'class="cfbdepth-player-flag"' in markup
+    assert '<span class="status">Questionable</span>' in markup
+    assert "Georgia Tech · WR" in markup
+    assert 'title="Tweaked an ankle Tuesday. — Updated 8/27/2026"' in markup
+
+    css = (Path(__file__).resolve().parent.parent / "static" / "cfb.css").read_text(encoding="utf-8")
+    flag = css.split(".cfbdepth-player-flag {", 1)[1].split("}", 1)[0]
+    assert "gap:" in flag, "the chip must space its fields so they do not run together"
+    assert "STYLE_INSERT" not in Path(
+        Path(__file__).resolve().parent.parent
+        / "sports_aggregator" / "cfb" / "cfbdepth_enhancements.py").read_text(encoding="utf-8")
 
 
 def test_player_update_name_fallback_requires_one_source_team(tmp_path):

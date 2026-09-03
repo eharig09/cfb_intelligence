@@ -33,43 +33,10 @@ PLAYER_MATCHUP_REPLACEMENT = (
     "    {{ cfbdepth_matchup_player_flags(game.away_team, game.home_team, game.season) }}\n"
     "    {{ data_table(player_matchup_table) }}\n"
 )
-STYLE_ANCHOR = "\n</style>"
-STYLE_INSERT = '''
-    .cfbdepth-roster-note {
-        display:flex; justify-content:space-between; gap:8px; margin:8px 0 4px;
-        color:var(--muted); font-size:.58rem; text-transform:uppercase; letter-spacing:.055em;
-    }
-    .cfbdepth-roster-facts { margin-bottom:14px; }
-    @media (min-width:860px) {
-        .cfbdepth-roster-facts { grid-template-columns:repeat(7,minmax(0,1fr)); }
-        .cfbdepth-roster-facts .fact { min-width:0; padding-inline:8px; }
-        .cfbdepth-roster-facts .fact b { font-size:1.05rem; white-space:nowrap; }
-        .cfbdepth-roster-facts .fact span { font-size:.54rem; line-height:1.2; }
-    }
-    .cfbdepth-player-flags {
-        display:flex; flex-wrap:wrap; gap:6px 8px; margin:10px 0 12px;
-    }
-    .cfbdepth-player-flag {
-        display:inline-flex; gap:5px; align-items:baseline; padding:5px 8px;
-        border:1px solid var(--line); border-left:3px solid var(--rust);
-        background:var(--paper); font-size:.67rem; cursor:help;
-    }
-    .cfbdepth-player-flag a { font-weight:800; text-decoration:none; }
-    .cfbdepth-player-flag .status {
-        color:var(--rust); font-size:.56rem; font-weight:900;
-        text-transform:uppercase; letter-spacing:.045em;
-    }
-    .cfbdepth-player-flag .impact {
-        font-size:.58rem; font-weight:900; font-variant-numeric:tabular-nums;
-        color:var(--ink); white-space:nowrap;
-    }
-    .cfbdepth-player-flag .meta { font-size:.58rem; }
-    .cfbdepth-player-flags-label {
-        width:100%; color:var(--muted); font-size:.58rem; text-transform:uppercase;
-        letter-spacing:.055em; font-weight:800;
-    }
-
-</style>'''
+# The `.cfbdepth-*` rules these fragments rely on live in `static/cfb.css`
+# alongside the situation band they are modelled on. They used to be spliced in
+# here as a page-local <style> block, which silently stopped applying once the
+# CFB templates moved their styles out to external sheets.
 
 
 class _EnhancementLoader(BaseLoader):
@@ -84,8 +51,6 @@ class _EnhancementLoader(BaseLoader):
             source = source.replace(ROSTER_CALL, ROSTER_REPLACEMENT, 1)
         if template == "cfb_game.html" and "cfbdepth_matchup_player_flags(" not in source:
             source = source.replace(PLAYER_MATCHUP_ANCHOR, PLAYER_MATCHUP_REPLACEMENT, 1)
-        if template in {"cfb_team.html", "cfb_game.html"} and ".cfbdepth-roster-facts" not in source:
-            source = source.replace(STYLE_ANCHOR, STYLE_INSERT, 1)
         return source, filename, uptodate
 
     def list_templates(self):
