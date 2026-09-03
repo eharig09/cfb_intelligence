@@ -174,11 +174,35 @@ def _resolve_team(connection: sqlite3.Connection, source_team: str) -> tuple[int
     return None
 
 
+#: A name that still carries template punctuation came from a parser reading
+#: an infobox, not from a person. `624c1fc` stopped one being written; this
+#: refuses it at the door, because the writer is not the only way a row gets
+#: here and a deployment that synced before that fix has them stored.
+_NOT_A_NAME = "coach_name LIKE '%|%' OR coach_name LIKE '%=%' OR coach_name LIKE '%{%'"
+
+
+def is_plausible_name(value: Any) -> bool:
+    """Whether this is a person's name rather than a fragment of a template."""
+    text = str(value or "").strip()
+    if not text or len(text) > 60:
+        return False
+    if any(character in text for character in "|={}[]"):
+        return False
+    return any(character.isalpha() for character in text)
+
+
 @schema_once("coordinators")
 def initialize(repository) -> None:
     repository.initialize()
     with closing(repository._connect()) as connection:
         connection.executescript(COORDINATOR_SCHEMA)
+        # Any database synced before the parser was fixed holds wikitext where
+        # the names should be -- `| oc_year =` was the most prolific offensive
+        # coordinator in the country, and because the same string landed on
+        # dozens of teams it read as one man holding five jobs in 2022. Clearing
+        # them here means a deployment heals on its next start rather than
+        # needing someone to know to go and delete them.
+        connection.execute(f"DELETE FROM coordinator_seasons WHERE {_NOT_A_NAME}")
         connection.commit()
 
 
@@ -191,6 +215,10 @@ def store_rows(repository, season: int, source_url: str,
     unresolved: list[str] = []
     with closing(repository._connect()) as connection:
         for item in rows:
+            if not is_plausible_name(item.get("coach_name")):
+                # Better a team with no coordinator on record than a team whose
+                # coordinator is a line of markup.
+                continue
             resolved = _resolve_team(connection, str(item.get("team") or ""))
             if resolved is None:
                 unresolved.append(str(item.get("team") or ""))
