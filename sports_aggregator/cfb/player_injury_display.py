@@ -10,13 +10,17 @@ from markupsafe import Markup
 from sports_aggregator.cfb.player_injuries import events_for_player
 
 
+# Anchored on the closing tags of the stint card's meta block. The card was
+# reformatted from a single line to this shape in 2e0df1a / 6082711; keep this
+# in step with the `{% for stint in career.stints %}` loop in cfb_player.html.
 PLAYER_STINT_ANCHOR = (
-    "                    <div class=\"meta\">{{ stint.position or '—' }} &middot; "
-    "class {{ stint.class_year or '—' }}</div>\n"
+    "                        {% if career.has_prior_college_season and stint.injury_data_present %}"
+    " &middot; injury reporting present{% endif %}\n"
+    "                    </div>\n"
 )
 PLAYER_STINT_INSERT = (
     PLAYER_STINT_ANCHOR
-    + "                    {{ player_injury_notes(player.player_id, stint.season, player.stints | length) }}\n"
+    + "                    {{ player_injury_notes(player.player_id, stint.season, career.stints | length) }}\n"
 )
 
 
@@ -61,7 +65,7 @@ def _notes(repository, player_id: str, stint_season: int, stint_count: int) -> M
         source = escape(str(row.get("source_name") or "Source"))
         url = escape(str(row.get("source_url") or ""), quote=True)
         rendered.append(
-            "<div class='meta injury-career-note' style='margin-top:.35rem'>"
+            "<div class='meta injury-career-note'>"
             "<span aria-hidden='true'>⚕</span> "
             f"<strong>{label}</strong> · {escape(qualifier)} · "
             f"<a href='{url}' rel='noopener noreferrer'>{source}</a>"
