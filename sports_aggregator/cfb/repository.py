@@ -1746,6 +1746,28 @@ class CFBRepository:
     LEADER_CATEGORIES = ("passing", "rushing", "receiving", "defensive",
                          "interceptions", "kicking")
 
+    #: How many games a team must have played this season before its own
+    #: partial numbers, rather than last year's full ones, rank the leaderboard.
+    #: One game reshuffles the board around a single carry; by four the sample
+    #: is real. Until then the board stays on the prior season and each row
+    #: carries its current-season line so this year's production is still shown.
+    LEADER_SETTLE_GAMES = 4
+
+    def _season_games_played(self, connection, season: int,
+                             scope_column: str, scope_value: str) -> int:
+        if scope_column == "team":
+            row = connection.execute(
+                """SELECT COUNT(*) FROM games
+                   WHERE season=? AND completed=1 AND (home_team=? OR away_team=?)""",
+                (season, scope_value, scope_value)).fetchone()
+            return int(row[0] or 0)
+        # A conference has no single game count; the weeks that have finished is
+        # the honest "how far into the year are we" signal for its leaderboard.
+        row = connection.execute(
+            "SELECT COUNT(DISTINCT week) FROM games WHERE season=? AND completed=1",
+            (season,)).fetchone()
+        return int(row[0] or 0)
+
     def _arrival_stat_lines(self, connection, season: int, team: str,
                             categories: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
         """Prior-season production of players who transferred in.
@@ -1791,7 +1813,21 @@ class CFBRepository:
                 groups: dict[str, Any] = {}
                 if team:
                     self._merge_arrivals(connection, groups, season, team, limit)
-                return {"season": season - 1 if groups else None, "groups": groups}
+                return {"season": season - 1 if groups else None,
+                        "current_season": season, "settled": False, "groups": groups}
+            # Hold the board on the prior season until this one has enough games
+            # behind it, so the leaderboard settles once rather than reshuffling
+            # every week of September.
+            games_played = self._season_games_played(
+                connection, season, scope_column, scope_value)
+            settled = games_played >= self.LEADER_SETTLE_GAMES
+            if available >= season and not settled and season - 1 >= 1:
+                prior = connection.execute(
+                    f"""SELECT MAX(season) FROM player_season_stats
+                        WHERE season<? AND {scope_column}=?""",
+                    (season, scope_value)).fetchone()[0]
+                if prior is not None:
+                    available = prior
             groups={}
             active_ids: list[str] | None = None
             if available < season:
@@ -1860,7 +1896,43 @@ class CFBRepository:
                 }
             if team:
                 self._merge_arrivals(connection, groups, season, team, limit)
-        return {"season":available,"groups":groups}
+
+            # Attach the other season's line for every listed player, so a board
+            # ranked on 2025 still shows what a leader has done in 2026 (and a
+            # settled 2026 board still shows the 2025 baseline it grew out of).
+            companion_season = season if available < season else available - 1
+            self._attach_companion_lines(
+                connection, groups, companion_season, scope_column, scope_value)
+        return {"season": available, "current_season": season,
+                "companion_season": companion_season, "settled": settled,
+                "games_played": games_played, "groups": groups}
+
+    def _attach_companion_lines(self, connection, groups: dict[str, Any],
+                                companion_season: int, scope_column: str,
+                                scope_value: str) -> None:
+        ids_by_category: dict[str, list[str]] = {
+            category: [str(row["player_id"]) for row in group["players"]]
+            for category, group in groups.items()
+        }
+        every_id = {pid for ids in ids_by_category.values() for pid in ids}
+        if not every_id:
+            return
+        placeholders = ",".join("?" for _ in every_id)
+        rows = connection.execute(
+            f"""SELECT player_id,category,stat_type,stat_value,numeric_value
+                FROM player_season_stats
+                WHERE season=? AND {scope_column}=? AND player_id IN ({placeholders})""",
+            (companion_season, scope_value, *every_id)).fetchall()
+        lines: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in rows:
+            value = row["numeric_value"]
+            lines.setdefault((str(row["player_id"]), row["category"]), {})[row["stat_type"]] = (
+                value if value is not None else row["stat_value"])
+        for category, group in groups.items():
+            for entry in group["players"]:
+                companion = lines.get((str(entry["player_id"]), category))
+                entry["companion"] = companion or {}
+                entry["companion_season"] = companion_season
 
     def _merge_arrivals(self, connection, groups: dict[str, Any], season: int,
                         team: str, limit: int) -> None:

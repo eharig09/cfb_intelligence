@@ -277,6 +277,50 @@ class CFBRepositoryTests(unittest.TestCase):
         self.assertIn("Alex Example", names)
         self.assertNotIn("Departed Star", names)
 
+    def _seed_returning_qb(self):
+        CFBDataSync(FakeCFBDClient(), self.repository).sync(2026)
+
+        def line(season, yds, att):
+            return [{"playerId": "p1", "player": "Alex Example", "team": "Michigan",
+                     "conference": "Big Ten", "position": "QB", "category": "passing",
+                     "statType": stat, "stat": value}
+                    for stat, value in (("YDS", yds), ("ATT", att))]
+
+        self.repository.replace_player_stats(2025, line(2025, 3400, 420), "Big Ten")
+        self.repository.replace_player_stats(2026, line(2026, 280, 34), "Big Ten")
+
+    def _complete_michigan_games(self, count):
+        games = []
+        for index in range(count):
+            games.append(Game.from_cfbd({
+                **GAME_PAYLOAD[0], "id": 500 + index, "week": index + 1,
+                "completed": True, "homePoints": 30, "awayPoints": 20}))
+        self.repository.replace_games(2026, games)
+
+    def test_the_board_holds_on_the_prior_season_until_this_one_settles(self):
+        self._seed_returning_qb()
+        self._complete_michigan_games(2)
+
+        leaders = self.repository.team_player_leaders("Michigan", 2026)
+        self.assertEqual(leaders["season"], 2025, "two games is too few to rank on")
+        self.assertFalse(leaders["settled"])
+        leader = leaders["groups"]["passing"]["players"][0]
+        self.assertEqual(leader["stats"]["YDS"], 3400)
+        # 2026 production is still attached, so it is shown rather than hidden.
+        self.assertEqual(leader["companion_season"], 2026)
+        self.assertEqual(leader["companion"]["YDS"], 280)
+
+    def test_the_board_switches_to_this_season_once_enough_games_are_in(self):
+        self._seed_returning_qb()
+        self._complete_michigan_games(self.repository.LEADER_SETTLE_GAMES)
+
+        leaders = self.repository.team_player_leaders("Michigan", 2026)
+        self.assertEqual(leaders["season"], 2026)
+        self.assertTrue(leaders["settled"])
+        leader = leaders["groups"]["passing"]["players"][0]
+        self.assertEqual(leader["stats"]["YDS"], 280)
+        self.assertEqual((leader["companion_season"], leader["companion"]["YDS"]), (2025, 3400))
+
     def test_dashboard_and_game_api_use_persisted_data(self):
         CFBDataSync(FakeCFBDClient(), self.repository).sync(2026)
         app = create_app({

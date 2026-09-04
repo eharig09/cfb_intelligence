@@ -683,24 +683,46 @@ def games_table(games: Iterable[dict[str, Any]], caption: str,
 # Player production
 # --------------------------------------------------------------------------
 
+def _companion_note(entry: dict[str, Any], stat_type: str) -> str | None:
+    """"2026: 312 YDS" — the other season's headline for this leader."""
+    season = entry.get("companion_season")
+    value = (entry.get("companion") or {}).get(stat_type)
+    if season is None or value in (None, ""):
+        return None
+    try:
+        shown = f"{float(value):,.0f}"
+    except (TypeError, ValueError):
+        shown = str(value)
+    return f"{season}: {shown} {stat_type}"
+
+
 def leader_groups(leaders: dict[str, Any], season: int, *,
                   include_team: bool = True, limit: int | None = None) -> list[dict[str, Any]]:
     """Leaderboards as tabbed tables, each showing the full category stat line."""
     groups = []
+    rank_season = leaders.get("season")
     for category, group in leaders.get("groups", {}).items():
         table = leader_table(category, group["players"], include_team=include_team, limit=limit)
-        origins = {entry.get("player_id"): entry.get("origin")
-                   for entry in group["players"] if entry.get("arrival")}
+        by_id = {entry.get("player_id"): entry for entry in group["players"]}
         for row in table.rows:
             row["player_url"] = _player_url(row.get("player_id"), season)
-            origin = origins.get(row.get("player_id"))
-            if origin:
+            entry = by_id.get(row.get("player_id")) or {}
+            parts = []
+            if entry.get("arrival") and entry.get("origin"):
                 # Production earned at another school is never shown unlabelled.
-                row["player_sub"] = f"arrived from {origin}"
+                parts.append(f"arrived from {entry['origin']}")
                 row["player_class"] = "state-arrived"
+            companion = _companion_note(entry, group["stat_type"])
+            if companion:
+                parts.append(companion)
+            if parts:
+                row["player_sub"] = " · ".join(parts)
         note = f"Ranked by {group['stat_type']}"
         if group.get("qualifier"):
             note += f" · {group['qualifier']}"
+        if rank_season is not None and rank_season != season:
+            note += (f" · {rank_season} full season while {season} settles"
+                     f" ({leaders.get('games_played', 0)} played)")
         table.note = note
         groups.append({"category": category, "label": group["label"], "table": table})
     return groups
