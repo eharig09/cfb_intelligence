@@ -43,6 +43,11 @@ def test_the_play_ingest_comes_before_anything_derived_from_it():
     order = [step.name for step in steps(2026) if step.name in ANALYTICS_STEPS]
     assert order.index("pbp") < order.index("pbp-derive")
     assert order.index("pbp-derive") < order.index("epa")
+    # play-detail parses the raw plays; build-tendencies rolls those up against
+    # the ep-v2 scores, so both must land after their inputs.
+    assert order.index("pbp") < order.index("play-detail")
+    assert order.index("play-detail") < order.index("build-tendencies")
+    assert order.index("epa") < order.index("build-tendencies")
 
 
 def test_the_expensive_steps_are_scheduled_at_the_quietest_hour():

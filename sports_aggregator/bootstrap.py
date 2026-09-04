@@ -209,6 +209,19 @@ def steps(season: int, *, history_from: int | None = None,
              ["sports_aggregator.cfb.expected_points_event_cli", "score",
               "--from-year", year, "--to-year", year],
              ("initial", "refresh"), optional=True, timeout_seconds=1800),
+        # Same story as the rest of this block: a CLI that was run by hand and
+        # nothing else. `play-detail` parses rush/pass direction, depth and
+        # catch-spot air yards out of the play text; `build-tendencies` rolls
+        # those up per team-game against ep-v2. Without them "Middle of the
+        # field" renders every split as "0 plays" and the postgame "Play
+        # tendencies" section is empty.
+        Step("play-detail", "Parse rush/pass direction, depth and air yards from play text",
+             ["sports_aggregator.cfb.play_detail_cli", "build", "--year", year],
+             ("initial", "refresh"), optional=True, timeout_seconds=1800),
+        Step("build-tendencies", "Team-game run/pass tendency splits the reports read",
+             ["sports_aggregator.cfb.play_detail_cli", "build-tendencies",
+              "--year", year, "--model-version", "ep-v2"],
+             ("initial", "refresh"), optional=True, timeout_seconds=900),
         Step("team-advanced", "Team-game efficiency the report and matchup read",
              ["sports_aggregator.cfb.pbp_cli", "build-team-advanced",
               "--from-year", year, "--to-year", year, "--model-version", "ep-v2"],

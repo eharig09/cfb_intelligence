@@ -59,8 +59,9 @@ CORE_STEPS = ["weather", "pregame-snapshot"]
 #: order. They are the most expensive steps in the refresh, which is why they
 #: get a segment to themselves rather than a place inside another one.
 ANALYTICS_STEPS = [
-    "pbp", "pbp-derive", "epa", "team-advanced", "win-probability",
-    "passing-detail", "passing-qb", "coordinators",
+    "pbp", "pbp-derive", "epa", "play-detail", "build-tendencies",
+    "team-advanced", "win-probability", "passing-detail", "passing-qb",
+    "coordinators",
 ]
 
 #: The maintenance segments, which the hourly trigger reaches one at a time by
