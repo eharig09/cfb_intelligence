@@ -18,7 +18,7 @@ import pytest
 
 from sports_aggregator.bootstrap import steps
 from sports_aggregator.tracked_refresh import (
-    ANALYTICS_STEPS, CONTENT_STEPS, MODEL_STEPS, ROSTER_STEPS, SEGMENTS,
+    ANALYTICS_STEPS, CONTENT_STEPS, CORE_STEPS, MODEL_STEPS, ROSTER_STEPS, SEGMENTS,
     _segment_for_light,
 )
 
@@ -27,6 +27,14 @@ def test_every_analytics_step_is_a_real_refresh_step():
     plan = {step.name for step in steps(2026) if "refresh" in step.phases}
     missing = [name for name in ANALYTICS_STEPS if name not in plan]
     assert not missing, missing
+
+
+def test_the_core_segment_names_the_pregame_snapshot():
+    """It has to run on the most frequent segment there is -- a snapshot stage
+    missed before kickoff cannot be recaptured."""
+    plan = {step.name for step in steps(2026) if "refresh" in step.phases}
+    assert "pregame-snapshot" in CORE_STEPS
+    assert set(CORE_STEPS) <= plan
 
 
 def test_the_play_ingest_comes_before_anything_derived_from_it():
@@ -56,11 +64,10 @@ def test_no_refresh_step_is_left_without_a_way_to_run():
     long the deployment lives.
     """
     reachable = (set(CONTENT_STEPS) | set(ROSTER_STEPS) | set(MODEL_STEPS)
-                 | set(ANALYTICS_STEPS)
+                 | set(ANALYTICS_STEPS) | set(CORE_STEPS)
                  # Run by their own splitters inside a segment, or by a profile
                  # of their own rather than by name.
-                 | {"cfbd-sync", "weather", "cfbd-current-player-stats",
-                    "local-articles"})
+                 | {"cfbd-sync", "cfbd-current-player-stats", "local-articles"})
     orphans = sorted(step.name for step in steps(2026)
                      if "refresh" in step.phases and step.name not in reachable)
     assert orphans == ["bluesky-resolve", "media-seed", "media-validate",

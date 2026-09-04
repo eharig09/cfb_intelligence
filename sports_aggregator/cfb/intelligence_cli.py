@@ -53,6 +53,11 @@ def main(argv: list[str] | None = None) -> int:
             "pregame_snapshots": snapshots_for_game(repository, args.game_id),
         }
     print(json.dumps(result, indent=2, default=str))
+    # A snapshot that failed for some games is a real gap -- the stage cannot be
+    # recaptured after kickoff -- so surface it as a non-zero exit for the
+    # scheduler's status page, without having lost the games that did capture.
+    if isinstance(result, dict) and result.get("failures"):
+        return 1
     return 0
 
 

@@ -98,3 +98,35 @@ class CoordinatorStepTests(unittest.TestCase):
         step = next(s for s in steps(2026) if s.name == "coordinators")
         self.assertEqual(step.requires_env, ())
         self.assertEqual(step.requires_all_env, ())
+
+
+class PregameSnapshotStepTests(unittest.TestCase):
+    """The enrichment the scheduled refresh dropped.
+
+    capture_due used to run on the tail of `cfb.cli sync`; the scheduled
+    refresh replaced that with one subprocess per CFBD dataset and never
+    carried it over, so cfb_pregame_snapshots stayed empty and "Expectation vs
+    reality" had nothing to read on any game.
+    """
+
+    def _step(self):
+        return next(s for s in steps(2026) if s.name == "pregame-snapshot")
+
+    def test_it_runs_on_every_refresh_and_initial_build(self):
+        names_refresh = [s.name for s in steps(2026) if "refresh" in s.phases]
+        names_initial = [s.name for s in steps(2026) if "initial" in s.phases]
+        self.assertIn("pregame-snapshot", names_refresh)
+        self.assertIn("pregame-snapshot", names_initial)
+
+    def test_it_lands_after_the_state_it_freezes_is_refreshed(self):
+        order = [s.name for s in steps(2026)]
+        for earlier in ("cfbd-sync", "cfbd-lines", "weather"):
+            self.assertLess(order.index(earlier), order.index("pregame-snapshot"))
+
+    def test_a_missed_snapshot_degrades_rather_than_fails_the_run(self):
+        self.assertTrue(self._step().optional)
+
+    def test_it_needs_no_api_key_because_it_only_reads_stored_data(self):
+        step = self._step()
+        self.assertEqual(step.requires_env, ())
+        self.assertEqual(step.requires_all_env, ())

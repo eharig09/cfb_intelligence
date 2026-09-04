@@ -181,6 +181,16 @@ def steps(season: int, *, history_from: int | None = None,
         Step("score", "Relevance scoring",
              ["sports_aggregator.social.content_cli", "score"],
              ("initial", "refresh"), optional=True),
+        # Freeze what the app knew before kickoff for games inside the next 24h.
+        # capture_due used to ride along on the tail of `cfb.cli sync`, but the
+        # scheduled refresh runs the CFBD datasets one subprocess at a time and
+        # never carried that enrichment over -- so "Expectation vs reality" was
+        # empty on every game, and a stage missed here cannot be recaptured once
+        # the game starts. Reads only stored data, so it needs no API key, but it
+        # must land after cfbd-sync / cfbd-lines / weather.
+        Step("pregame-snapshot", "Freeze pregame market, model and roster state for upcoming games",
+             ["sports_aggregator.cfb.intelligence_cli", "snapshot", "--season", year],
+             ("initial", "refresh"), optional=True, timeout_seconds=900),
         # The analytics layer, which had no scheduled step at all. Every model
         # the postgame report reads -- EPA, win probability, pace, turning
         # points, tendencies -- is built from these, and they were only ever run

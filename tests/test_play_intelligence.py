@@ -115,6 +115,35 @@ class PregameSnapshotTests(IntelligenceFixture):
         self.assertEqual(rows[0]["stage"], "T-24H")
         self.assertEqual(rows[0]["payload"]["market"]["consensus_spread"], -3.5)
 
+    def test_one_bad_game_does_not_sink_the_batch(self):
+        """This runs unattended twice a day and a stage skipped now can never
+        be recaptured, so one game with missing evidence must not stop the
+        others from being frozen."""
+        now = datetime(2026, 9, 5, 4, tzinfo=timezone.utc)
+        good = self.game(completed=False, start=now + timedelta(hours=12))
+        bad = Game.from_cfbd({
+            "id": 100, "season": 2026, "week": 1, "seasonType": "regular",
+            "startDate": (now + timedelta(hours=13)).isoformat(), "startTimeTBD": False,
+            "completed": False, "neutralSite": False, "conferenceGame": True,
+            "venue": "Stadium", "venueId": 1,
+            "homeId": 2, "homeTeam": "Ohio State", "homeConference": "Big Ten", "homePoints": None,
+            "awayId": 1, "awayTeam": "Michigan", "awayConference": "Big Ten", "awayPoints": None,
+        })
+        self.repository.replace_games(2026, [good, bad])
+
+        def build(repository, game):
+            if int(game["game_id"]) == 100:
+                raise RuntimeError("no stored market for this game")
+            return {"snapshot_version": "pregame-v1", "game": {"game_id": int(game["game_id"])}}
+
+        with patch("sports_aggregator.cfb.pregame_snapshots.build_snapshot", side_effect=build):
+            result = capture_due(self.repository, season=2026, now=now)
+
+        self.assertEqual(result["count"], 1)
+        self.assertEqual([row["game_id"] for row in result["failures"]], [100])
+        self.assertEqual(len(snapshots_for_game(self.repository, 99)), 1)
+        self.assertEqual(snapshots_for_game(self.repository, 100), [])
+
 
 if __name__ == "__main__":
     unittest.main()

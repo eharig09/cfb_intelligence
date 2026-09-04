@@ -9,6 +9,7 @@ from __future__ import annotations
 from contextlib import closing
 from datetime import datetime, timezone
 import json
+import logging
 from typing import Any
 
 from sports_aggregator.cfb.lines import game_lines
@@ -16,6 +17,8 @@ from sports_aggregator.cfb.matchups import game_matchup_report
 from sports_aggregator.cfb.player_matchups import player_matchups
 from sports_aggregator.cfb.external import fpi_for_game, weather_for_game
 from sports_aggregator.cfb.repository import schema_once
+
+LOGGER = logging.getLogger(__name__)
 
 SNAPSHOT_VERSION = "pregame-v1"
 
@@ -139,7 +142,8 @@ def capture_due(repository, *, season: int, now: datetime | None = None) -> dict
     for row in existing_rows:
         existing.setdefault(int(row[0]), set()).add(str(row[1]))
 
-    captured = []
+    captured: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
     for game in games:
         try:
             kickoff = _utc(game["start_date"])
@@ -151,18 +155,26 @@ def capture_due(repository, *, season: int, now: datetime | None = None) -> dict
         stage = _stage(hours, existing.get(int(game["game_id"]), set()))
         if not stage:
             continue
-        payload = build_snapshot(repository, game)
-        with closing(repository._connect()) as connection:
-            connection.execute("""INSERT OR IGNORE INTO cfb_pregame_snapshots
-              (game_id,stage,snapshot_version,captured_at,kickoff_at,hours_to_kick,payload_json)
-              VALUES(?,?,?,?,?,?,?)""", (
-                int(game["game_id"]), stage, SNAPSHOT_VERSION, current.isoformat(), kickoff.isoformat(),
-                round(hours, 3), json.dumps(payload, separators=(",", ":"), default=str),
-            ))
-            connection.commit()
+        # One game's missing evidence must not sink the batch: this runs
+        # unattended twice a day, and a stage skipped now cannot be recaptured
+        # once kickoff passes.
+        try:
+            payload = build_snapshot(repository, game)
+            with closing(repository._connect()) as connection:
+                connection.execute("""INSERT OR IGNORE INTO cfb_pregame_snapshots
+                  (game_id,stage,snapshot_version,captured_at,kickoff_at,hours_to_kick,payload_json)
+                  VALUES(?,?,?,?,?,?,?)""", (
+                    int(game["game_id"]), stage, SNAPSHOT_VERSION, current.isoformat(), kickoff.isoformat(),
+                    round(hours, 3), json.dumps(payload, separators=(",", ":"), default=str),
+                ))
+                connection.commit()
+        except Exception as exc:  # noqa: BLE001 -- a bad game is logged, not fatal
+            LOGGER.exception("Pregame snapshot failed game=%s stage=%s", game.get("game_id"), stage)
+            failures.append({"game_id": int(game["game_id"]), "stage": stage, "error": str(exc)})
+            continue
         existing.setdefault(int(game["game_id"]), set()).add(stage)
         captured.append({"game_id": int(game["game_id"]), "stage": stage, "hours_to_kick": round(hours, 2)})
-    return {"season": season, "captured": captured, "count": len(captured)}
+    return {"season": season, "captured": captured, "count": len(captured), "failures": failures}
 
 
 def snapshots_for_game(repository, game_id: int) -> list[dict[str, Any]]:

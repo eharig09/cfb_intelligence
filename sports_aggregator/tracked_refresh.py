@@ -39,6 +39,12 @@ CONTENT_STEPS = ["articles", "bluesky", "reddit", "youtube", "podcasts", "retag"
 ROSTER_STEPS = ["cfbd-roster-context", "cfbd-recruits", "transfer-grades"]
 MODEL_STEPS = ["cfbd-models", "cfbd-box-scores", "cfbd-lines", "weather"]
 
+#: Refresh steps the core segment runs by name after the CORE_DATASETS pull.
+#: `pregame-snapshot` freezes each upcoming game's pregame state and belongs
+#: on the most frequent segment there is -- core runs at 4/6/18 local -- so a
+#: stage is captured before kickoff rather than lost.
+CORE_STEPS = ["weather", "pregame-snapshot"]
+
 #: Play-by-play and everything derived from it, plus the coordinator sync.
 #:
 #: None of these had a way to run in production. The cron drives the segments
@@ -104,7 +110,7 @@ def _segment_results(segment: str, season: int, *, root: Path, log, heartbeat) -
             "refresh",
             season,
             root=root,
-            only=["weather"],
+            only=CORE_STEPS,
             timeout=600,
             log=log,
             heartbeat=heartbeat,
