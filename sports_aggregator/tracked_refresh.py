@@ -49,10 +49,10 @@ CORE_STEPS = ["weather", "pregame-snapshot"]
 #:
 #: None of these had a way to run in production. The cron drives the segments
 #: in this file and none of them named these steps, and the only other route --
-#: asking the web hook for a "heavy" profile -- lands on the core segment two
-#: functions below. So the box score's EPA, the turning points, the middle-of-
-#: field splits and the coordinator tendencies had no path to the deployed
-#: database at all, however long it ran.
+#: asking the web hook for a "heavy" profile -- silently narrowed to just the
+#: core segment (see `_run_heavy`, fixed alongside this). So the box score's
+#: EPA, the turning points, the middle-of-field splits and the coordinator
+#: tendencies had no path to the deployed database at all, however long it ran.
 #:
 #: Ordered by the plan rather than by this list: `pbp` has to land before
 #: anything derives from it, and `_run_low_memory_phase` keeps the plan's own
@@ -68,6 +68,12 @@ ANALYTICS_STEPS = [
 #: the clock. Nameable directly so a segment can also be run on demand: a
 #: backfill should not have to wait for its hour to come round.
 SEGMENTS = ("core", "rosters", "stats", "models", "content", "analytics", "news")
+
+#: Every segment `profile=heavy` walks on an on-demand request. "news" is
+#: excluded on purpose -- it already has its own profile and cadence, the same
+#: carve-out `scheduled_refresh`'s original heavy profile made for the Google
+#: News crawl.
+HEAVY_SEGMENTS = tuple(segment for segment in SEGMENTS if segment != "news")
 
 
 def _hours(name: str, default: str) -> set[int]:
@@ -300,6 +306,38 @@ def _run_segment(segment: str, season: int, *, root: Path, instance: Path) -> di
         lock.unlink(missing_ok=True)
 
 
+def _run_heavy(season: int, *, root: Path, instance: Path) -> dict:
+    """Every maintenance segment in one on-demand pass.
+
+    The hourly cron never asks for this -- it ticks one bounded segment per
+    hour by design, to keep the constrained web service light. `profile=heavy`
+    is the deliberate, operator-requested exception: catch a stale database up
+    in one go. It used to silently narrow to just the `core` segment, which
+    meant the pbp/EPA/tendencies/box-score chain that "populate everything now"
+    is for never ran at all.
+
+    Each segment still writes its own entry to scheduled_refresh_history.jsonl
+    through `_run_segment`; this only rolls them up for the caller.
+    """
+    started = datetime.now(timezone.utc)
+    segments = []
+    for segment in HEAVY_SEGMENTS:
+        segments.append(_run_segment(segment, season, root=root, instance=instance))
+    finished = datetime.now(timezone.utc)
+    required_failures = sum(int(report.get("required_failure_count") or 0) for report in segments)
+    degraded = sum(int(report.get("degraded_count") or 0) for report in segments)
+    status = "failed" if required_failures else "degraded" if degraded else "success"
+    return {
+        "status": status, "profile": "heavy", "season": season,
+        "started_at": started.isoformat(), "finished_at": finished.isoformat(),
+        "seconds": round((finished - started).total_seconds(), 1),
+        "exit_code": 1 if required_failures else 0,
+        "segments": [{"profile": report.get("profile"), "status": report.get("status"),
+                      "seconds": report.get("seconds"), "log": report.get("log")}
+                     for report in segments],
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     root = Path(__file__).resolve().parents[1]
     load_dotenv(root / ".env")
@@ -336,10 +374,10 @@ def main(argv: list[str] | None = None) -> int:
             profile=args.profile,
             repo_root=root,
         )
+    elif args.profile == "heavy":
+        report = _run_heavy(args.season, root=root, instance=instance)
     else:
         segment = "news" if args.profile == "news" else _segment_for_light()
-        if args.profile == "heavy":
-            segment = "core"
         report = _run_segment(segment, args.season, root=root, instance=instance)
 
     print(json.dumps(report, sort_keys=True))

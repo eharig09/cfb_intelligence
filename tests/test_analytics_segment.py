@@ -98,6 +98,40 @@ def test_a_segment_can_be_asked_for_by_name(tmp_path):
     assert run.call_args.args[0] == "analytics"
 
 
+def test_heavy_with_no_segment_runs_every_maintenance_segment(tmp_path):
+    """`profile=heavy` used to silently narrow to just the core segment --
+    exactly the route an operator reaches for to catch a stale database up in
+    one go -- so pbp/EPA/tendencies/box-score never ran no matter how it was
+    invoked."""
+    from sports_aggregator.tracked_refresh import HEAVY_SEGMENTS, SEGMENTS
+
+    assert "news" not in HEAVY_SEGMENTS
+    assert set(HEAVY_SEGMENTS) == set(SEGMENTS) - {"news"}
+
+    from sports_aggregator import tracked_refresh
+    with patch.object(tracked_refresh, "_run_segment",
+                      return_value={"status": "success", "exit_code": 0,
+                                    "profile": "x", "seconds": 1.0}) as run:
+        exit_code = tracked_refresh.main(["--season", "2026", "--profile", "heavy"])
+    called = [call.args[0] for call in run.call_args_list]
+    assert called == list(HEAVY_SEGMENTS)
+    assert exit_code == 0
+
+
+def test_a_required_failure_in_any_segment_fails_the_heavy_run():
+    from sports_aggregator import tracked_refresh
+
+    def fake_run_segment(segment, *_args, **_kwargs):
+        failed = segment == "models"
+        return {"status": "failed" if failed else "success",
+                "exit_code": 1 if failed else 0, "profile": segment, "seconds": 1.0,
+                "required_failure_count": 1 if failed else 0, "degraded_count": 0}
+
+    with patch.object(tracked_refresh, "_run_segment", side_effect=fake_run_segment):
+        exit_code = tracked_refresh.main(["--season", "2026", "--profile", "heavy"])
+    assert exit_code == 1
+
+
 def test_an_unknown_segment_is_refused():
     from sports_aggregator import tracked_refresh
     with pytest.raises(SystemExit):
