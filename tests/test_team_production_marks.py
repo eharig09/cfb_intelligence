@@ -74,6 +74,22 @@ def test_the_roster_story_runs_in_the_order_it_is_asked(client):
         assert order.index(earlier) < order.index(later), order
 
 
+def _facts_strip(body: str, css_class: str) -> str:
+    """The `<div class="facts ...">` block, matched by div depth so a second
+    strip further down the page cannot leak into the count."""
+    open_at = body.rindex("<div", 0, body.index(f'class="{css_class}"'))
+    depth, index = 0, open_at
+    while index < len(body):
+        if body.startswith("<div", index):
+            depth += 1
+        elif body.startswith("</div>", index):
+            depth -= 1
+            if depth == 0:
+                return body[open_at:index]
+        index += 1
+    return body[open_at:]
+
+
 def test_the_facts_strip_is_one_row_whatever_the_count(client):
     """Six columns were hardcoded while the count is decided at render time:
     the team page adds staff continuity from a template loader, making seven,
@@ -83,8 +99,11 @@ def test_the_facts_strip_is_one_row_whatever_the_count(client):
     assert "grid-auto-flow: column" in css
     assert "repeat(6, minmax(0, 1fr))" not in css
 
-    body = _page(client, 194)
-    assert body.count('class="fact"') == 7
+    # Scoped to the coordinator-augmented strip: the CFBDepth roster-breakdown
+    # strip lower on the page also renders `class="fact"` cards when that
+    # private export is loaded.
+    strip = _facts_strip(_page(client, 194), "facts team-facts")
+    assert strip.count('class="fact"') == 7
 
 
 # --------------------------------------------------------------------- identity
