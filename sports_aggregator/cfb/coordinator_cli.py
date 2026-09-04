@@ -41,11 +41,34 @@ def _sync(repository, year: int, source: str, timeout: float) -> dict:
         return sync_season_wikipedia(repository, year, timeout=timeout)
     if source == "punt-rally":
         return sync_season(repository, year, timeout=timeout)
+    # auto: Wikipedia is the cloud-safe baseline, then Punt & Rally fills only
+    # the sides Wikipedia could not -- the programs whose season article does
+    # not exist yet. If the staff board is unreachable, the Wikipedia result
+    # stands on its own.
+    report = sync_season_wikipedia(repository, year, timeout=timeout)
     try:
-        return sync_season(repository, year, timeout=timeout)
+        fill = sync_season(repository, year, timeout=timeout, if_absent=True)
+        report["punt_rally_fill"] = {
+            "stored": fill.get("stored", 0), "unresolved": fill.get("unresolved", [])}
+        report["stored"] = int(report.get("stored") or 0) + int(fill.get("stored") or 0)
+        report["missing"] = _still_missing(repository, year)
     except Exception as exc:
-        print(f"{year}: Punt & Rally unavailable ({exc}); falling back to Wikipedia")
-        return sync_season_wikipedia(repository, year, timeout=timeout)
+        print(f"{year}: Punt & Rally fill-in skipped ({exc})")
+        report["punt_rally_fill"] = {"error": str(exc)}
+    return report
+
+
+def _still_missing(repository, season: int) -> list[str]:
+    from contextlib import closing
+    with closing(repository._connect()) as connection:
+        have = {(int(r[0]), r[1]) for r in connection.execute(
+            "SELECT team_id, side FROM coordinator_seasons WHERE season=?", (int(season),))}
+        fbs = connection.execute(
+            "SELECT team_id, school FROM teams WHERE lower(COALESCE(classification,''))='fbs'"
+        ).fetchall()
+    return sorted(
+        school for team_id, school in ((int(r[0]), r[1]) for r in fbs)
+        if (team_id, "offense") not in have or (team_id, "defense") not in have)
 
 
 def main(argv: list[str] | None = None) -> int:

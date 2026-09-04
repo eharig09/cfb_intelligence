@@ -12,19 +12,36 @@ import pytest
 from sports_aggregator.cfb.coordinator_wikipedia import coach_name, parse_coordinators
 
 
+def _sides(text):
+    parsed = parse_coordinators(text)
+    return {"offense": parsed["offense"], "defense": parsed["defense"]}
+
+
 def test_an_empty_field_does_not_capture_the_next_line():
     r"""`\s` matches newlines, so `\s*=\s*` walked off the end of its own line
-    and an empty field took the following infobox line as its value."""
+    and an empty field took the following infobox line as its value. It also
+    must not: an empty `off_coach` under a head coach falls back to the head
+    coach (the play-caller), never to `off_scheme`."""
     text = ("| head_coach = Joe Moorhead\n"
             "| off_coach =\n"
             "| off_scheme = Up-tempo spread\n"
             "| def_coach = Someone\n")
-    assert parse_coordinators(text) == {"offense": None, "defense": "Someone"}
+    parsed = parse_coordinators(text)
+    assert parsed["offense"] == "Joe Moorhead"
+    assert parsed["offense_via"] == "head_coach"
+    assert (parsed["defense"], parsed["defense_via"]) == ("Someone", "coordinator")
 
 
-def test_an_empty_field_followed_by_another_empty_field():
+def test_an_empty_coordinator_field_with_no_head_coach_stays_empty():
     text = "| off_coach = \n| oc_year =\n| def_coach = Real Name\n"
-    assert parse_coordinators(text)["offense"] is None
+    parsed = parse_coordinators(text)
+    assert parsed["offense"] is None and parsed["offense_via"] is None
+
+
+def test_the_head_coach_fills_both_blank_sides_when_that_is_all_there_is():
+    parsed = parse_coordinators("| head_coach = Jedd Fisch\n| off_coach =\n")
+    assert parsed["offense"] == "Jedd Fisch" and parsed["offense_via"] == "head_coach"
+    assert parsed["defense"] == "Jedd Fisch" and parsed["defense_via"] == "head_coach"
 
 
 def test_a_mid_season_change_yields_the_coach_who_started_the_season():
@@ -42,7 +59,8 @@ def test_a_tenure_note_is_not_part_of_the_name():
 
 def test_wikilinks_still_resolve_to_the_display_name():
     text = "| off_coach = [[Ryan Grubb (coach)|Ryan Grubb]]\n| def_coach = [[Kane Wommack]]\n"
-    assert parse_coordinators(text) == {"offense": "Ryan Grubb", "defense": "Kane Wommack"}
+    assert _sides(text) == {"offense": "Ryan Grubb", "defense": "Kane Wommack"}
+    assert parse_coordinators(text)["offense_via"] == "coordinator"
 
 
 def test_a_co_coordinator_alias_is_reached_when_the_first_key_is_empty():

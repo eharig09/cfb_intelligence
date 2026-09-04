@@ -74,6 +74,17 @@ def _clean(text: str | None) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
+#: Punt & Rally suffixes every school with its conference: "Delaware CUSA".
+_PR_CONFERENCES = frozenset({
+    "AAC", "ACC", "B1G", "B12", "CUSA", "Ind", "MAC", "MWC", "PAC", "SBC", "SEC",
+})
+
+
+def _strip_conference(school: str) -> str:
+    head, _, tail = school.rpartition(" ")
+    return head if head and tail in _PR_CONFERENCES else school
+
+
 def parse_board(html: str, side: str) -> list[dict[str, Any]]:
     """Parse a Punt & Rally coordinator board into normalized rows.
 
@@ -109,12 +120,13 @@ def parse_board(html: str, side: str) -> list[dict[str, Any]]:
         cells = tr.find_all("td")
         if len(cells) <= max(school_idx, coach_idx):
             continue
-        school = _clean(cells[school_idx].get_text(" ", strip=True))
-        # Conference abbreviations are often rendered in the same school cell.
-        # Prefer link text, which is just the program display name.
+        # Conference abbreviations ride in the school cell -- "UL Monroe SBC",
+        # "Notre Dame Ind". Prefer the link text when it names the school, but
+        # the current site links a logo with no text, so fall back to the cell
+        # text with the trailing conference token trimmed off.
         school_link = cells[school_idx].find("a")
-        if school_link is not None:
-            school = _clean(school_link.get_text(" ", strip=True))
+        linked = _clean(school_link.get_text(" ", strip=True)) if school_link else ""
+        school = linked or _strip_conference(_clean(cells[school_idx].get_text(" ", strip=True)))
         coach = _clean(cells[coach_idx].get_text(" ", strip=True)).rstrip("*").strip()
         if not school or not coach:
             continue
@@ -207,12 +219,28 @@ def initialize(repository) -> None:
 
 
 def store_rows(repository, season: int, source_url: str,
-               rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
-    """Upsert one board and report teams that could not be mapped to CFBD."""
+               rows: Iterable[dict[str, Any]], *,
+               source_name: str = "Punt & Rally",
+               if_absent: bool = False) -> dict[str, Any]:
+    """Upsert one board and report teams that could not be mapped to CFBD.
+
+    `source_name` labels the provenance (a row may carry its own to override).
+    With `if_absent`, an existing (season, team, side) is left untouched -- used
+    when a secondary source fills only the sides the primary could not.
+    """
     initialize(repository)
     now = datetime.now(timezone.utc).isoformat()
     stored = 0
     unresolved: list[str] = []
+    conflict = ("DO NOTHING" if if_absent else """DO UPDATE SET
+                       team=excluded.team,
+                       role=excluded.role,
+                       coach_name=excluded.coach_name,
+                       rating=excluded.rating,
+                       experience_years=excluded.experience_years,
+                       source_name=excluded.source_name,
+                       source_url=excluded.source_url,
+                       updated_at=excluded.updated_at""")
     with closing(repository._connect()) as connection:
         for item in rows:
             if not is_plausible_name(item.get("coach_name")):
@@ -224,37 +252,35 @@ def store_rows(repository, season: int, source_url: str,
                 unresolved.append(str(item.get("team") or ""))
                 continue
             team_id, school = resolved
-            connection.execute(
-                """INSERT INTO coordinator_seasons (
+            cursor = connection.execute(
+                f"""INSERT INTO coordinator_seasons (
                        season,team_id,team,side,role,coach_name,rating,experience_years,
                        source_name,source_url,verified_official,updated_at
                    ) VALUES (?,?,?,?,?,?,?,?,?,?,0,?)
-                   ON CONFLICT(season,team_id,side) DO UPDATE SET
-                       team=excluded.team,
-                       role=excluded.role,
-                       coach_name=excluded.coach_name,
-                       rating=excluded.rating,
-                       experience_years=excluded.experience_years,
-                       source_name=excluded.source_name,
-                       source_url=excluded.source_url,
-                       updated_at=excluded.updated_at""",
+                   ON CONFLICT(season,team_id,side) {conflict}""",
                 (int(season), team_id, school, item["side"], item["role"],
                  item["coach_name"], item.get("rating"), item.get("experience_years"),
-                 "Punt & Rally", source_url, now),
+                 item.get("source_name") or source_name, source_url, now),
             )
-            stored += 1
+            if cursor.rowcount:
+                stored += 1
         connection.commit()
     return {"stored": stored, "unresolved": sorted(set(filter(None, unresolved)))}
 
 
 def sync_season(repository, season: int, *, timeout: float = 20.0,
-                session: requests.Session | None = None) -> dict[str, Any]:
-    """Fetch and store both coordinator boards for one season."""
+                session: requests.Session | None = None,
+                if_absent: bool = False) -> dict[str, Any]:
+    """Fetch and store both coordinator boards for one season.
+
+    `if_absent` makes this a fill-in pass: a (team, side) another source already
+    supplied is left as it stands.
+    """
     result: dict[str, Any] = {"season": int(season), "stored": 0, "unresolved": []}
     unresolved: set[str] = set()
     for side in ("offense", "defense"):
         url, rows = fetch_board(season, side, timeout=timeout, session=session)
-        report = store_rows(repository, season, url, rows)
+        report = store_rows(repository, season, url, rows, if_absent=if_absent)
         result[side] = {"fetched": len(rows), **report, "source_url": url}
         result["stored"] += report["stored"]
         unresolved.update(report["unresolved"])

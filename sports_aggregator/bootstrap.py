@@ -120,7 +120,7 @@ def steps(season: int, *, history_from: int | None = None,
         # environment; optional because one encyclopedia being unreachable is
         # not a reason to fail a refresh.
         Step("coordinators", "Offensive and defensive coordinators",
-             ["sports_aggregator.cfb.coordinator_cli", "--year", year],
+             ["sports_aggregator.cfb.coordinator_cli", "--year", year, "--source", "auto"],
              ("initial", "refresh"), optional=True, timeout_seconds=600),
         Step("prospects", "Import consensus NFL draft board",
              ["sports_aggregator.cfb.prospects_cli", "2027_nfl_mock_draft_database_top_100.csv",

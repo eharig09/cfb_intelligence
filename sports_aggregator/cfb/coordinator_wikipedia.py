@@ -105,17 +105,30 @@ def _infobox_value(wikitext: str, keys: tuple[str, ...]) -> str | None:
     return None
 
 
-def parse_coordinators(wikitext: str) -> dict[str, str | None]:
-    return {
-        "offense": _infobox_value(
-            wikitext,
-            ("off_coach", "offcoach", "cooff_coach1", "co_off_coach1", "cooff_coach"),
-        ),
-        "defense": _infobox_value(
-            wikitext,
-            ("def_coach", "defcoach", "codef_coach1", "co_def_coach1", "codef_coach"),
-        ),
-    }
+_OFFENSE_KEYS = ("off_coach", "offcoach", "cooff_coach1", "co_off_coach1", "cooff_coach")
+_DEFENSE_KEYS = ("def_coach", "defcoach", "codef_coach1", "co_def_coach1", "codef_coach")
+_HEAD_COACH_KEYS = ("head_coach", "headcoach", "coach")
+
+
+def parse_coordinators(wikitext: str) -> dict[str, Any]:
+    """Coordinator per side, plus how it was resolved.
+
+    A blank or absent OC/DC field is the norm for a program whose head coach
+    calls that side -- Washington under Fisch, West Virginia under Rodriguez.
+    For a play-tendency the person calling the plays is the coordinator, so the
+    head coach fills that side, tagged so the provenance stays honest.
+    """
+    head_coach = _infobox_value(wikitext, _HEAD_COACH_KEYS)
+    result: dict[str, Any] = {}
+    for side, keys in (("offense", _OFFENSE_KEYS), ("defense", _DEFENSE_KEYS)):
+        name = _infobox_value(wikitext, keys)
+        if name:
+            result[side], result[f"{side}_via"] = name, "coordinator"
+        elif head_coach:
+            result[side], result[f"{side}_via"] = head_coach, "head_coach"
+        else:
+            result[side], result[f"{side}_via"] = None, None
+    return result
 
 
 def _candidate_title(team: dict[str, Any], season: int) -> str:
@@ -231,7 +244,9 @@ def _batch_pages(client: requests.Session, requested: list[tuple[str, dict[str, 
 
 def _search_title(client: requests.Session, team: dict[str, Any], season: int,
                   timeout: float) -> str | None:
-    query = f'"{season}" "{team.get("school")}" football team'
+    school = str(team.get("school") or "")
+    school = WIKI_SCHOOL_ALIASES.get(school, school)
+    query = f'"{season}" "{school}" football team'
     payload = _request_json(
         client,
         {
@@ -241,27 +256,24 @@ def _search_title(client: requests.Session, team: dict[str, Any], season: int,
         timeout,
     )
     prefix = f"{season} "
+    # Every distinctive word of the school name must be in the title, or a
+    # search for "Washington" happily returns "2026 Washington State Cougars
+    # football team" and a whole roster gets filed under the wrong program.
+    tokens = {word.lower() for word in re.findall(r"[A-Za-z']+", school) if len(word) > 2}
     for result in ((payload.get("query") or {}).get("search") or []):
         title = str(result.get("title") or "")
-        if title.startswith(prefix) and "football" in title.lower():
-            return title
+        lowered = title.lower()
+        if not (title.startswith(prefix) and "football team" in lowered):
+            continue
+        if tokens and not tokens.issubset(set(re.findall(r"[a-z']+", lowered))):
+            continue
+        return title
     return None
 
 
 def _single_title_page(client: requests.Session, title: str, timeout: float) -> dict[str, Any] | None:
     found, _ = _batch_pages(client, [(title, {"team_id": -1, "school": "", "mascot": ""})], timeout)
     return found.get(-1)
-
-
-def _mark_wikipedia_source(repository, season: int, team_id: int, source_url: str) -> None:
-    with closing(repository._connect()) as connection:
-        connection.execute(
-            """UPDATE coordinator_seasons
-               SET source_name='Wikipedia', source_url=?
-               WHERE season=? AND team_id=?""",
-            (source_url, int(season), int(team_id)),
-        )
-        connection.commit()
 
 
 def _store_result(repository, season: int, team: dict[str, Any], result: dict[str, Any]) -> int:
@@ -272,20 +284,19 @@ def _store_result(repository, season: int, team: dict[str, Any], result: dict[st
         str(title).replace(" ", "_"), safe="_()-,'"
     )
     source_rows = []
-    if result.get("offense"):
+    for side, role in (("offense", "OC"), ("defense", "DC")):
+        if not result.get(side):
+            continue
+        via = result.get(f"{side}_via")
         source_rows.append({
-            "team": team["school"], "side": "offense", "role": "OC",
-            "coach_name": result["offense"], "rating": None, "experience_years": None,
-        })
-    if result.get("defense"):
-        source_rows.append({
-            "team": team["school"], "side": "defense", "role": "DC",
-            "coach_name": result["defense"], "rating": None, "experience_years": None,
+            "team": team["school"], "side": side, "role": role,
+            "coach_name": result[side], "rating": None, "experience_years": None,
+            "source_name": "Wikipedia (head coach)" if via == "head_coach" else "Wikipedia",
         })
     if not source_rows:
         return 0
-    report = store_rows(repository, int(season), source_url, source_rows)
-    _mark_wikipedia_source(repository, int(season), int(team["team_id"]), source_url)
+    report = store_rows(repository, int(season), source_url, source_rows,
+                        source_name="Wikipedia")
     return int(report.get("stored") or 0)
 
 
