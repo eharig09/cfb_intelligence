@@ -11,7 +11,9 @@ import time
 
 from dotenv import load_dotenv
 
-from sports_aggregator.cfb.cfbd import CFBDClient, CFBDConfigurationError, FINISHED_WEEK_TTL
+from sports_aggregator.cfb.cfbd import (
+    CFBDClient, CFBDConfigurationError, FINISHED_WEEK_TTL, LIVE_WEEK_TTL,
+)
 from sports_aggregator.cfb.epa_validation import validate_epa
 from sports_aggregator.cfb.expected_points import fit_model as fit_edp, score_plays as score_edp
 from sports_aggregator.cfb.expected_points_event import fit_model as fit_ep_v2
@@ -130,22 +132,34 @@ def _require_scored_plays(repository, version: str) -> bool:
     return False
 
 
-def _week_ready(repository: CFBRepository, year: int, week: int) -> tuple[bool, int]:
+def _week_ready(repository: CFBRepository, year: int, week: int) -> tuple[bool, int, int]:
+    """Whether a week's play-by-play is complete and derived.
+
+    "Has some plays" is not "done": a Thursday game whose PBP lands a day
+    after that week's Saturday slate leaves the week looking finished while a
+    completed game still has no plays. The third value is that gap, so the
+    caller re-fetches instead of trusting a year-long cache.
+    """
     try:
         with closing(repository._connect()) as connection:
             raw = int(connection.execute(
                 "SELECT COUNT(*) FROM cfb_plays WHERE season=? AND week=?", (int(year), int(week))
             ).fetchone()[0])
             if raw <= 0:
-                return False, 0
+                return False, 0, 0
             derived = int(connection.execute("""
                 SELECT COUNT(*) FROM cfb_play_metrics m
                 JOIN cfb_plays p ON p.play_id=m.play_id
                 WHERE p.season=? AND p.week=? AND m.metric_version='pbp-v1'
             """, (int(year), int(week))).fetchone()[0])
-        return derived == raw, raw
+            games_without_plays = int(connection.execute("""
+                SELECT COUNT(*) FROM games g
+                WHERE g.season=? AND g.week=? AND g.completed=1
+                  AND NOT EXISTS (SELECT 1 FROM cfb_plays p WHERE p.game_id=g.game_id)
+            """, (int(year), int(week))).fetchone()[0])
+        return (derived == raw and games_without_plays == 0), raw, games_without_plays
     except sqlite3.Error:
-        return False, 0
+        return False, 0, 0
 
 
 def _replace_with_lock_retry(repository: CFBRepository, raw, *, year: int, week: int) -> int:
@@ -298,15 +312,19 @@ def main(argv: list[str] | None = None, *, client=None) -> int:
             continue
         for week in weeks:
             week = int(week)
-            ready, count = _week_ready(repository, year, week)
+            ready, count, missing_games = _week_ready(repository, year, week)
             if ready and not args.force:
                 cached_total += count
                 print(f"{year} week {week}: cached ({count} plays)")
                 continue
             try:
+                # A week with completed games still missing plays is still
+                # filling in; the year-long cache would freeze that miss for
+                # a season, so read it live.
+                ttl = LIVE_WEEK_TTL if missing_games else FINISHED_WEEK_TTL
                 raw = client.get("/plays", {
                     "year": year, "week": week, "seasonType": "both", "classification": "fbs"
-                }, cache_ttl_seconds=FINISHED_WEEK_TTL, force=args.force)
+                }, cache_ttl_seconds=ttl, force=args.force)
                 count = _replace_with_lock_retry(repository, raw, year=year, week=week)
                 total += count
                 print(f"{year} week {week}: {count} plays")
