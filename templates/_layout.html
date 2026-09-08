@@ -36,8 +36,8 @@
 <header class="site-header">
     <div class="nav">
         {% block breadcrumb %}<a href="{{ url_for('index') }}">Sports News Aggregator</a><span class="tagline">Teams &rarr; Players &rarr; Games &rarr; Reporting</span>{% endblock %}
-        <a class="data-pill" href="{{ url_for('cfb_data_status.data_status') }}" title="Open data refresh status">
-          {% if data_freshness.running %}● Refreshing data{% elif data_freshness.relative and data_freshness.relative != 'unknown' %}● Updated {{ data_freshness.relative }}{% else %}● Data status{% endif %}
+        <a class="data-pill{% if data_freshness.status == 'failed' %} data-pill-bad{% elif data_freshness.status == 'degraded' %} data-pill-warn{% endif %}" href="{{ url_for('cfb_data_status.data_status') }}{% if data_freshness.attention_count %}#needs-attention{% endif %}" title="Open data refresh status">
+          {% if data_freshness.running %}● Refreshing data{% elif data_freshness.attention_count %}● {{ data_freshness.attention_count }} {{ 'issue needs' if data_freshness.attention_count == 1 else 'issues need' }} attention{% elif data_freshness.relative and data_freshness.relative != 'unknown' %}● Updated {{ data_freshness.relative }}{% else %}● Data status{% endif %}
         </a>
         <form class="header-search" action="/college-football/search/" method="get" role="search"><input type="search" name="q" placeholder="Search" aria-label="Search teams, players, games"></form>
     </div>

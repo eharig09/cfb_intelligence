@@ -407,7 +407,8 @@ class EndpointHealthTests(unittest.TestCase):
         os.unlink(self.path)
 
     #: Endpoints that legitimately refuse without configuration.
-    EXPECTED_NON_200 = {"/internal/cfb-refresh-status"}
+    EXPECTED_NON_200 = {"/internal/cfb-refresh-status",
+                        "/college-football/data-status/log-tail"}
 
     def _routes(self):
         samples = {"<int:game_id>": "401", "<int:team_id>": "68",

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections import deque
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 import secrets
 import sqlite3
@@ -15,8 +16,27 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, abort, current_app, jsonify, render_template, request
 
+from sports_aggregator import refresh_health
+
 
 data_status_pages = Blueprint("cfb_data_status", __name__)
+
+#: The "What changed" ledger has had no producer since 5292e14 removed the
+#: snapshot-and-diff. The reader stays so a cheaper producer can light it back
+#: up, but a record older than this is a fossil and is not shown.
+_CHANGE_LEDGER_MAX_AGE_HOURS = 48
+
+#: segment -> (env var naming its scheduled local hours, default)
+_SEGMENT_SCHEDULE = {
+    "core": ("CFB_REFRESH_CORE_HOURS", "6,18"),
+    "content": ("CFB_REFRESH_CONTENT_HOURS", "10,16"),
+    "rosters": ("CFB_REFRESH_ROSTER_HOURS", "12"),
+    "stats": ("CFB_REFRESH_STATS_HOURS", "22"),
+    "models": ("CFB_REFRESH_MODEL_HOURS", "23"),
+    "analytics": ("CFB_REFRESH_ANALYTICS_HOURS", "2"),
+    "news": ("CFB_REFRESH_NEWS_HOURS", "3,8,20"),
+}
+_SEGMENT_ORDER = ["core", "rosters", "stats", "models", "content", "analytics", "news"]
 
 _STEP_LABELS = {
     "cfbd-sync": "Core CFBD data", "cfbd-lines": "Betting lines",
@@ -145,6 +165,12 @@ def _safe_change_ledger(instance: Path) -> dict[str, Any] | None:
         if not rows:
             return None
         raw = rows[0]
+        finished = _local_datetime(raw.get("finished_at"))
+        if finished is None or (datetime.now(finished.tzinfo) - finished
+                                > timedelta(hours=_CHANGE_LEDGER_MAX_AGE_HOURS)):
+            # No producer writes this file today; a stale record beside a live
+            # "Degraded" pill only misleads. Hidden until something writes fresh.
+            return None
         tables: list[dict[str, Any]] = []
         for item in raw.get("changes") or []:
             if not isinstance(item, dict):
@@ -455,6 +481,69 @@ def _require_audit_auth() -> None:
         abort(401)
 
 
+def _next_scheduled_label(segment: str) -> str:
+    env_name, default = _SEGMENT_SCHEDULE.get(segment, ("", ""))
+    if not env_name:
+        return ""
+    hours = sorted({int(part) for part in os.getenv(env_name, default).split(",")
+                    if part.strip().isdigit()})
+    if not hours:
+        return ""
+    zone = ZoneInfo(current_app.config.get("CFB_DISPLAY_TIMEZONE", "America/New_York"))
+    now = datetime.now(zone)
+    upcoming = next((h for h in hours if h > now.hour), hours[0])
+    return f"{upcoming:02d}:00"
+
+
+_STATUS_TONE = {"success": "ok", "degraded": "warn", "failed": "bad", "running": "warn"}
+
+
+def _segment_grid(instance: Path) -> list[dict[str, Any]]:
+    health = refresh_health.read_health(instance)
+    tiles: list[dict[str, Any]] = []
+    known = list(dict.fromkeys(_SEGMENT_ORDER + [k for k in health if isinstance(k, str)]))
+    for segment in known:
+        entry = health.get(segment)
+        if not isinstance(entry, dict) and segment not in _SEGMENT_ORDER:
+            continue
+        entry = entry if isinstance(entry, dict) else {}
+        status = str(entry.get("last_status") or "unknown")
+        issues = [i for i in (entry.get("open_issues") or []) if isinstance(i, dict)]
+        headline = ""
+        if issues:
+            worst = min(issues, key=lambda i: 0 if i.get("severity") == "failed" else 1)
+            headline = f"{worst.get('step')}: {worst.get('category', '').replace('_', ' ')}"
+        tiles.append({
+            "segment": segment,
+            "status": status,
+            "tone": _STATUS_TONE.get(status, "muted"),
+            "last_run_label": _relative_time(entry.get("last_run_at")),
+            "last_success_label": _relative_time(entry.get("last_success_at")),
+            "consecutive_degraded": int(entry.get("consecutive_degraded") or 0),
+            "next_label": _next_scheduled_label(segment),
+            "headline": headline,
+            "seen": bool(entry),
+        })
+    return tiles
+
+
+def _attention_model(instance: Path) -> dict[str, Any]:
+    items = []
+    for raw in refresh_health.attention_items(instance):
+        items.append({
+            **raw,
+            "since_label": _relative_time(raw.get("since")),
+            "last_success_label": _relative_time(raw.get("last_success_at")),
+            "category_label": str(raw.get("category") or "").replace("_", " "),
+        })
+    not_configured = refresh_health.not_configured_items(instance)
+    return {
+        "items": items,
+        "not_configured": not_configured,
+        "overall": refresh_health.overall(instance),
+    }
+
+
 def _status_model(include_audit: bool = True, *, audit_options: dict[str, Any] | None = None) -> dict[str, Any]:
     instance = _instance_dir()
     progress = _read_json(instance / "refresh_progress.json")
@@ -482,6 +571,7 @@ def _status_model(include_audit: bool = True, *, audit_options: dict[str, Any] |
     } for item in history]
     latest_finished = latest.get("finished_at") or progress.get("finished_at")
     options = audit_options or {}
+    attention = _attention_model(instance)
     return {
         "running": running,
         "latest_status": str(latest.get("status") or ("running" if running else "unknown")),
@@ -489,17 +579,45 @@ def _status_model(include_audit: bool = True, *, audit_options: dict[str, Any] |
         "latest_finished_label": _display_time(latest_finished),
         "latest_relative_label": _relative_time(latest_finished),
         "sections": sections, "recent_runs": recent_runs,
+        "attention": attention["items"],
+        "not_configured": attention["not_configured"],
+        "overall": attention["overall"],
+        "segments": _segment_grid(instance),
         "change_ledger": _safe_change_ledger(instance),
         "audit": _audit_model(**options) if include_audit else _audit_empty(),
     }
 
 
+#: How the whole-pipeline verdict reads in the site-wide freshness pill.
+_PILL_STATUS = {"failed": "failed", "degraded": "degraded",
+                "self_healing": "success", "healthy": "success"}
+
+
 @data_status_pages.app_context_processor
 def inject_data_freshness() -> dict[str, Any]:
-    model = _status_model(include_audit=False)
+    instance = _instance_dir()
+    running = (instance / "scheduled_refresh.lock").exists()
+    try:
+        verdict = refresh_health.overall(instance)
+    except Exception:
+        verdict = {"state": "unknown", "actionable_count": 0}
+    state = verdict.get("state", "unknown")
+    if state == "unknown":
+        # No roll-up yet: fall back to the newest history row.
+        history = _read_history(instance / "scheduled_refresh_history.jsonl", limit=1)
+        latest = history[0] if history else {}
+        status = str(latest.get("status") or "unknown")
+        latest_finished = latest.get("finished_at")
+    else:
+        status = _PILL_STATUS.get(state, "unknown")
+        runs = [str(e.get("last_run_at") or "") for e in refresh_health.read_health(instance).values()
+                if isinstance(e, dict)]
+        latest_finished = max(runs) if runs else None
     return {"data_freshness": {
-        "running": model["running"], "status": model["latest_status"],
-        "relative": model["latest_relative_label"],
+        "running": running,
+        "status": status,
+        "relative": _relative_time(latest_finished) if latest_finished else "",
+        "attention_count": int(verdict.get("actionable_count") or 0),
     }}
 
 
@@ -523,6 +641,43 @@ def data_status():
     except Exception:
         model = _status_model(include_audit=False)
     return render_template("cfb_data_status.html", status=model)
+
+
+@data_status_pages.get("/college-football/data-status/log-tail")
+def log_tail():
+    """The tail of the newest refresh log for one segment, behind the token.
+
+    The status page links this from each attention card; the page itself never
+    embeds a log path, so this is the only route to the run output.
+    """
+    _require_audit_auth()
+    segment = str(request.args.get("segment") or "").strip().casefold()[:20]
+    try:
+        lines = max(20, min(int(request.args.get("lines", 120)), 400))
+    except (TypeError, ValueError):
+        lines = 120
+    instance = _instance_dir()
+    history = _read_history(instance / "scheduled_refresh_history.jsonl", limit=60)
+    match = next((row for row in history
+                  if not segment or str(row.get("profile") or "") == segment), None)
+    if match is None:
+        return jsonify({"segment": segment, "log": None, "lines": [],
+                        "error": "no run recorded for that segment yet"})
+    log_path = Path(str(match.get("log") or ""))
+    if not log_path.is_absolute():
+        log_path = instance / log_path
+    try:
+        tail = deque(log_path.open("r", encoding="utf-8", errors="replace"), maxlen=lines)
+    except OSError:
+        return jsonify({"segment": segment, "log": log_path.name, "lines": [],
+                        "error": "log file is no longer on disk"})
+    return jsonify({
+        "segment": segment,
+        "log": log_path.name,
+        "finished_label": _display_time(match.get("finished_at")),
+        "status": str(match.get("status") or "unknown"),
+        "lines": [line.rstrip("\n") for line in tail],
+    })
 
 
 @data_status_pages.post("/college-football/data-status/team-link-feedback")
