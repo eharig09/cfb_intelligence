@@ -41,13 +41,34 @@ def _pct(value:Any)->str:
     except (TypeError,ValueError):return "—"
 
 
+def _row_html(value:str,row:dict[str,Any]|None,*,low:bool=False)->str:
+    plays=int((row or {}).get("plays") or 0); css="pg-tendency-row"+(" low-sample" if low else "")
+    return (f'<div class="{css}"><span class="value">{escape(value.replace("_"," "))}</span>'
+            f'<span class="num">{plays}</span>'
+            f'<span class="num epa">{_f2(row.get("epa_per_play")) if row and not low else "—"}</span>'
+            f'<span class="num">{_pct(row.get("success_rate")) if row and not low else "—"}</span></div>')
+
+
 def _dimension_html(dimension:str,rows:list[dict[str,Any]])->str:
     if not rows:return ""
-    coverage=max((float(row.get("coverage") or 0.0) for row in rows),default=0.0); by_value={str(row.get("value") or ""):row for row in rows}; body=[]
-    for value in CANONICAL_VALUES[dimension]:
-        row=by_value.get(value); plays=int((row or {}).get("plays") or 0); enough=plays>=MIN_METRIC_SAMPLE; css="pg-tendency-row"+(" low-sample" if not enough else "")
-        body.append(f'<div class="{css}"><span class="value">{escape(value.replace("_"," "))}</span><span class="num">{plays}</span><span class="num epa">{_f2(row.get("epa_per_play")) if row and enough else "—"}</span><span class="num">{_pct(row.get("success_rate")) if row and enough else "—"}</span></div>')
-    return '<section class="pg-tendency-block">'+f'<div class="pg-tendency-label"><strong>{escape(LABELS[dimension])}</strong><span>{_pct(coverage)} classified</span></div><div class="pg-tendency-row header"><span>Split</span><span class="num">Plays</span><span class="num">EPA/play</span><span class="num">Success</span></div>'+''.join(body)+'</section>'
+    coverage=max((float(row.get("coverage") or 0.0) for row in rows),default=0.0)
+    by_value={str(row.get("value") or ""):row for row in rows}
+    shown=[v for v in CANONICAL_VALUES[dimension] if int((by_value.get(v) or {}).get("plays") or 0)>=MIN_METRIC_SAMPLE]
+    thin=[v for v in CANONICAL_VALUES[dimension] if v not in shown]
+    # When every split is thin there is nothing to roll up to, so fall back to
+    # the full greyed grid. Otherwise the splits that met the sample are the
+    # table, and the rest collapse to one line rather than four "— · —" rows.
+    if not shown:
+        body="".join(_row_html(v,by_value.get(v),low=True) for v in CANONICAL_VALUES[dimension]); footer=""
+    else:
+        body="".join(_row_html(v,by_value.get(v)) for v in shown)
+        parts=[f'{v.replace("_"," ")} {int((by_value.get(v) or {}).get("plays") or 0)}' for v in thin]
+        footer=(f'<div class="pg-tendency-fold">Under the {MIN_METRIC_SAMPLE}-play line: '
+                f'{escape(", ".join(parts))}</div>') if parts else ""
+    return ('<section class="pg-tendency-block">'
+            f'<div class="pg-tendency-label"><strong>{escape(LABELS[dimension])}</strong><span>{_pct(coverage)} classified</span></div>'
+            '<div class="pg-tendency-row header"><span>Split</span><span class="num">Plays</span><span class="num">EPA/play</span><span class="num">Success</span></div>'
+            +body+footer+'</section>')
 
 
 def _render(repository,game:dict[str,Any])->Markup:
