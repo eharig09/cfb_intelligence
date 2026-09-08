@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
+from sports_aggregator.refresh_health import classify_step_rows, summarize_segment
 from sports_aggregator.scheduled_refresh import (
     REFRESH_PROFILES,
     _acquire_lock,
@@ -259,18 +260,7 @@ def _run_segment(segment: str, season: int, *, root: Path, instance: Path) -> di
 
         _refresh_statistics(instance)
         finished = datetime.now(timezone.utc)
-        required = [
-            row
-            for row in results
-            if row.get("status") not in {"success", "skipped"}
-            and not row.get("optional", False)
-        ]
-        degraded = [
-            row
-            for row in results
-            if row.get("status") not in {"success", "skipped"}
-            and row.get("optional", False)
-        ]
+        required, degraded, skipped = classify_step_rows(results, segment=segment)
         status = "failed" if required else "degraded" if degraded else "success"
         report = {
             "status": status,
@@ -282,14 +272,9 @@ def _run_segment(segment: str, season: int, *, root: Path, instance: Path) -> di
             "exit_code": 1 if required else 0,
             "log": str(log_path),
             "step_count": len(results),
-            "degraded_steps": [
-                {
-                    "step": str(row.get("step")),
-                    "status": str(row.get("status")),
-                    "message": str(row.get("message") or "")[:240],
-                }
-                for row in degraded
-            ],
+            "degraded_steps": degraded,
+            "required_failures": required,
+            "skipped_steps": skipped,
             "degraded_count": len(degraded),
             "required_failure_count": len(required),
             "parent_peak_rss_mb": _rss_mb(),
@@ -301,6 +286,10 @@ def _run_segment(segment: str, season: int, *, root: Path, instance: Path) -> di
         _write_progress(instance, progress)
         with (instance / "scheduled_refresh_history.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(report, separators=(",", ":")) + "\n")
+        try:
+            summarize_segment(instance, report)
+        except Exception:  # a roll-up write must never fail the refresh
+            pass
         return report
     finally:
         lock.unlink(missing_ok=True)

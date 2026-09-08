@@ -181,6 +181,8 @@ img { max-width: 100%; }
     border-radius: 999px; padding: .28rem .52rem;
 }
 .data-pill:hover { opacity: 1; border-color: var(--on-strong-line); }
+.data-pill-warn { opacity: 1; color: var(--gold); border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.data-pill-bad { opacity: 1; color: var(--red); border-color: color-mix(in srgb, var(--red) 55%, transparent); }
 
 /* Private moderation, shown only on the data-status page. */
 .moderation { max-width: 1180px; margin: 2rem auto 0; padding: 0 1rem 2.5rem; }

@@ -127,6 +127,25 @@ tail -40 "$(ls -t /var/data/refresh_logs/refresh-*.log | head -1)"
 A `status` of `degraded` with `required_failure_count: 0` means the refresh
 worked and some optional sources were flaky.
 
+Each failed step in a report now carries a `category` (`upstream_quota`,
+`timeout`, `resource`, `empty_result`, `not_configured`, `upstream_error`,
+`unknown`) and `self_heals`. `upstream_quota` self-heals on the next run after
+the allowance resets and needs no action.
+
+### The triage page
+
+`/college-football/data-status/` opens on **Needs attention**: one card per open
+issue across every segment, worst first, each with a plain-English cause and the
+exact next step (including the on-demand segment re-run). **Segment health**
+below it shows all seven segments — last run, last clean run, next scheduled
+hour — so a `content` degrade from 10:00 is still visible after `rosters` runs
+clean at 12:00.
+
+The per-segment roll-up lives in `/var/data/segment_health.json`; it is rewritten
+at the end of every segment and read by the page and the site-wide freshness
+pill. Set `CFB_ALERT_WEBHOOK` to have a *newly* opened, non-self-healing issue
+POST itself to Slack/Discord once (not every hour).
+
 ### Running one manually
 
 ```bash

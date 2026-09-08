@@ -48,6 +48,16 @@ def test_optional_step_failure_marks_refresh_degraded(tmp_path: Path, monkeypatc
     assert report["degraded_count"] == 1
     assert report["degraded_steps"][0]["step"] == "bluesky"
     assert report["degraded_steps"][0]["status"] == "failed"
+    # the row now carries what to do about it, not only that it failed
+    assert report["degraded_steps"][0]["category"] in {
+        "unknown", "empty_result", "upstream_error"}
+    assert report["degraded_steps"][0]["self_heals"] is False
+
+    # and the per-segment roll-up the status page reads was written
+    health = json.loads(
+        (tmp_path / "instance" / "segment_health.json").read_text(encoding="utf-8"))
+    assert health["heavy"]["last_status"] == "degraded"
+    assert health["heavy"]["open_issues"][0]["step"] == "bluesky"
 
 
 def test_clean_optional_steps_keep_refresh_successful(tmp_path: Path, monkeypatch):
