@@ -112,18 +112,39 @@ def _team_codes(team):
     return {c for c in codes if len(c)>=2}
 
 
-def _humanize_field_codes(text,game):
-    code_map={}
+def _team_abbrevs(repository,game):
+    """Provider field codes -> team name, from the stored `teams.abbreviation`.
+
+    `_team_codes` only ever *guessed* an abbreviation from the school name, so
+    "Eastern Michigan" produced EM / EAS / EAST and never EMU, and the raw
+    "EMU16" leaked into the sentence unchanged. The stored abbreviation is the
+    code the play text actually uses.
+    """
+    out={}
+    for side in ("away","home"):
+        team=str(game.get(f"{side}_team") or ""); team_id=game.get(f"{side}_team_id")
+        if not team or team_id is None:continue
+        try:
+            with repository._reader() as connection:
+                row=connection.execute("SELECT abbreviation FROM teams WHERE team_id=?",(int(team_id),)).fetchone()
+        except Exception:row=None
+        code=str((row["abbreviation"] if row else "") or "").strip().upper()
+        if len(code)>=2:out[code]=team
+    return out
+
+
+def _humanize_field_codes(text,game,abbrevs=None):
+    code_map=dict(abbrevs or {})
     for team in (str(game.get("away_team") or "Away"),str(game.get("home_team") or "Home")):
-        for code in _team_codes(team):code_map[code]=team
+        for code in _team_codes(team):code_map.setdefault(code,team)
     def repl(m):
         team=code_map.get(m.group(1).upper()); yard=int(m.group(2))
         return m.group(0) if not team else (f"{team} goal line" if yard==0 else f"{team} {yard}")
     return re.sub(r"\b([A-Z]{2,6})(\d{2})\b",repl,text)
 
 
-def _clean_play_text(text,game):
-    human=_humanize_field_codes(text,game); human=re.sub(r"^\(\d{1,2}:\d{2}\)\s*","",human).strip(); human=re.sub(r",?\s*clock\s+\d{1,2}:\d{2}","",human,flags=re.I)
+def _clean_play_text(text,game,abbrevs=None):
+    human=_humanize_field_codes(text,game,abbrevs); human=re.sub(r"^\(\d{1,2}:\d{2}\)\s*","",human).strip(); human=re.sub(r",?\s*clock\s+\d{1,2}:\d{2}","",human,flags=re.I)
     # Providers use both literal TOUCHDOWN and older "for a TD (...)" grammar.
     # Strip appended PAT/two-point/timeout material from either form while
     # preserving the actual scoring play sentence.
@@ -201,21 +222,45 @@ def _play_pattern(index):
     return re.compile(f"(?P<roster>(?i:{names}))|(?P<generic>{_PLAYER.pattern})")
 
 
-def _play_html(text,game,colors,offense,defense,index=None):
-    human=_clean_play_text(text,game); pieces=[]; last=0
-    index=index or {}; pattern=_play_pattern(index)
+def _resolve_player(shown,index,match):
+    """A player token -> (player_id, team), tolerant of the jersey prefix.
+
+    The roster index is keyed on name forms ("l.weaver", "landon weaver"); the
+    play text writes "#3 L.Weaver". Without stripping the "#3 " the lookup
+    always missed, so every jersey-prefixed name fell through to a positional
+    guess -- and the guess disagreed with itself when the same player was named
+    twice in one play (the fumble, then its return).
+    """
+    key=shown.casefold()
+    if match.groupdict().get("roster"):
+        return index.get(key)
+    bare=re.sub(r"^#\d+\s+","",key)
+    return index.get(bare) or index.get(bare.replace(" ",""))
+
+
+def _play_html(text,game,colors,offense,defense,index=None,abbrevs=None):
+    human=_clean_play_text(text,game,abbrevs); index=index or {}; pattern=_play_pattern(index)
+    season=int(game.get("season") or 0)
+    # First pass: decide each distinct token once so both mentions of a player
+    # in one play get the same colour and the same link.
+    decided={}
     for match in pattern.finditer(human):
-        pieces.append(escape(human[last:match.start()])); shown=match.group(0)
-        resolved=index.get(shown.casefold()) if match.groupdict().get("roster") else None
+        key=match.group(0).casefold()
+        if key in decided:continue
+        resolved=_resolve_player(match.group(0),index,match)
         if resolved:
             player_id,team=resolved
-            try:href=url_for("cfb.player_preview",player_id=player_id,season=int(game.get("season") or 0))
+            try:href=url_for("cfb.player_preview",player_id=player_id,season=season)
             except Exception:href=None
         else:
-            href=None
-            before=human[max(0,match.start()-70):match.start()].rstrip()
+            href=None; before=human[max(0,match.start()-70):match.start()].rstrip()
             defender=(match.start()>0 and human[match.start()-1]=="(") or bool(_DEFENSE_CONTEXT.search(before)) or any(before.casefold().endswith(cue) for cue in _DEFENSE_CUES)
             team=defense if defender else offense
+        decided[key]=(team,href)
+    pieces=[]; last=0
+    for match in pattern.finditer(human):
+        pieces.append(escape(human[last:match.start()])); shown=match.group(0)
+        team,href=decided.get(shown.casefold(),(offense,None))
         color=colors.get(team,"var(--team-light)")
         style=f'class="pg-turn-player" style="color:{escape(color,quote=True)}"'
         pieces.append(f'<a href="{escape(href,quote=True)}" {style}>{escape(shown)}</a>' if href
@@ -224,12 +269,121 @@ def _play_html(text,game,colors,offense,defense,index=None):
     pieces.append(escape(human[last:])); return "".join(pieces)
 
 
+def _wp_meter_html(row,home_team,away_team):
+    """The headline: home win probability before -> after, as one bar.
+
+    The bar is the swing; the two dots are the two states. It is tinted in the
+    colour of the team the swing helped, so "who this moved" reads at a glance
+    instead of being decoded from an up/down arrow on a percentage.
+    """
+    b,a=row.get("home_wp_before"),row.get("home_wp_after")
+    if b is None or a is None:return ""
+    try:b=float(b); a=float(a)
+    except (TypeError,ValueError):return ""
+    helped=home_team if a>b else away_team; arrow="▲" if a>b else ("▼" if a<b else "▶")
+    lo=min(a,b); span=abs(a-b); swing=100*span
+    return (f'<div class="pg-turn-wp"><div class="pg-turn-wp-label">Win probability &middot; {escape(home_team)}</div>'
+            f'<div class="pg-turn-wp-track" style="--lo:{100*lo:.1f}%;--span:{100*span:.1f}%">'
+            f'<i class="pg-turn-wp-fill"></i>'
+            f'<i class="pg-turn-wp-dot before" style="left:{100*b:.1f}%"></i>'
+            f'<i class="pg-turn-wp-dot after" style="left:{100*a:.1f}%"></i></div>'
+            f'<div class="pg-turn-wp-read"><b>{100*b:.0f}%</b> {arrow} <b>{100*a:.0f}%</b>'
+            f'<span class="pg-turn-wp-help">{swing:.1f} pts to {escape(helped)}</span></div></div>')
+
+
+def _field_read(row,label):
+    # The down & distance already sits in the strip's label; this line is the
+    # spot and the outcome.
+    field=_field_position(row); parts=[escape(field)] if field else []
+    if label=="Field goal":parts.append("field goal")
+    elif label in ("Interception","Pick-six"):parts.append("intercepted")
+    elif label in ("Fumble","Fumble TD"):parts.append("fumble")
+    else:
+        gain=""
+        if row.get("yards_gained") is not None and _is_scrimmage(row):
+            try:
+                y=int(row.get("yards_gained")); gain=f"{y}-yard gain" if y>=0 else f"{abs(y)}-yard loss"
+            except (TypeError,ValueError):pass
+        if "Touchdown" in label:gain=(gain+" &mdash; touchdown").strip()
+        if gain:parts.append(gain)
+    return " &middot; ".join(p for p in parts if p)
+
+
+def _field_svg(row):
+    """A compact drive strip drawn from yards_to_goal and yards_gained.
+
+    Structured numbers only -- it does not read team codes out of the play text,
+    which is the part that was wrong from one game to the next. Offense attacks
+    left -> right toward the defending end zone on the right.
+    """
+    try:ytg=max(1,min(100,int(_event_field(row,"yards_to_goal"))))
+    except (TypeError,ValueError):return ""
+    label=_event_label(row)
+    td="Touchdown" in label or label in ("Pick-six","Fumble TD")
+    turnover=label in ("Interception","Fumble","Pick-six","Fumble TD")
+    fg=label=="Field goal"
+    try:gained=int(row.get("yards_gained") or 0)
+    except (TypeError,ValueError):gained=0
+    L,R=10.0,110.0; los=L+(100-ytg)
+    parts=['<svg class="pg-turn-field-svg" viewBox="0 0 120 18" preserveAspectRatio="none" aria-hidden="true">',
+           '<rect class="pg-f-turf" x="10" y="2" width="100" height="14"/>',
+           '<rect class="pg-f-ez" x="0" y="2" width="10" height="14"/>',
+           f'<rect class="pg-f-ez pg-f-target{" scored" if td and not turnover else ""}" x="110" y="2" width="10" height="14"/>']
+    parts+= [f'<line class="pg-f-yd" x1="{x}" y1="2" x2="{x}" y2="16"/>' for x in range(20,110,10)]
+    parts.append(f'<line class="pg-f-los" x1="{los:.1f}" y1="0" x2="{los:.1f}" y2="18"/>')
+    if fg:
+        parts.append(f'<rect class="pg-f-fg" x="{los-1.3:.1f}" y="4" width="2.6" height="10"/>')
+    elif turnover:
+        parts.append(f'<rect class="pg-f-turnover" x="{los-1.6:.1f}" y="0" width="3.2" height="18"/>')
+        if td:parts.append('<rect class="pg-f-drive pg-f-defense" x="1.5" y="5" width="8.5" height="8"/>')
+    else:
+        end=max(L,min(R,los+gained)); x0,w=min(los,end),abs(end-los)
+        parts.append(f'<rect class="pg-f-drive{" td" if td else ""}" x="{x0:.1f}" y="5" width="{max(w,1.0):.1f}" height="8"/>')
+    parts.append('</svg>')
+    return "".join(parts)
+
+
 def _routine_kick_return(row):
     text=f"{row.get('play_type') or ''} {row.get('play_text') or ''}".casefold()
     if "kickoff" not in text or "return" not in text or "touchdown" in text:return False
     try:yards=int(row.get("yards_gained") or 0)
     except (TypeError,ValueError):yards=0
     return yards<45
+
+
+def _score_chip(row,game,abbrevs):
+    scoring=int(row.get("event_priority") or 0)>=85
+    hs=row.get("home_score_after") if scoring else row.get("home_score")
+    as_=row.get("away_score_after") if scoring else row.get("away_score")
+    if hs is None or as_ is None:return ""
+    def short(side):
+        team=str(game.get(f"{side}_team") or "")
+        for code,name in (abbrevs or {}).items():
+            if name==team:return code
+        return team[:4].upper() if team else side[:4].upper()
+    return f'<span class="pg-turn-score">{short("away")} {int(as_)} &middot; {short("home")} {int(hs)}</span>'
+
+
+def _turn_card(rank,row,game,colors,roster,abbrevs,home_team,away_team):
+    period,minute,second=_event_clock(row); label=_event_label(row)
+    offense=str(_event_field(row,"offense") or ""); defense=str(_event_field(row,"defense") or "")
+    off_color=colors.get(offense,"var(--team-light)")
+    a=row.get("home_wp_after"); b=row.get("home_wp_before")
+    try:helped=home_team if float(a)>float(b) else away_team
+    except (TypeError,ValueError):helped=home_team
+    help_color=colors.get(helped,"var(--team-light)")
+    label_html=f'<span class="pg-turn-event">{escape(label)}</span>' if label else ""
+    fl=[p for p in (_down_distance(row),f"{offense} ball" if offense else "") if p]
+    field_label=" &middot; ".join(escape(p) for p in fl) or "Turning point"
+    play_html=_play_html(str(row.get("play_text") or row.get("play_type") or "Play"),game,colors,offense,defense,roster,abbrevs)
+    return (f'<article class="pg-turn" style="--turn-off:{escape(str(off_color),quote=True)};--turn-help:{escape(str(help_color),quote=True)}">'
+            f'<div class="pg-turn-rank">{rank:02d}</div>'
+            f'<div class="pg-turn-body">'
+            f'<div class="pg-turn-head"><span class="pg-turn-clock">Q{period} &middot; {minute}:{second:02d}</span>{label_html}{_score_chip(row,game,abbrevs)}</div>'
+            f'<div class="pg-turn-viz">{_wp_meter_html(row,home_team,away_team)}'
+            f'<div class="pg-turn-field"><div class="pg-turn-field-label">{field_label}</div>{_field_svg(row)}'
+            f'<div class="pg-turn-field-read">{_field_read(row,label)}</div></div></div>'
+            f'<p class="pg-turn-play">{play_html}</p></div></article>')
 
 
 def _render(repository,game):
@@ -243,28 +397,17 @@ def _render(repository,game):
     # return "" and take its own headings with it, so a game without scored
     # win-probability read as a section that had been deleted rather than one
     # waiting on a pipeline step.
-    colors=_team_colors(repository,game); roster=_roster_index(repository,game); away_team=str(game.get("away_team") or "Away"); home_team=str(game.get("home_team") or "Home"); away_color=colors.get(away_team,"var(--team-light)"); home_color=colors.get(home_team,"var(--team-light)"); efficiency_override='<style>'+f'.box-report .efficiency-row .efficiency-cell:nth-child(2).edge{{color:{escape(away_color,quote=True)}!important}}'+f'.box-report .efficiency-row .efficiency-cell:nth-child(3).edge{{color:{escape(home_color,quote=True)}!important}}'+'</style>'
+    colors=_team_colors(repository,game); roster=_roster_index(repository,game); abbrevs=_team_abbrevs(repository,game); away_team=str(game.get("away_team") or "Away"); home_team=str(game.get("home_team") or "Home"); away_color=colors.get(away_team,"var(--team-light)"); home_color=colors.get(home_team,"var(--team-light)"); efficiency_override='<style>'+f'.box-report .efficiency-row .efficiency-cell:nth-child(2).edge{{color:{escape(away_color,quote=True)}!important}}'+f'.box-report .efficiency-row .efficiency-cell:nth-child(3).edge{{color:{escape(home_color,quote=True)}!important}}'+'</style>'
     pace_html='<div class="pg-section-head"><h3>Pace &amp; game state</h3><span>Snap tempo and pass rate by game state</span></div><div class="empty">No scored play-by-play is stored for this game, so pace and game state cannot be computed.</div>'
     if teams:
         summaries=''.join(_summary_card(team,states) for team,states in teams.items()); details=''.join(_detail_team(team,states) for team,states in teams.items()); pace_html=f'<div class="pg-section-head"><h3>Pace & game state</h3><span>Snap tempo and pass rate by game state</span></div><div class="pg-summary-grid">{summaries}</div><details class="pg-details"><summary>View full pace splits</summary><div class="pg-detail-grid">{details}</div></details><p class="pg-note">Tempo uses represented same-drive game-clock intervals between qualifying rush/pass snaps; it is a comparison proxy, not wall-clock seconds to snap.</p>'
-    turn_rows=[]
-    for rank,row in enumerate(turns,1):
-        period,minute,second=_event_clock(row); leverage=float(row.get("leverage") or 0); before=row.get("home_wp_before"); after=row.get("home_wp_after"); event_label=_event_label(row); context=[]; scoreline=_scoreline(row,game)
-        if scoreline:context.append(scoreline)
-        dd=_down_distance(row); field=_field_position(row)
-        if dd:context.append(dd)
-        if field:context.append(field)
-        offense=str(_event_field(row,"offense") or ""); defense=str(_event_field(row,"defense") or "")
-        if offense:context.append(f"{offense} ball")
-        if row.get("yards_gained") is not None and _is_scrimmage(row):
-            try:
-                yards=int(row.get("yards_gained")); context.append(f"gain of {yards} yards" if yards>=0 else f"loss of {abs(yards)} yards")
-            except (TypeError,ValueError):pass
-        wp_html=""
-        if before is not None and after is not None:
-            direction="↑" if float(after)>float(before) else "↓" if float(after)<float(before) else "→"; wp_html=f'<div class="pg-turn-wp">{escape(home_team)} WP&nbsp; {100*float(before):.1f}% {direction} {100*float(after):.1f}%</div>'
-        label_html=f'<span class="pg-turn-event">{escape(event_label)}</span>' if event_label else ""; attribution="Major event matched to surrounding valid WP states." if row.get("attribution")=="special_event" else "WP transition attributed to this pre-play state."; play_html=_play_html(str(row.get("play_text") or row.get("play_type") or "Play"),game,colors,offense,defense,roster)
-        turn_rows.append(f'<article class="pg-turn"><div class="pg-turn-rank">{rank:02d}</div><div class="pg-turn-main"><div class="pg-turn-head"><span class="pg-turn-clock">Q{period} · {minute}:{second:02d}</span>{label_html}</div><div class="pg-turn-swing"><strong>{100*leverage:.1f}</strong> win-probability points</div>{wp_html}<div class="pg-turn-context">{" · ".join(escape(piece) for piece in context)}</div></div><div class="pg-turn-detail"><p class="pg-turn-play">{play_html}</p><div class="pg-turn-attribution">{escape(attribution)}</div><div class="pg-turn-meta">WP direction is checked against {escape(EPA_MODEL_VERSION)} event-aligned play value and scoreboard/down-result sanity rules; routine kick returns and large unsupported state discontinuities are suppressed.</div></div></article>')
+    turn_rows=[_turn_card(rank,row,game,colors,roster,abbrevs,home_team,away_team) for rank,row in enumerate(turns,1)]
+    if turn_rows:
+        turn_rows.append('<p class="pg-turn-foot">Ranked by the size of the win-probability swing. '
+                         f'Direction is checked against the {escape(EPA_MODEL_VERSION)} play value and the '
+                         'scoreboard; routine kick returns and unsupported state jumps are dropped. The bar '
+                         'is home win probability before &rarr; after, tinted for the team the swing helped; '
+                         'the strip is the pre-play spot and the yards the play gained.</p>')
     turning_html=''.join(turn_rows) or f'<div class="empty">Fit and score {escape(WP_MODEL_VERSION)} to identify leverage and turning points.</div>'
     return Markup(STYLE+efficiency_override+'<section class="section pg-analytics" id="leverage">'+pace_html+'<div class="pg-section-head"><h3>Turning points</h3><span>Where the win probability moved most</span></div>'+f'<div class="pg-turning">{turning_html}</div></section>')
 
