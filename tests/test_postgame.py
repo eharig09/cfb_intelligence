@@ -116,3 +116,65 @@ class TurningPointPlayerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TurningPointRenderTests(unittest.TestCase):
+    """The compact turning-point card: consistent player colour, a WP bar and a
+    field strip drawn from structured numbers rather than parsed team codes."""
+
+    def _row(self, **over):
+        base = dict(
+            event_yards_to_goal=40, yards_to_goal=40, yards_gained=40,
+            event_down=2, down=2, event_distance=6, distance=6,
+            event_offense="San José State", offense="San José State",
+            event_defense="Eastern Michigan", defense="Eastern Michigan",
+            home_wp_before=0.643, home_wp_after=0.336,
+            play_type="Pass", play_text="pass complete deep middle TOUCHDOWN",
+            scoring=1, event_priority=100,
+        )
+        base.update(over)
+        return base
+
+    def test_a_touchdown_drive_is_drawn_to_the_end_zone(self):
+        from sports_aggregator.cfb.postgame_analytics_display import _field_svg
+        svg = _field_svg(self._row())
+        self.assertIn("pg-f-target scored", svg)      # end zone lit
+        self.assertIn('class="pg-f-drive td"', svg)   # the drive bar
+
+    def test_a_turnover_is_drawn_as_a_marker_not_a_drive(self):
+        from sports_aggregator.cfb.postgame_analytics_display import _field_svg
+        svg = _field_svg(self._row(play_text="fumble recovered TOUCHDOWN", scoring=1))
+        self.assertIn("pg-f-turnover", svg)
+        self.assertNotIn('class="pg-f-drive td"', svg)
+
+    def test_the_wp_bar_is_tinted_for_the_team_the_swing_helped(self):
+        from sports_aggregator.cfb.postgame_analytics_display import _wp_meter_html
+        html = _wp_meter_html(self._row(), "Eastern Michigan", "San José State")
+        # home WP fell 64 -> 34, so the swing helped the away team
+        self.assertIn("pts to San José State", html)
+        self.assertIn("64%", html); self.assertIn("34%", html)
+
+    def test_a_player_named_twice_in_one_play_keeps_one_colour(self):
+        from app import create_app
+        from sports_aggregator.cfb.postgame_analytics_display import _play_html
+        index = {"b.llewellyn": ("99", "Eastern Michigan")}
+        colors = {"Eastern Michigan": "#298055", "San José State": "#266eaf"}
+        text = ("recovered by EMU #6 B.Llewellyn at the 1 "
+                "#6 B.Llewellyn return 1 yard TOUCHDOWN")
+        with create_app({"TESTING": True}).test_request_context("/"):
+            html = _play_html(text, {"season": 2026}, colors,
+                              "San José State", "Eastern Michigan", index)
+        # the recovering defender is linked and EMU-coloured at both mentions;
+        # the second used to fall through to the offence colour before the fix.
+        self.assertEqual(html.count("/college-football/players/99/"), 2)
+        self.assertEqual(html.count("#298055"), 2)
+        self.assertNotIn("#266eaf", html)
+
+    def test_field_codes_use_the_real_abbreviation_not_a_guess(self):
+        from sports_aggregator.cfb.postgame_analytics_display import _humanize_field_codes
+        game = {"away_team": "San José State", "home_team": "Eastern Michigan"}
+        out = _humanize_field_codes("caught at EMU16, advanced to EMU00 TOUCHDOWN", game,
+                                    {"EMU": "Eastern Michigan", "SJSU": "San José State"})
+        self.assertIn("Eastern Michigan 16", out)
+        self.assertIn("Eastern Michigan goal line", out)
+        self.assertNotIn("EMU16", out)

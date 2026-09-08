@@ -115,8 +115,11 @@ def _factor_html(report,game):
         rows.append(
             '<div class="postgame-evidence-row"'+f' style="--mag:{mag:.0f}%;--fac:var({team_var})">'
             +f'<span class="rank">{i:02d}</span>'
-            +f'<div class="evidence-main"><strong>{escape(str(f.get("headline") or f.get("label") or "Factor"))}</strong>{confidence_html}<span class="evidence-detail">{escape(str(f.get("detail") or ""))}</span></div>'
+            +'<div class="evidence-main">'
+            +f'<strong>{escape(str(f.get("headline") or f.get("label") or "Factor"))}</strong>{confidence_html}'
+            +f'<span class="evidence-detail">{escape(str(f.get("detail") or ""))}</span>'
             +f'<div class="evidence-mag" role="img" aria-label="relative weight {mag:.0f} of 100, favoured {escape(favours) or "neither"}"><i></i>{tag}</div>'
+            +'</div>'
             +'</div>')
     return '<div class="postgame-evidence-list">'+''.join(rows)+'</div>'
 
