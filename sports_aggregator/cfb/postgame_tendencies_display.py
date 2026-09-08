@@ -64,7 +64,7 @@ def _render(repository,game:dict[str,Any])->Markup:
         dimensions=''.join(_dimension_html(d,grouped[team].get(d,[])) for d in ORDER if grouped[team].get(d))
         if dimensions:cards.append(f'<article class="pg-tendency-team"><h4>{escape(team)}</h4>{dimensions}</article>')
     if not cards:return Markup("")
-    return Markup(STYLE+'<section class="pg-tendency">'+f'<div class="pg-tendency-head"><h3>Play tendencies</h3><span>play-detail-v3 × {escape(MODEL_VERSION)} · evidence thresholds applied</span></div>'+f'<div class="pg-tendency-teams">{"".join(cards)}</div>'+'<p class="pg-tendency-note">Pass depth uses measured catch-spot air yards when the provider field-side code resolves cleanly, with lexical depth as fallback. EPA and success are withheld for splits with fewer than 4 classified plays.</p></section>')
+    return Markup(STYLE+'<section class="pg-tendency" id="tendencies">'+'<div class="pg-tendency-head"><h3>Play tendencies</h3><span>Direction and depth, with EPA where the sample allows</span></div>'+f'<div class="pg-tendency-teams">{"".join(cards)}</div>'+'<p class="pg-tendency-note">Pass depth uses measured catch-spot air yards when the provider field-side code resolves cleanly, with lexical depth as fallback. EPA and success are withheld for splits with fewer than 4 classified plays.</p></section>')
 
 
 def install_postgame_tendencies_display(app)->None:

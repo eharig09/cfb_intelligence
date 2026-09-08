@@ -42,6 +42,7 @@ EXPECTED_INSERTS = {
         "postgame_tendencies(",
         "postgame_pace_and_leverage(",
         "postgame_qb_air_yards(",
+        "postgame_methodology(",
     ),
 }
 

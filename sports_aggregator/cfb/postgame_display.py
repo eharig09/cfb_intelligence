@@ -127,9 +127,54 @@ def _render(repository,game,team_stats,player_stats):
     try:annotate_player_epa(repository,game,report['players'],model_version=EPA_MODEL_VERSION)
     except Exception:pass
     advanced=_advanced_html(repository,game); expectations=_expectation_html(repository,game); factors=_factor_html(report); players=_players_html(report,game,season); roles=_roles_html(report,season); coverage=escape(str((report.get('coverage') or {}).get('coverage_note') or ''))
-    return Markup(STYLE+'<section class="section postgame-shell">'+'<div class="postgame-report-head"><span class="postgame-report-num">01</span><h2>Game analysis</h2><span>Evidence-led postgame intelligence</span></div>'+'<div class="postgame-story">'+f'<p class="postgame-lede">{escape(str(report["story"]))}</p><div class="postgame-meta"><span class="postgame-tag">{escape(str(report["complexion"]))}</span><span class="postgame-tag">Margin {float(report["margin"]):g}</span><span class="postgame-tag">{len(report["factors"])} measurable separators</span></div></div>'+'<div class="postgame-section-head"><h3>What decided it</h3><span>Ranked measurable evidence</span></div>'+f'{factors}' + f'<div class="postgame-section-head"><h3>Efficiency profile</h3><span>Precomputed {EPA_MODEL_VERSION} · rush/pass snaps</span></div>{advanced}'+'<div class="postgame-section-head"><h3>Expectation vs reality</h3><span>Frozen before kickoff</span></div>'+f'{expectations}'+f'<div class="postgame-section-head"><h3>Player impact</h3><span>Production + involved-play {EPA_MODEL_VERSION}</span></div>{players}'+'<div class="postgame-section-head"><h3>What may have changed</h3><span>Observed role signal</span></div>'+f'{roles}<div class="postgame-coverage"><strong>Analysis coverage.</strong> {coverage} EPA is our in-house event-aligned {EPA_MODEL_VERSION} model; CFBD PPA remains only an external benchmark.</div></section>')
+    return Markup(STYLE+'<section class="section postgame-shell">'+'<div class="postgame-report-head"><h2>Game analysis</h2><span>Evidence-led postgame intelligence</span></div>'+'<div class="postgame-story">'+f'<p class="postgame-lede">{escape(str(report["story"]))}</p><div class="postgame-meta"><span class="postgame-tag">{escape(str(report["complexion"]))}</span><span class="postgame-tag">Margin {float(report["margin"]):g}</span><span class="postgame-tag">{len(report["factors"])} measurable separators</span></div></div>'+'<div class="postgame-section-head"><h3>What decided it</h3><span>Ranked measurable evidence</span></div>'+f'{factors}' + '<div class="postgame-section-head"><h3>Efficiency profile</h3><span>Rush and pass snaps outside garbage time</span></div>'+f'{advanced}'+'<div class="postgame-section-head"><h3>Expectation vs reality</h3><span>Frozen before kickoff</span></div>'+f'{expectations}'+'<div class="postgame-section-head"><h3>Player impact</h3><span>Box production and involved-play value</span></div>'+f'{players}'+'<div class="postgame-section-head"><h3>What may have changed</h3><span>Observed role signal</span></div>'+f'{roles}<div class="postgame-coverage"><strong>Analysis coverage.</strong> {coverage} EPA is our in-house event-aligned {EPA_MODEL_VERSION} model; CFBD PPA remains only an external benchmark.</div></section>')
+
+
+#: Every model and version the report reads, gathered from the modules that
+#: own them, so a bump in one place updates the disclosure without anyone
+#: hand-editing a header. Rendered once as a closed <details> at the report
+#: foot -- the reader who wants provenance opens it; the reader who wants the
+#: game is not made to read "play-detail-v3 × ep-v2" on six section headers.
+def _methodology_html() -> Markup:
+    try:
+        from sports_aggregator.cfb.team_game_tendencies import (
+            METRIC_VERSION as TEND_METRIC, MODEL_VERSION as TEND_EPA,
+            PARSER_VERSION as TEND_PARSER)
+        from sports_aggregator.cfb.pace import PACE_VERSION
+        from sports_aggregator.cfb.qb_air_yards import CFBD_PARSER_VERSION
+        from sports_aggregator.cfb.postgame_analytics_display import WP_MODEL_VERSION
+    except Exception:
+        return Markup("")
+    rows = [
+        ("Expected points (EPA)", EPA_MODEL_VERSION,
+         "In-house event-aligned model, scored on qualifying rush and pass snaps. "
+         "CFBD PPA is kept only as an external benchmark."),
+        ("Win probability", WP_MODEL_VERSION,
+         "Drives the turning-point swings; direction is sanity-checked against EPA "
+         "and the scoreboard."),
+        ("Play-text parser", TEND_PARSER,
+         "Rush direction, pass depth and pass location parsed from the play text."),
+        ("Team-game tendencies", TEND_METRIC,
+         f"Rolls parsed plays up per team-game against {TEND_EPA}. EPA and success "
+         "are withheld below four classified plays in a split."),
+        ("Quarterback air yards", CFBD_PARSER_VERSION,
+         "Per-attempt air yards, YAC and passing value; measured catch-spot air "
+         "yards where the provider field-side code resolves, lexical depth otherwise."),
+        ("Pace and game state", PACE_VERSION,
+         "Snap tempo and pass rate by game state; tempo is a same-drive interval "
+         "proxy, not wall-clock seconds to snap."),
+    ]
+    body = "".join(
+        f'<div class="report-method-row"><div><strong>{escape(label)}</strong>'
+        f'<code>{escape(version)}</code></div><p>{escape(note)}</p></div>'
+        for label, version, note in rows)
+    return Markup(
+        '<details class="report-methodology"><summary>Methodology &amp; model versions</summary>'
+        f'<div class="report-method-list">{body}</div>'
+        '<p class="report-method-note">Every figure is computed from the stored '
+        'postgame dataset. Opening this report makes no provider call.</p></details>')
 
 
 def install_postgame_display(app):
     if app.extensions.get('postgame_display_installed'):return
-    repository=app.extensions['cfb_repository']; app.jinja_env.globals['postgame_analysis']=lambda game,team_stats,player_stats:_render(repository,dict(game),list(team_stats or ()),list(player_stats or ())); app.jinja_loader=_Loader(app.jinja_loader); app.jinja_env.cache.clear(); app.extensions['postgame_display_installed']=True
+    repository=app.extensions['cfb_repository']; app.jinja_env.globals['postgame_analysis']=lambda game,team_stats,player_stats:_render(repository,dict(game),list(team_stats or ()),list(player_stats or ())); app.jinja_env.globals['postgame_methodology']=_methodology_html; app.jinja_loader=_Loader(app.jinja_loader); app.jinja_env.cache.clear(); app.extensions['postgame_display_installed']=True
