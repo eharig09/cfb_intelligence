@@ -9,7 +9,7 @@ from flask import url_for
 from jinja2 import BaseLoader, TemplateNotFound
 from markupsafe import Markup
 
-from sports_aggregator.cfb.qb_air_yards import game_summary, METRIC_VERSION, MODEL_VERSION
+from sports_aggregator.cfb.qb_air_yards import game_summary
 
 ANCHOR = "{{ postgame_tendencies(game) }}"
 REPLACEMENT = ANCHOR + "\n{{ postgame_qb_air_yards(game) }}"
@@ -93,7 +93,7 @@ def _render(repository, game: dict[str, Any]) -> Markup:
     grouped=defaultdict(list)
     for row in rows: grouped[str(row.get("team") or "Team")].append(row)
     away=str(game.get("away_team") or "Away"); home=str(game.get("home_team") or "Home"); columns=[_team_column(away,grouped.get(away,[])),_team_column(home,grouped.get(home,[]))]
-    return Markup(STYLE+'<section class="pg-qb-air">'+f'<div class="pg-qb-air-head"><h3>Quarterback air yards</h3><span>{escape(METRIC_VERSION)} · {escape(str(rows[0].get("parser_version") or "unknown"))} × {escape(MODEL_VERSION)}</span></div>' +f'<div class="pg-qb-air-grid">{"".join(columns)}</div>'+f'<p class="pg-qb-note">{_provenance(rows)}</p></section>')
+    return Markup(STYLE+'<section class="pg-qb-air" id="qb-air">'+'<div class="pg-qb-air-head"><h3>Quarterback air yards</h3><span>Air yards, YAC and passing value per attempt</span></div>' +f'<div class="pg-qb-air-grid">{"".join(columns)}</div>'+f'<p class="pg-qb-note">{_provenance(rows)}</p></section>')
 
 
 def install_qb_air_yards_display(app) -> None:
