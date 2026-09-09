@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 from flask import url_for
 
 from sports_aggregator.cfb.draft import position_abbreviation
-from sports_aggregator.cfb.identity import conference_identity, dark_accent
+from sports_aggregator.cfb.identity import conference_identity, dark_accent, team_identity
 from sports_aggregator.cfb.models import normalize_alias
 from sports_aggregator.cfb.schedule_shape import with_byes
 from sports_aggregator.cfb.recruiting import evidence_score
@@ -76,6 +76,58 @@ def _team_url(team_id: Any, season: int) -> str | None:
 
 def _player_url(player_id: Any, season: int) -> str | None:
     return url_for("cfb.player_preview", player_id=player_id, season=season) if player_id else None
+
+
+def elo_rankings_table(snapshot: dict[str, Any], season: int,
+                       brands: dict[int, dict[str, Any]]) -> Table:
+    """The national Elo board, decorated with team identity and drill-downs."""
+    rows = []
+    for item in snapshot.get("rankings") or []:
+        brand = team_identity(brands.get(item["team_id"]) or {})
+        change = item.get("change")
+        rows.append({
+            **item,
+            "rank_sort": item["rank"],
+            "rank": f"#{item['rank']}",
+            "team_url": _team_url(item["team_id"], season),
+            "team_logo": brand.get("logo"),
+            "team_logo_dark": brand.get("logo_dark"),
+            "team_color": brand.get("accent"),
+            "team_color_dark": brand.get("accent_dark"),
+            "conference_sub": None,
+            "change_sub": ("up" if change and change > 0 else
+                           "down" if change and change < 0 else
+                           "even" if change == 0 else None),
+            "change_class": ("win" if change and change > 0 else
+                             "loss" if change and change < 0 else None),
+            "week_sort": item.get("week"),
+            "week": f"Week {item['week']}" if item.get("week") is not None else "Dated game",
+            "range": f"{item['season_low']}–{item['season_high']}",
+            "range_sort": item["season_high"] - item["season_low"],
+        })
+    return Table(
+        columns=[
+            Column(key="rank", label="Rank", format="rank", align="right",
+                   title="Current rank among rated FBS teams", sort="number"),
+            Column(key="team", label="Team", emphasis=True),
+            Column(key="conference", label="Conference"),
+            Column(key="elo", label="Elo", format="int", emphasis=True,
+                   title="Most recent stored CFBD pregame Elo"),
+            Column(key="change", label="Change", format="signed",
+                   title="Change from the team's prior stored pregame rating"),
+            Column(key="week", label="As of", sort="number",
+                   title="Week of the game carrying the current rating"),
+            Column(key="range", label="Season range", sort="number",
+                   title="Lowest and highest stored pregame Elo this season"),
+            Column(key="rated_games", label="Ratings", format="int",
+                   title="Games with a stored pregame Elo observation"),
+        ],
+        rows=rows,
+        caption=f"{season} FBS Elo leaderboard",
+        note="Select a column heading to reorder the table.",
+        empty=f"No FBS pregame Elo ratings are stored for {season}.",
+        dense=True,
+    )
 
 
 def _game_detail_url(game: dict[str, Any]) -> str:
