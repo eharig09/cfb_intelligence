@@ -10,7 +10,8 @@ runs the downstream content stages required by team pages.
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed)
 from contextlib import closing
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -167,7 +168,16 @@ def _tasks(limit: int, database_path: Path) -> list[tuple[dict, dict, FeedConfig
     return tasks
 
 
-def run_shard(season: int, *, shard_size: int, workers: int, limit: int) -> dict:
+#: The shard stops waiting for the aggregator at this point and keeps whatever
+#: arrived. Below the step's own budget (600s) with room for the postprocess
+#: chain -- and, crucially, below the refresh driver's kill, which is what used
+#: to end the process with the cursor un-advanced, so the same shard timed out
+#: on every run and the registry never moved forward.
+SHARD_DEADLINE = float(os.getenv("CFB_LOCAL_NEWS_DEADLINE", "300"))
+
+
+def run_shard(season: int, *, shard_size: int, workers: int, limit: int,
+              deadline: float = SHARD_DEADLINE) -> dict:
     repository = ContentRepository(os.getenv("CFB_DATABASE_PATH", "instance/cfb.sqlite3"))
     tasks = _tasks(limit, repository.path)
     if not tasks:
@@ -182,7 +192,8 @@ def run_shard(season: int, *, shard_size: int, workers: int, limit: int) -> dict
 
     started = datetime.now(timezone.utc).isoformat()
     errors: list[dict] = []
-    succeeded = seen = stored = 0
+    succeeded = seen = stored = completed = 0
+    abandoned = 0
 
     def fetch(task):
         team, source, config = task
@@ -190,52 +201,57 @@ def run_shard(season: int, *, shard_size: int, workers: int, limit: int) -> dict
 
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         futures = {pool.submit(fetch, task): task for task in selected}
-        for future in as_completed(futures):
-            team, source, _ = futures[future]
-            try:
-                _, _, articles = future.result()
-                succeeded += 1
-                seen += len(articles)
-                for article in articles:
-                    if not article_matches_team(
-                        f"{article.title} {article.summary}",
-                        team,
-                        publisher=article.publisher or source["name"],
-                    ):
-                        continue
-                    enriched = replace(article, team_ids=(int(team["team_id"]),))
-                    if repository.store_article(enriched, season) is not None:
-                        stored += 1
-            except Exception as exc:
-                errors.append({
-                    "team": team["team"],
-                    "domain": source["domain"],
-                    "error": str(exc)[:240],
-                })
+        pending = set(futures)
+        try:
+            for future in as_completed(futures, timeout=deadline or None):
+                pending.discard(future)
+                completed += 1
+                team, source, _ = futures[future]
+                try:
+                    _, _, articles = future.result()
+                    succeeded += 1
+                    seen += len(articles)
+                    for article in articles:
+                        if not article_matches_team(
+                            f"{article.title} {article.summary}",
+                            team,
+                            publisher=article.publisher or source["name"],
+                        ):
+                            continue
+                        enriched = replace(article, team_ids=(int(team["team_id"]),))
+                        if repository.store_article(enriched, season) is not None:
+                            stored += 1
+                except Exception as exc:
+                    errors.append({
+                        "team": team["team"], "domain": source["domain"],
+                        "error": str(exc)[:240],
+                    })
+        except FuturesTimeoutError:
+            abandoned = len(pending)
+            for future in pending:
+                future.cancel()
+            errors.append({"team": "-", "domain": "-",
+                           "error": f"deadline of {deadline:g}s reached with "
+                                    f"{abandoned} feeds outstanding"})
 
-    next_index = 0 if end >= len(tasks) else end
+    # Advance the cursor by what was actually reached, wrapping at the end, so a
+    # timed-out shard resumes at the next feed instead of retrying the same
+    # block forever.
+    reached = start + completed
+    next_index = 0 if reached >= len(tasks) else reached
     _write_cursor(state, next_index, len(tasks))
     repository.record_run(
-        started,
-        datetime.now(timezone.utc).isoformat(),
-        len(selected),
-        succeeded,
-        seen,
-        stored,
-        errors,
-        platform="rss-local-shard",
+        started, datetime.now(timezone.utc).isoformat(),
+        len(selected), succeeded, seen, stored, errors, platform="rss-local-shard",
     )
     return {
-        "status": "success" if succeeded else "failed",
-        "start": start,
-        "end": end,
-        "next": next_index,
-        "total": len(tasks),
-        "attempted": len(selected),
-        "succeeded": succeeded,
-        "seen": seen,
-        "stored": stored,
-        "errors": len(errors),
+        # A partial pass that still made forward progress is not a failure.
+        "status": "success" if completed else "failed",
+        "start": start, "end": end, "next": next_index,
+        "total": len(tasks), "attempted": len(selected),
+        "completed": completed, "abandoned": abandoned,
+        "succeeded": succeeded, "seen": seen, "stored": stored,
+        "errors": len(errors) - (1 if abandoned else 0),
     }
 
 

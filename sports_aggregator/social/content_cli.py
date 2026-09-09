@@ -224,8 +224,11 @@ def main(argv=None) -> int:
             len(result.league.feeds)-len(errors),len(result.articles),stored,errors,
             platform="rss",
         )
-        clustered=StoryRepository(repository.path).rebuild()
-        print(f"articles={len(result.articles)} stored={stored} errors={len(result.errors)} stories={clustered['stories']}")
+        # Story clustering is its own step (`cluster`), which runs right after
+        # this one in every content pass. Rebuilding 21 days of clusters a
+        # second time here was the memory spike that made `articles` fail with
+        # a MemoryError on the constrained instance.
+        print(f"articles={len(result.articles)} stored={stored} errors={len(result.errors)}")
         return _step_exit_code(attempted=len(result.league.feeds),
                                errors=len(result.errors), stored=stored)
     if args.command=="ingest-local-reporting":

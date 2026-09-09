@@ -205,3 +205,18 @@ def test_the_log_tail_route_is_behind_the_token(tmp_path: Path):
     payload = ok.get_json()
     assert payload["log"] == "refresh-x.log"
     assert any("exceeded 1800s" in line for line in payload["lines"])
+
+
+def test_the_admin_pin_works_on_the_status_page_like_it_does_on_the_refresh(tmp_path: Path):
+    # The re-run button authenticates through require_refresh_auth, which takes
+    # the PIN; the log tail rejected it, on the same page.
+    app = _app(tmp_path, CFB_REFRESH_TOKEN="s3cr3t", CFB_ADMIN_PIN="1234")
+    (tmp_path / "scheduled_refresh_history.jsonl").write_text(json.dumps({
+        "status": "degraded", "profile": "content", "finished_at": _now_iso(hours=1),
+        "log": str(tmp_path / "refresh_logs" / "r.log"),
+    }) + "\n", encoding="utf-8")
+    (tmp_path / "refresh_logs").mkdir(); (tmp_path / "refresh_logs" / "r.log").write_text("x\n", encoding="utf-8")
+    assert app.test_client().get("/college-football/data-status/log-tail?segment=content",
+                                 headers={"Authorization": "Bearer nope"}).status_code == 401
+    assert app.test_client().get("/college-football/data-status/log-tail?segment=content",
+                                 headers={"Authorization": "Bearer 1234"}).status_code == 200

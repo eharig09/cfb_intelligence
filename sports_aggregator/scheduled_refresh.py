@@ -28,6 +28,9 @@ except ImportError:  # pragma: no cover
 # its own bounded `news` profile below.
 LIGHT_REFRESH_STEPS = [
     "cfbd-sync", "articles", "weather", "bluesky", "reddit", "youtube", "podcasts",
+    # `articles` used to rebuild the story clusters itself; that spike is now
+    # left to the dedicated step so the ingest stays light.
+    "cluster",
 ]
 SCORES_REFRESH_STEPS = ["cfbd-sync", "cfbd-lines"]
 RESULTS_REFRESH_STEPS = ["cfbd-sync", "cfbd-box-scores", "cfbd-lines"]
