@@ -60,7 +60,7 @@ def _advanced_html(repository, game):
     try: rows=game_summary(repository,int(game['game_id']),model_version=EPA_MODEL_VERSION)
     except Exception: rows=[]
     by={str(r.get('team')):r for r in rows}; away_name=str(game.get('away_team') or 'Away'); home_name=str(game.get('home_team') or 'Home'); away=by.get(away_name,{}); home=by.get(home_name,{})
-    if not away and not home:return '<div class="empty">Precomputed EPA metrics are not available for this game yet.</div>'
+    if not away and not home:return ''  # section is dropped rather than shown empty
     specs=(('EPA / play','epa_per_play',_f2,False,'All qualifying rush/pass snaps'),('Competitive EPA / play','competitive_epa_per_play',_f2,False,'Current non-garbage split'),('Pass EPA / play','pass_epa_per_play',_f2,False,None),('Rush EPA / play','rush_epa_per_play',_f2,False,None),('Early-down EPA / play','early_down_epa_per_play',_f2,False,'1st and 2nd down'),('Defensive EPA allowed / play','defensive_epa_allowed_per_play',_f2,True,'Lower is better'),('Success rate','success_rate',_pct,False,None),('Explosive-play rate','explosive_rate',_pct,False,None),('Havoc allowed','havoc_allowed_rate',_pct,True,'Lower is better'),('Scoring-opportunity rate','scoring_opportunity_rate',_pct,False,None))
     body=[]
     for label,key,fmt,lower_better,note in specs:
@@ -82,14 +82,14 @@ def _advanced_html(repository, game):
 def _expectation_html(repository,game):
     try:snap=final_snapshot(repository,int(game['game_id']))
     except Exception:snap=None
-    if not snap:return '<div class="empty">No frozen pregame snapshot exists for this game.</div>'
+    if not snap:return ''  # section is dropped rather than shown empty
     p=snap.get('payload') or {}; market=p.get('market') or {}; elo=p.get('elo') or {}; fpi=p.get('fpi') or {}; cards=[]
     if market.get('consensus_spread') is not None or market.get('consensus_total') is not None:cards.append(f'<article class="postgame-expect"><div class="postgame-sub">Market at snapshot</div><strong>Spread {_f1(market.get("consensus_spread"))} · Total {_f1(market.get("consensus_total"))}</strong></article>')
     he=(elo.get('home') or {}).get('elo'); ae=(elo.get('away') or {}).get('elo')
     if he is not None or ae is not None:cards.append(f'<article class="postgame-expect"><div class="postgame-sub">Pregame Elo</div><strong>{escape(str(game.get("away_team")))} {_f1(ae)} · {escape(str(game.get("home_team")))} {_f1(he)}</strong></article>')
     hw=fpi.get('homeWinProb') or fpi.get('home_win_prob'); aw=fpi.get('awayWinProb') or fpi.get('away_win_prob')
     if hw is not None or aw is not None:cards.append(f'<article class="postgame-expect"><div class="postgame-sub">Pregame FPI</div><strong>Away {_pct(aw)} · Home {_pct(hw)}</strong></article>')
-    return '<div class="postgame-expect-grid">'+''.join(cards)+'</div>' if cards else '<div class="empty">The snapshot contains no comparable model or market fields.</div>'
+    return '<div class="postgame-expect-grid">'+''.join(cards)+'</div>' if cards else ''
 
 
 def _factor_html(report,game):
@@ -161,15 +161,41 @@ def _roles_html(report,season):
         rank=int(r.get('observed_rank') or 0); games=int(r.get('games') or 0)
         note=('splitting first-team reps' if rank>=2 else 'starting on thin evidence')
         rows.append(f'<div class="role-signal-row"><strong>{shown}</strong><span>{escape(str(r.get("team") or ""))} · {escape(str(r.get("position") or ""))} · {note} · observed #{rank} across {games} game{"" if games==1 else "s"} · {escape(str(r.get("confidence") or "early"))} confidence</span></div>')
-    return '<div class="role-signal">'+''.join(rows)+'</div>' if rows else '<div class="empty">Both depth charts read as settled this week — the observed starters match the projected ones.</div>'
+    # Empty when every observed starter matches the projected one -- the common
+    # case. The section is then dropped, not shown as a box saying "nothing".
+    return '<div class="role-signal">'+''.join(rows)+'</div>' if rows else ''
+
+
+def _section(h3,span,body):
+    """A section head + body, or nothing when the body is empty.
+
+    A `<div class="empty">` mid-report reads as broken rather than "there is
+    nothing to say here", so an optional section that has no data is left out
+    entirely instead.
+    """
+    if not str(body or "").strip():return ""
+    return (f'<div class="postgame-section-head"><h3>{h3}</h3><span>{span}</span></div>{body}')
 
 
 def _render(repository,game,team_stats,player_stats):
     report=postgame_report(repository,game,team_stats or (),player_stats or ()); season=int(game.get('season') or 0); _role_names(repository,season,report['roles'])
     try:annotate_player_epa(repository,game,report['players'],model_version=EPA_MODEL_VERSION)
     except Exception:pass
-    advanced=_advanced_html(repository,game); expectations=_expectation_html(repository,game); factors=_factor_html(report,game); players=_players_html(report,game,season); roles=_roles_html(report,season); coverage=escape(str((report.get('coverage') or {}).get('coverage_note') or ''))
-    return Markup(STYLE+'<section class="section postgame-shell">'+'<div class="postgame-report-head"><h2>Game analysis</h2><span>Evidence-led postgame intelligence</span></div>'+'<div class="postgame-story">'+f'<p class="postgame-lede">{escape(str(report["story"]))}</p><div class="postgame-meta"><span class="postgame-tag">{escape(str(report["complexion"]))}</span><span class="postgame-tag">Margin {float(report["margin"]):g}</span><span class="postgame-tag">{len(report["factors"])} measurable separators</span></div></div>'+'<div class="postgame-section-head"><h3>What decided it</h3><span>Ranked measurable evidence</span></div>'+f'{factors}' + '<div class="postgame-section-head"><h3>Efficiency profile</h3><span>Rush and pass snaps outside garbage time</span></div>'+f'{advanced}'+'<div class="postgame-section-head"><h3>Expectation vs reality</h3><span>Frozen before kickoff</span></div>'+f'{expectations}'+'<div class="postgame-section-head"><h3>Player impact</h3><span>Box production and involved-play value</span></div>'+f'{players}'+'<div class="postgame-section-head"><h3>Observed usage</h3><span>Where the depth chart is not settled</span></div>'+f'{roles}<div class="postgame-coverage"><strong>Analysis coverage.</strong> {coverage}</div></section>')
+    factors=_factor_html(report,game); players=_players_html(report,game,season)
+    coverage=escape(str((report.get('coverage') or {}).get('coverage_note') or ''))
+    sections="".join([
+        _section("What decided it","Ranked measurable evidence",factors),
+        _section("Efficiency profile","Rush and pass snaps outside garbage time",_advanced_html(repository,game)),
+        _section("Expectation vs reality","Frozen before kickoff",_expectation_html(repository,game)),
+        _section("Player impact","Box production and involved-play value",players),
+        _section("Observed usage","Where the depth chart is not settled",_roles_html(report,season)),
+    ])
+    return Markup(STYLE+'<section class="section postgame-shell">'
+        +'<div class="postgame-report-head"><h2>Game analysis</h2><span>Evidence-led postgame intelligence</span></div>'
+        +'<div class="postgame-story">'
+        +f'<p class="postgame-lede">{escape(str(report["story"]))}</p><div class="postgame-meta"><span class="postgame-tag">{escape(str(report["complexion"]))}</span><span class="postgame-tag">Margin {float(report["margin"]):g}</span><span class="postgame-tag">{len(report["factors"])} measurable separators</span></div></div>'
+        +sections
+        +f'<div class="postgame-coverage"><strong>Analysis coverage.</strong> {coverage}</div></section>')
 
 
 #: Every model and version the report reads, gathered from the modules that

@@ -223,9 +223,31 @@
 .box-report .table-caption strong,.matchup-page .table-caption strong{
   font:700 var(--fs-h4,.95rem)/1.2 var(--body-font)}
 .box-report table.data thead th,.matchup-page table.data thead th{
-  background:var(--report-paper,var(--paper));border-bottom:1px solid var(--report-rule,var(--line));
-  color:var(--report-muted,var(--muted))}
+  background:var(--cream);border-bottom:1px solid var(--report-rule,var(--line));
+  color:var(--report-muted,var(--muted));font-weight:800}
 .box-report table.data tbody tr:nth-child(even),.matchup-page table.data tbody tr:nth-child(even){background:transparent}
+.box-report table.data tbody tr:hover,.matchup-page table.data tbody tr:hover{background:color-mix(in srgb,var(--line) 40%,transparent)}
+/* The saturated column rail is the identity system elsewhere; in the flat
+   report a full-strength team colour (SMU's is pure #d70000) running the height
+   of the table is the single thing that still reads as a bolted-on widget.
+   Keep a hint of the tint, drop it to a hairline and mostly to the line colour. */
+.box-report table.data :is(td,th):is(.col-key-away,.col-key-home,.col-key-away-offense,.col-key-home-offense),
+.matchup-page table.data :is(td,th):is(.col-key-away,.col-key-home,.col-key-away-offense,.col-key-home-offense){
+  border-left-width:1px;border-left-color:color-mix(in srgb,var(--away-team,var(--team-away,var(--line-strong))) 30%,var(--report-rule,var(--line)))}
+.box-report table.data :is(td,th):is(.col-key-home,.col-key-home-offense),
+.matchup-page table.data :is(td,th):is(.col-key-home,.col-key-home-offense){
+  border-left-color:color-mix(in srgb,var(--home-team,var(--team-home,var(--line-strong))) 30%,var(--report-rule,var(--line)))}
+.box-report table.data :is(td,th):is(.col-key-away-defense,.col-key-home-defense),
+.matchup-page table.data :is(td,th):is(.col-key-away-defense,.col-key-home-defense){
+  border-right-width:1px;border-right-color:color-mix(in srgb,var(--away-team,var(--team-away,var(--line-strong))) 30%,var(--report-rule,var(--line)))}
+.box-report table.data :is(td,th):is(.col-key-home-defense),
+.matchup-page table.data :is(td,th):is(.col-key-home-defense){
+  border-right-color:color-mix(in srgb,var(--home-team,var(--team-home,var(--line-strong))) 30%,var(--report-rule,var(--line)))}
+/* The matching header ticks (an inset box-shadow in the same saturated colour). */
+.matchup-page table.data thead :is(.col-key-away,.col-key-away-offense,.col-key-away-defense){
+  box-shadow:inset 0 2px color-mix(in srgb,var(--away-team,var(--line-strong)) 35%,var(--report-rule,var(--line)))}
+.matchup-page table.data thead :is(.col-key-home,.col-key-home-offense,.col-key-home-defense){
+  box-shadow:inset 0 2px color-mix(in srgb,var(--home-team,var(--line-strong)) 35%,var(--report-rule,var(--line)))}
 .box-report table.data thead th:first-child,.matchup-page table.data thead th:first-child,
 .box-report table.data tbody td:first-child,.matchup-page table.data tbody td:first-child{padding-left:0}
 .box-report table.data thead th:last-child,.matchup-page table.data thead th:last-child,
