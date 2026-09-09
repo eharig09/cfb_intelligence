@@ -477,7 +477,8 @@ table.data td.state-departed .sub { color: var(--red); }
     align-items: start;
 }
 @media (min-width: 780px) { .situation { grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); } }
-.situation-card { background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--gold); padding: 9px 11px; }
+.situation-card { background: transparent; border: 0; border-left: 3px solid var(--gold); padding: 8px 0 8px 12px; }
+.situation { gap: 8px 18px; }
 .situation-card h3 { font: 800 .85rem var(--display-font); margin: 0 0 4px; }
 .situation-card p { margin: 0; font-size: .74rem; line-height: 1.45; }
 .situation-card .meta { margin-top: 5px; }

@@ -62,11 +62,15 @@ h1 b { color: var(--rust); }
         margin: 12px 0 4px;
     }
     @media (min-width: 720px) { .ats-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    /* A light left-tick block, matching .situation-card and the report's team
+       sub-headings -- no full box or radius, so it sits with the flat tables
+       around it rather than floating. */
     .ats-card {
-        background: var(--paper); border: 1px solid var(--line);
-        border-left: 4px solid var(--team); border-radius: 6px; padding: 10px 12px;
+        background: transparent; border: 0;
+        border-left: 3px solid var(--team); padding: 8px 0 8px 12px;
         min-width: 0;
     }
+    .ats-pair { gap: 18px; }
     .ats-card h4 { font: 800 1rem var(--display-font); margin: 0 0 6px; }
     .ats-grid { width: 100%; border-collapse: collapse; }
     .ats-grid thead th {
