@@ -147,12 +147,20 @@ class TurningPointRenderTests(unittest.TestCase):
         self.assertIn("pg-f-turnover", svg)
         self.assertNotIn('class="pg-f-drive td"', svg)
 
-    def test_the_wp_bar_is_tinted_for_the_team_the_swing_helped(self):
+    def test_the_wp_bar_shows_the_two_states(self):
         from sports_aggregator.cfb.postgame_analytics_display import _wp_meter_html
         html = _wp_meter_html(self._row(), "Eastern Michigan", "San José State")
-        # home WP fell 64 -> 34, so the swing helped the away team
-        self.assertIn("pts to San José State", html)
+        self.assertIn("Eastern Michigan WP", html)
         self.assertIn("64%", html); self.assertIn("34%", html)
+        self.assertIn("--span:30.7%", html)  # the swing width
+
+    def test_the_swing_and_the_team_it_helped_are_in_the_lead_sentence(self):
+        from sports_aggregator.cfb.postgame_analytics_display import _turn_summary
+        row = self._row(play_text="D.Alexander 40 Yd pass from L.Weaver TOUCHDOWN",
+                        yards_gained=40, home_wp_before=0.643, home_wp_after=0.336)
+        html = _turn_summary(row, {"away_team": "San José State", "home_team": "Eastern Michigan"},
+                             {}, "Eastern Michigan", "San José State")
+        self.assertIn("swing to San José State", html)  # home WP fell -> helped away
 
     def test_a_player_named_twice_in_one_play_keeps_one_colour(self):
         from app import create_app
@@ -178,3 +186,23 @@ class TurningPointRenderTests(unittest.TestCase):
         self.assertIn("Eastern Michigan 16", out)
         self.assertIn("Eastern Michigan goal line", out)
         self.assertNotIn("EMU16", out)
+
+    def test_the_card_leads_with_one_plain_sentence(self):
+        from sports_aggregator.cfb.postgame_analytics_display import _turn_summary
+        roster = {"malcolm simmons": ("1", "San José State")}
+        row = self._row(play_text="Malcolm Simmons 27 Yd pass from L.Weaver (Kick GOOD) TOUCHDOWN",
+                        yards_gained=27, home_wp_before=0.70, home_wp_after=0.48)
+        html = _turn_summary(row, {"away_team": "San José State", "home_team": "Eastern Michigan"},
+                             roster, "Eastern Michigan", "San José State")
+        self.assertIn("San José State scored", html)
+        self.assertIn("Malcolm Simmons 27-yard catch", html)
+        self.assertIn("swing to San José State", html)  # home WP fell -> helped away
+
+    def test_a_game_sealing_swing_says_so(self):
+        from sports_aggregator.cfb.postgame_analytics_display import _turn_summary
+        row = self._row(play_text="field goal attempt GOOD", event_yards_to_goal=20,
+                        home_wp_before=0.90, home_wp_after=0.997, scoring=1, event_priority=90)
+        row["play_type"] = "Field Goal"
+        html = _turn_summary(row, {"away_team": "A", "home_team": "Eastern Michigan"},
+                             {}, "Eastern Michigan", "A")
+        self.assertIn("sealed it for Eastern Michigan", html)

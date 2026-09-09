@@ -280,33 +280,24 @@ def _wp_meter_html(row,home_team,away_team):
     if b is None or a is None:return ""
     try:b=float(b); a=float(a)
     except (TypeError,ValueError):return ""
-    helped=home_team if a>b else away_team; arrow="▲" if a>b else ("▼" if a<b else "▶")
-    lo=min(a,b); span=abs(a-b); swing=100*span
-    return (f'<div class="pg-turn-wp"><div class="pg-turn-wp-label">Win probability &middot; {escape(home_team)}</div>'
+    arrow="▲" if a>b else ("▼" if a<b else "▶")
+    lo=min(a,b); span=abs(a-b)
+    # The swing size and the team it helped are in the card's lead sentence, so
+    # this is just the two states and the bar. The label names whose WP it is.
+    return (f'<div class="pg-turn-wp">'
             f'<div class="pg-turn-wp-track" style="--lo:{100*lo:.1f}%;--span:{100*span:.1f}%">'
             f'<i class="pg-turn-wp-fill"></i>'
             f'<i class="pg-turn-wp-dot before" style="left:{100*b:.1f}%"></i>'
             f'<i class="pg-turn-wp-dot after" style="left:{100*a:.1f}%"></i></div>'
-            f'<div class="pg-turn-wp-read"><b>{100*b:.0f}%</b> {arrow} <b>{100*a:.0f}%</b>'
-            f'<span class="pg-turn-wp-help">{swing:.1f} pts to {escape(helped)}</span></div></div>')
+            f'<div class="pg-turn-wp-read"><span class="pg-turn-wp-name">{escape(home_team)} WP</span>'
+            f'<b>{100*b:.0f}%</b> {arrow} <b>{100*a:.0f}%</b></div></div>')
 
 
 def _field_read(row,label):
-    # The down & distance already sits in the strip's label; this line is the
-    # spot and the outcome.
-    field=_field_position(row); parts=[escape(field)] if field else []
-    if label=="Field goal":parts.append("field goal")
-    elif label in ("Interception","Pick-six"):parts.append("intercepted")
-    elif label in ("Fumble","Fumble TD"):parts.append("fumble")
-    else:
-        gain=""
-        if row.get("yards_gained") is not None and _is_scrimmage(row):
-            try:
-                y=int(row.get("yards_gained")); gain=f"{y}-yard gain" if y>=0 else f"{abs(y)}-yard loss"
-            except (TypeError,ValueError):pass
-        if "Touchdown" in label:gain=(gain+" &mdash; touchdown").strip()
-        if gain:parts.append(gain)
-    return " &middot; ".join(p for p in parts if p)
+    # Just the spot. The down & distance is in the strip's label; the yards and
+    # the outcome are in the card's lead sentence. This says where on the field.
+    field=_field_position(row)
+    return escape(field) if field else ""
 
 
 def _field_svg(row):
@@ -364,6 +355,72 @@ def _score_chip(row,game,abbrevs):
     return f'<span class="pg-turn-score">{short("away")} {int(as_)} &middot; {short("home")} {int(hs)}</span>'
 
 
+def _key_player(text,roster):
+    """The first named player in the cleaned play text, jersey prefix dropped."""
+    for match in _play_pattern(roster or {}).finditer(text):
+        token=match.group(0)
+        if match.groupdict().get("roster") or re.match(r"^#\d+\s+[A-Z]",token):
+            return re.sub(r"^#\d+\s+","",token).strip()
+    return ""
+
+
+def _turn_summary(row,game,roster,home_team,away_team):
+    """One plain sentence: what happened, then what it did to the game.
+
+    The card has every fact -- the event chip, the two WP numbers, the field
+    strip, the verbatim play -- but a reader had to assemble the story from all
+    of them. This states it once.
+    """
+    label=_event_label(row)
+    offense=str(_event_field(row,"offense") or "the offense")
+    defense=str(_event_field(row,"defense") or "the defense")
+    raw=str(row.get("play_text") or ""); low=raw.casefold()
+    key=_key_player(_clean_play_text(raw,game),roster)
+    try:down=int(_event_field(row,"down"))
+    except (TypeError,ValueError):down=0
+    try:distance=int(_event_field(row,"distance"))
+    except (TypeError,ValueError):distance=0
+    try:gained=int(row.get("yards_gained")); yards=abs(gained)
+    except (TypeError,ValueError):gained,yards=0,0
+    is_pass=("pass" in low) or ("sack" in low) or (str(row.get("play_type") or "").casefold()=="pass")
+
+    if label in ("Pick-six","Fumble TD"):
+        kind="interception" if "Pick" in label else "fumble"
+        what=f"{escape(defense)} returned {'an' if kind[0] in 'aeiou' else 'a'} {kind} for a touchdown"
+        if key:what+=f" &mdash; {escape(key)}"
+    elif "Touchdown" in label:
+        # In a scoring summary CFBD names the scorer first, so `key` is who
+        # reached the end zone: "{team} scored -- Name Nn-yard catch/run".
+        act="catch" if is_pass else "run"
+        what=f"{escape(offense)} scored"
+        if key and yards:what+=f" &mdash; {escape(key)} {yards}-yard {act}"
+        elif key:what+=f" &mdash; {escape(key)}"
+        elif yards:what+=f" on a {yards}-yard {'pass' if is_pass else 'run'}"
+    elif label=="Field goal":
+        what=f"{escape(offense)} made a field goal" + (f" &mdash; {escape(key)}" if key else "")
+    elif label in ("Interception","Fumble"):
+        what=f"{escape(offense)} lost the ball on {'an interception' if label=='Interception' else 'a fumble'}"
+        if key:what+=f" &mdash; {escape(key)}"
+    elif down==4 and distance>0:
+        what=(f"{escape(offense)} converted 4th &amp; {distance}" if gained>=distance
+              else f"{escape(offense)} came up short on 4th &amp; {distance}")
+    elif yards:
+        what=f"{escape(offense)} {'gained' if gained>=0 else 'lost'} {yards} yards"
+    else:
+        what=f"{escape(offense)} kept a drive alive"
+
+    changed=""
+    b,a=row.get("home_wp_before"),row.get("home_wp_after")
+    try:
+        b=float(b); a=float(a); helped=home_team if a>b else (away_team if a<b else "")
+        swing=round(100*abs(a-b)); ha=100*a
+        if helped and (ha>=99 or ha<=1):changed=f"and sealed it for {escape(helped)}"
+        elif helped and swing>=1:changed=f"a {swing}-point swing to {escape(helped)}"
+    except (TypeError,ValueError):pass
+    sentence=f"{what}, {changed}." if changed else f"{what}."
+    return f'<p class="pg-turn-summary">{sentence}</p>'
+
+
 def _turn_card(rank,row,game,colors,roster,abbrevs,home_team,away_team):
     period,minute,second=_event_clock(row); label=_event_label(row)
     offense=str(_event_field(row,"offense") or ""); defense=str(_event_field(row,"defense") or "")
@@ -380,10 +437,11 @@ def _turn_card(rank,row,game,colors,roster,abbrevs,home_team,away_team):
             f'<div class="pg-turn-rank">{rank:02d}</div>'
             f'<div class="pg-turn-body">'
             f'<div class="pg-turn-head"><span class="pg-turn-clock">Q{period} &middot; {minute}:{second:02d}</span>{label_html}{_score_chip(row,game,abbrevs)}</div>'
+            f'{_turn_summary(row,game,roster,home_team,away_team)}'
             f'<div class="pg-turn-viz">{_wp_meter_html(row,home_team,away_team)}'
             f'<div class="pg-turn-field"><div class="pg-turn-field-label">{field_label}</div>{_field_svg(row)}'
             f'<div class="pg-turn-field-read">{_field_read(row,label)}</div></div></div>'
-            f'<p class="pg-turn-play">{play_html}</p></div></article>')
+            f'<details class="pg-turn-play"><summary>Play call</summary><p>{play_html}</p></details></div></article>')
 
 
 def _render(repository,game):
