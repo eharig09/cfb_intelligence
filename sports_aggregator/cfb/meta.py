@@ -216,6 +216,18 @@ def today_meta(season: int, *, game_count: int = 0, story_count: int = 0) -> dic
     )
 
 
+def elo_meta(season: int, *, rated_teams: int = 0) -> dict[str, Any]:
+    count = f"{_count(rated_teams, 'rated FBS team')}." if rated_teams else ""
+    return page_meta(
+        f"{season} FBS Elo ratings | College Football",
+        _sentence(
+            f"Current {season} college football Elo ratings.", count,
+            "National ranks, conference strength, rating movement, and season ranges."),
+        path=f"/college-football/elo/?season={season}",
+        kind="website",
+    )
+
+
 # ---------------------------------------------------------------------------
 # schema.org structured data
 # ---------------------------------------------------------------------------

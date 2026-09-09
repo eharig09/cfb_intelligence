@@ -317,6 +317,44 @@ def today():
     )
 
 
+@cfb_pages.get("/college-football/elo/")
+@cached_page
+def elo_ratings():
+    season = _season()
+    repository = _repository()
+    snapshot = repository.elo_snapshot(season)
+    brands = repository.team_brands()
+
+    leaders = []
+    for row in snapshot["rankings"][:5]:
+        leaders.append({**row, "identity": team_identity(brands.get(row["team_id"]) or {})})
+
+    conferences = []
+    averages = [row["average_elo"] for row in snapshot["conferences"]]
+    floor = min(averages, default=0)
+    ceiling = max(averages, default=0)
+    span = ceiling - floor
+    for row in snapshot["conferences"]:
+        conferences.append({
+            **row,
+            "identity": conference_identity(row["conference"]),
+            "strength": round(18 + 82 * (row["average_elo"] - floor) / span, 1)
+            if span else 100,
+        })
+
+    return render_template(
+        "cfb_elo.html",
+        meta=page_meta_for.elo_meta(
+            season, rated_teams=snapshot["summary"]["rated_teams"]),
+        season=season,
+        seasons=snapshot["available_seasons"],
+        summary=snapshot["summary"],
+        leaders=leaders,
+        conferences=conferences,
+        rankings_table=views.elo_rankings_table(snapshot, season, brands),
+    )
+
+
 @cfb_pages.get("/college-football/conferences/<slug>/")
 @cached_page
 def conference_preview(slug: str):
@@ -1211,6 +1249,12 @@ def rankings_api():
     payload["season"] = season
     payload["count"] = len(payload["teams"])
     return jsonify(payload)
+
+
+@cfb_pages.get("/api/v1/cfb/elo")
+def elo_api():
+    """The same current FBS Elo snapshot used by the display page."""
+    return jsonify(_repository().elo_snapshot(_season()))
 
 
 @cfb_pages.get("/api/v1/cfb/games/<int:game_id>")

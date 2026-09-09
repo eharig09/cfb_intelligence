@@ -1734,6 +1734,107 @@ class CFBRepository:
             entry["elo_rank"] = rank
         return latest
 
+    def elo_snapshot(self, season: int) -> dict[str, Any]:
+        """A page-ready FBS Elo leaderboard with movement and league context.
+
+        Elo is carried on game records rather than a standalone CFBD endpoint.
+        Keeping the reconstruction here gives the HTML page and JSON API the
+        same definition of "current": the most recent dated pregame rating for
+        each team in the requested season.
+        """
+        self.initialize()
+        with self._reader() as connection:
+            rows = connection.execute(
+                """SELECT rated.team_id,rated.elo,rated.week,rated.start_date,
+                          rated.game_id,t.school,t.conference
+                     FROM (
+                       SELECT game_id,home_team_id team_id,home_pregame_elo elo,
+                              week,start_date
+                         FROM games
+                        WHERE season=? AND home_pregame_elo IS NOT NULL
+                       UNION ALL
+                       SELECT game_id,away_team_id team_id,away_pregame_elo elo,
+                              week,start_date
+                         FROM games
+                        WHERE season=? AND away_pregame_elo IS NOT NULL
+                     ) rated
+                     JOIN teams t ON t.team_id=rated.team_id
+                    WHERE lower(t.classification)='fbs'
+                    ORDER BY rated.start_date,rated.game_id""",
+                (season, season),
+            ).fetchall()
+            available_seasons = [row["season"] for row in connection.execute(
+                """SELECT DISTINCT g.season
+                     FROM games g JOIN teams t
+                       ON t.team_id IN (g.home_team_id,g.away_team_id)
+                    WHERE lower(t.classification)='fbs'
+                      AND (g.home_pregame_elo IS NOT NULL
+                           OR g.away_pregame_elo IS NOT NULL)
+                    ORDER BY g.season DESC""")]
+
+        histories: dict[int, list[dict[str, Any]]] = {}
+        for raw in rows:
+            histories.setdefault(int(raw["team_id"]), []).append(dict(raw))
+
+        rankings: list[dict[str, Any]] = []
+        for team_rows in histories.values():
+            latest = team_rows[-1]
+            previous = team_rows[-2]["elo"] if len(team_rows) > 1 else None
+            values = [int(row["elo"]) for row in team_rows]
+            rankings.append({
+                "team_id": latest["team_id"],
+                "team": latest["school"],
+                "conference": latest["conference"],
+                "elo": int(latest["elo"]),
+                "previous_elo": int(previous) if previous is not None else None,
+                "change": int(latest["elo"] - previous) if previous is not None else None,
+                "week": latest["week"],
+                "rated_games": len(team_rows),
+                "season_high": max(values),
+                "season_low": min(values),
+            })
+        rankings.sort(key=lambda row: (-row["elo"], row["team"]))
+        for rank, row in enumerate(rankings, start=1):
+            row["rank"] = rank
+
+        conference_groups: dict[str, list[dict[str, Any]]] = {}
+        for row in rankings:
+            conference_groups.setdefault(row["conference"] or "Independent", []).append(row)
+        conferences = []
+        for conference, conference_rows in conference_groups.items():
+            leader = conference_rows[0]
+            conferences.append({
+                "conference": conference,
+                "average_elo": round(
+                    sum(row["elo"] for row in conference_rows) / len(conference_rows), 1),
+                "rated_teams": len(conference_rows),
+                "leader": leader["team"],
+                "leader_team_id": leader["team_id"],
+                "leader_elo": leader["elo"],
+                "leader_rank": leader["rank"],
+            })
+        conferences.sort(key=lambda row: (-row["average_elo"], row["conference"]))
+
+        values = sorted(row["elo"] for row in rankings)
+        middle = len(values) // 2
+        median = (values[middle] if len(values) % 2
+                  else ((values[middle - 1] + values[middle]) / 2 if values else None))
+        return {
+            "season": season,
+            "available_seasons": available_seasons,
+            "rankings": rankings,
+            "conferences": conferences,
+            "summary": {
+                "rated_teams": len(rankings),
+                "leader": rankings[0]["team"] if rankings else None,
+                "leader_elo": rankings[0]["elo"] if rankings else None,
+                "median_elo": median,
+                "rating_spread": values[-1] - values[0] if values else None,
+                "latest_week": max((row["week"] for row in rankings
+                                    if row["week"] is not None), default=None),
+            },
+        }
+
     def conference_games(self, conference: str, season: int, limit: int=30) -> list[dict[str,Any]]:
         self.initialize(); now=datetime.now(timezone.utc).isoformat()
         with self._reader() as connection:

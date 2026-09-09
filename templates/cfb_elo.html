@@ -1,0 +1,98 @@
+{% extends "_layout.html" %}
+{% from "_tables.html" import data_table %}
+
+{% block title %}{{ season }} FBS Elo ratings | Sports News Aggregator{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_elo.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="elo-hero">
+    <div>
+        <div class="eyebrow">National rating board</div>
+        <h1>FBS Elo ratings</h1>
+        <p class="dek">Every rated team on one board, with conference strength, week-to-week movement, and each program's season range.</p>
+    </div>
+    <form class="elo-season" method="get">
+        <label for="elo-season">Season</label>
+        <div>
+            <select id="elo-season" name="season">
+                {% for year in seasons %}<option value="{{ year }}"{{ ' selected' if year == season }}>{{ year }}</option>{% endfor %}
+                {% if season not in seasons %}<option value="{{ season }}" selected>{{ season }}</option>{% endif %}
+            </select>
+            <button type="submit">View</button>
+        </div>
+    </form>
+</section>
+
+<div class="elo-facts" aria-label="Elo summary">
+    <div><span>Rated teams</span><b>{{ summary.rated_teams }}</b></div>
+    <div><span>National leader</span><b>{{ summary.leader or '—' }}</b><small>{{ summary.leader_elo | cell('int') }} Elo</small></div>
+    <div><span>FBS median</span><b>{{ summary.median_elo | cell('f1') }}</b></div>
+    <div><span>Rating spread</span><b>{{ summary.rating_spread | cell('int') }}</b><small>top to bottom</small></div>
+    <div><span>Latest source</span><b>{% if summary.latest_week is not none %}Week {{ summary.latest_week }}{% else %}—{% endif %}</b></div>
+</div>
+
+{% if leaders %}
+<section class="section elo-leaders">
+    <div class="elo-section-head">
+        <div><div class="eyebrow">The front five</div><h2>National leaders</h2></div>
+        <span>Most recent stored pregame rating</span>
+    </div>
+    <div class="elo-leader-grid">
+        {% for team in leaders %}
+        <a class="elo-leader" href="{{ url_for('cfb.team_preview', team_id=team.team_id) }}"
+           data-identity style="--team-light:{{ team.identity.accent }};--team-dark:{{ team.identity.accent_dark }}">
+            <span class="elo-leader-rank">#{{ team.rank }}</span>
+            <span class="elo-leader-mark">
+                {% if team.identity.logo %}<img src="{{ team.identity.logo_dark or team.identity.logo }}" alt="" loading="lazy">{% else %}{{ team.identity.abbreviation or team.team[:3] | upper }}{% endif %}
+            </span>
+            <span class="elo-leader-team">{{ team.team }}</span>
+            <strong>{{ team.elo }}</strong>
+            <small>{{ team.conference or 'Independent' }}{% if team.change is not none %} · {{ '%+d' | format(team.change) }} last rating{% endif %}</small>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if conferences %}
+<section class="section elo-conferences">
+    <div class="elo-section-head">
+        <div><div class="eyebrow">League comparison</div><h2>Conference strength</h2></div>
+        <span>Average current Elo of rated members</span>
+    </div>
+    <div class="elo-conference-grid">
+        {% for conference in conferences %}
+        <a class="elo-conference" href="{{ url_for('cfb.conference_preview', slug=conference.identity.slug, season=season) }}"
+           data-identity style="--conference-mark-light:{{ conference.identity.color }};--conference-mark-dark:{{ conference.identity.color_dark }};--strength:{{ conference.strength }}%">
+            <div class="elo-conference-top"><span>{{ conference.identity.abbreviation }}</span><strong>{{ conference.average_elo | cell('f1') }}</strong></div>
+            <div class="elo-strength" aria-hidden="true"><i></i></div>
+            <div class="elo-conference-detail"><b>{{ conference.conference }}</b><span>{{ conference.rated_teams }} rated · #{{ conference.leader_rank }} {{ conference.leader }}</span></div>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="section elo-board">
+    <div class="elo-section-head">
+        <div><div class="eyebrow">Complete board</div><h2>All FBS teams</h2></div>
+        <span>Team names open the full intelligence page</span>
+    </div>
+    {{ data_table(rankings_table, 'elo-table') }}
+</section>
+
+<section class="elo-method" aria-labelledby="elo-method-title">
+    <div>
+        <div class="eyebrow">How to read this</div>
+        <h2 id="elo-method-title">One rating, kept in context</h2>
+    </div>
+    <div class="elo-method-grid">
+        <p><strong>Current Elo</strong> is CFBD's pregame Elo from the team's most recent dated game carrying a rating. This app displays that source; it does not blend Elo with polls, FPI, CORE, or betting lines.</p>
+        <p><strong>Change</strong> compares the current observation with the team's previous stored pregame rating. A blank means only one rated observation is available for that season.</p>
+        <p><strong>Season range</strong> is the lowest and highest pregame rating stored for the team. Conference strength is the simple average of current ratings for rated FBS members.</p>
+    </div>
+</section>
+{% endblock %}

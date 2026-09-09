@@ -175,6 +175,43 @@ class CFBRepositoryTests(unittest.TestCase):
         self.assertEqual(quality["average_core"], 8.5)
         self.assertEqual(quality["poll_ranked"], 1)
 
+    def test_elo_snapshot_ranks_fbs_and_preserves_rating_context(self):
+        CFBDataSync(FakeCFBDClient(), self.repository).sync(2026)
+        next_game = {
+            **GAME_PAYLOAD[0], "id": 101, "week": 3,
+            "startDate": "2026-09-12T19:30:00Z",
+            "homePregameElo": 1768, "awayPregameElo": 1662,
+        }
+        self.repository.replace_games(
+            2026, (Game.from_cfbd(game) for game in (GAME_PAYLOAD[0], next_game)))
+        snapshot = self.repository.elo_snapshot(2026)
+
+        self.assertEqual([row["team"] for row in snapshot["rankings"]],
+                         ["Michigan", "Wisconsin"])
+        self.assertEqual(snapshot["rankings"][0]["rank"], 1)
+        self.assertEqual(snapshot["rankings"][0]["season_high"], 1768)
+        self.assertEqual(snapshot["rankings"][0]["season_low"], 1750)
+        self.assertEqual(snapshot["rankings"][0]["change"], 18)
+        self.assertEqual(snapshot["conferences"][0]["average_elo"], 1715.0)
+        self.assertEqual(snapshot["summary"]["median_elo"], 1715.0)
+        self.assertIn(2026, snapshot["available_seasons"])
+
+    def test_elo_page_and_api_use_the_same_snapshot(self):
+        CFBDataSync(FakeCFBDClient(), self.repository).sync(2026)
+        app = create_app({
+            "TESTING": True, "REGISTER_LEGACY_DASHBOARDS": False,
+            "CFB_REPOSITORY": self.repository, "CFB_DEFAULT_SEASON": 2026,
+            "LEAGUE_AGGREGATION_SERVICE": StubReporting(),
+        })
+        client = app.test_client()
+
+        page = client.get("/college-football/elo/")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"FBS Elo ratings", page.data)
+        self.assertIn(b"Michigan", page.data)
+        payload = client.get("/api/v1/cfb/elo").get_json()
+        self.assertEqual(payload["rankings"][0]["team"], "Michigan")
+
     def test_syncs_canonical_entities_aliases_and_preview_data(self):
         report = CFBDataSync(FakeCFBDClient(), self.repository).sync(2026)
         self.assertTrue(report.succeeded)
