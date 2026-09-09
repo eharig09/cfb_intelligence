@@ -84,10 +84,12 @@ def _side(label: str, buckets: dict[str, Any], *, minimum: int, better_high: boo
 
 
 def _empty(reason: str, *, heading: bool = True) -> Markup:
+    # A plain muted line, not a dashed "nothing here" box: the section has a
+    # real place in the report and is just waiting on a pipeline step.
     return Markup(
         STYLE + '<section class="section pass-map">'
         + (_TITLE if heading else "")
-        + f'<div class="empty">{escape(reason)}</div></section>')
+        + f'<p class="pass-note">{escape(reason)}</p></section>')
 
 
 
@@ -222,7 +224,15 @@ def render_matchup(repository, game):
         return _empty("No classified run or pass direction is stored for %d yet." % season)
     blocks = []
     for attacker, defender in ((away, home), (home, away)):
-        columns = [("%s with the ball" % attacker, splits[attacker]["offense"]),
+        offense = splits[attacker]["offense"]
+        if not offense.get("plays"):
+            # A table of dashes reads as broken; say it plainly instead.
+            blocks.append(
+                '<div class="mof-block"><h3>When %s has the ball</h3>'
+                '<p class="pass-thin">No classified run or pass direction is stored for '
+                '%s&rsquo;s offence yet.</p></div>' % (escape(attacker), escape(attacker)))
+            continue
+        columns = [("%s with the ball" % attacker, offense),
                    ("%s allowed" % defender, splits[defender]["defense"])]
         blocks.append('<div class="mof-block"><h3>When %s has the ball</h3>%s</div>'
                       % (escape(attacker), _matrix(columns, minimum=MIN_SEASON_PLAYS)))

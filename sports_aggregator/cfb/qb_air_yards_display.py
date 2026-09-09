@@ -59,7 +59,7 @@ def _card(row: dict[str, Any], *, backup: bool = False, share: float | None = No
 
 def _team_column(team: str, rows: list[dict[str, Any]]) -> str:
     rows=sorted(rows,key=lambda r:(-int(r.get("attributed_pass_plays") or 0),str(r.get("player_name") or "")))
-    if not rows:return f'<section class="pg-qb-team"><div class="pg-qb-team-head">{escape(team)}</div><div class="empty">No attributed quarterback passing plays.</div></section>'
+    if not rows:return f'<section class="pg-qb-team"><div class="pg-qb-team-head">{escape(team)}</div><p class="pg-qb-note">No attributed quarterback passing plays for {escape(team)} in this game.</p></section>'
     total=sum(int(r.get("attributed_pass_plays") or 0) for r in rows); cards=[_card(rows[0])]
     for backup in rows[1:]:
         plays=int(backup.get("attributed_pass_plays") or 0); share=plays/total if total else 0.0

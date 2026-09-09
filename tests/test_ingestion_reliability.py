@@ -151,3 +151,45 @@ def test_local_reporting_falls_back_when_native_feed_fails(tmp_path, monkeypatch
     ]
     assert len(articles) == 1
     assert articles[0].discovered_via == "RSS"
+
+
+def test_a_throttled_news_shard_keeps_its_partial_work_and_advances(monkeypatch):
+    """The fetch loop stops at its deadline, stores what arrived, and moves the
+    cursor to where it stopped -- so the next shard is the next block, not a
+    retry of the one that timed out."""
+    import time
+    from sports_aggregator.social import local_reporting_shard as shard
+
+    tasks = [
+        ({"team_id": i, "team": f"T{i}"}, {"domain": f"d{i}.test", "name": f"S{i}"},
+         FeedConfig(name=f"S{i}", url=f"https://d{i}.test/rss"))
+        for i in range(6)
+    ]
+
+    class _Repo:
+        path = ":memory:"
+        def store_article(self, *a, **k): return None
+        def record_run(self, *a, **k): return None
+
+    class _SlowProvider:
+        def __init__(self, config):
+            self._slow = config.url.endswith(("d3.test/rss", "d4.test/rss", "d5.test/rss"))
+        def fetch(self):
+            if self._slow:
+                time.sleep(5)
+            return []
+
+    written = {}
+    monkeypatch.setattr(shard, "_tasks", lambda *a, **k: tasks)
+    monkeypatch.setattr(shard, "ContentRepository", lambda *a, **k: _Repo())
+    monkeypatch.setattr(shard, "_state_path", lambda repo: "state")
+    monkeypatch.setattr(shard, "_read_cursor", lambda state: 0)
+    monkeypatch.setattr(shard, "_write_cursor", lambda state, nxt, total: written.update(next=nxt))
+    monkeypatch.setattr(shard, "RSSNewsProvider", _SlowProvider)
+
+    report = shard.run_shard(2026, shard_size=6, workers=4, limit=5, deadline=0.4)
+
+    assert report["status"] == "success"          # a partial pass still made progress
+    assert 0 < report["completed"] < 6
+    assert report["abandoned"] >= 1
+    assert written["next"] == report["completed"]  # cursor stopped where the work did

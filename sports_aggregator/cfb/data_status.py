@@ -473,12 +473,29 @@ def _ensure_feedback_schema(connection: sqlite3.Connection) -> None:
 
 
 def _require_audit_auth() -> None:
-    expected = str(current_app.config.get("CFB_REFRESH_TOKEN") or "").strip()
+    """Accept the same credentials as a manual refresh.
+
+    The re-run button on the status page authenticates through the app's
+    `require_refresh_auth`, which takes either the refresh token or the short
+    admin PIN and a PIN sets a session. This used to accept the refresh token
+    only, so someone who typed the PIN got the log tail rejected on the same
+    page where the re-run had just been accepted.
+    """
+    from flask import session
+    if session.get("cfb_admin") is True:
+        return
+    token = str(current_app.config.get("CFB_REFRESH_TOKEN") or "").strip()
+    pin = str(current_app.config.get("CFB_ADMIN_PIN") or "").strip()
     provided = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not expected:
-        abort(503, description="CFB_REFRESH_TOKEN is not configured")
-    if not provided or not secrets.compare_digest(provided, expected):
-        abort(401)
+    if not token and not pin:
+        abort(503, description="CFB_REFRESH_TOKEN or CFB_ADMIN_PIN is not configured")
+    if provided and ((token and secrets.compare_digest(provided, token))
+                     or (pin and secrets.compare_digest(provided, pin))):
+        if pin and secrets.compare_digest(provided, pin):
+            session["cfb_admin"] = True
+            session.permanent = True
+        return
+    abort(401)
 
 
 def _next_scheduled_label(segment: str) -> str:
