@@ -364,6 +364,35 @@ def _key_player(text,roster):
     return ""
 
 
+def _passing_touchdown_players(text,roster):
+    """Return ``(receiver, passer)`` across the two provider TD grammars.
+
+    Older scoring summaries lead with the receiver (``X 27 Yd pass from Y``),
+    while current play-by-play leads with the quarterback (``Y pass complete
+    ... to X``). Treating the first name as the scorer therefore credited the
+    quarterback with a catch on current rows.
+    """
+    players=[]
+    for match in _play_pattern(roster or {}).finditer(text):
+        token=match.group(0)
+        if match.groupdict().get("roster") or re.match(r"^#\d+\s+[A-Z]",token) or re.match(r"^[A-Z]\.\s*[A-Z]",token):
+            players.append((match.start(),match.end(),re.sub(r"^#\d+\s+","",token).strip()))
+
+    pass_from=re.search(r"\bpass\s+from\b",text,flags=re.I)
+    if pass_from:
+        before=[player for start,_end,player in players if start<pass_from.start()]
+        after=[player for start,_end,player in players if start>=pass_from.end()]
+        return (before[-1] if before else "",after[0] if after else "")
+
+    pass_word=re.search(r"\bpass(?:ed)?\b",text,flags=re.I)
+    if not pass_word:return "",""
+    to_word=re.search(r"\bto\b",text[pass_word.end():],flags=re.I)
+    to_at=pass_word.end()+to_word.end() if to_word else None
+    passer=[player for start,_end,player in players if start<pass_word.start()]
+    receiver=[player for start,_end,player in players if to_at is not None and start>=to_at]
+    return (receiver[0] if receiver else "",passer[-1] if passer else "")
+
+
 def _turn_summary(row,game,roster,home_team,away_team):
     """One plain sentence: what happened, then what it did to the game.
 
@@ -389,13 +418,18 @@ def _turn_summary(row,game,roster,home_team,away_team):
         what=f"{escape(defense)} returned {'an' if kind[0] in 'aeiou' else 'a'} {kind} for a touchdown"
         if key:what+=f" &mdash; {escape(key)}"
     elif "Touchdown" in label:
-        # In a scoring summary CFBD names the scorer first, so `key` is who
-        # reached the end zone: "{team} scored -- Name Nn-yard catch/run".
-        act="catch" if is_pass else "run"
         what=f"{escape(offense)} scored"
-        if key and yards:what+=f" &mdash; {escape(key)} {yards}-yard {act}"
+        if is_pass:
+            receiver,passer=_passing_touchdown_players(_clean_play_text(raw,game),roster)
+            if receiver:
+                what+=f" &mdash; {escape(receiver)}" + (f" {yards}-yard catch" if yards else " caught the touchdown")
+                if passer and passer.casefold()!=receiver.casefold():what+=f" from {escape(passer)}"
+            elif passer:
+                what+=f" on a" + (f" {yards}-yard" if yards else "") + f" touchdown pass from {escape(passer)}"
+            elif yards:what+=f" on a {yards}-yard pass"
+        elif key and yards:what+=f" &mdash; {escape(key)} {yards}-yard run"
         elif key:what+=f" &mdash; {escape(key)}"
-        elif yards:what+=f" on a {yards}-yard {'pass' if is_pass else 'run'}"
+        elif yards:what+=f" on a {yards}-yard run"
     elif label=="Field goal":
         what=f"{escape(offense)} made a field goal" + (f" &mdash; {escape(key)}" if key else "")
     elif label in ("Interception","Fumble"):
