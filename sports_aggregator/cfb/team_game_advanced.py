@@ -166,3 +166,31 @@ def game_summary(repository, game_id: int, *, model_version: str = MODEL_VERSION
           WHERE game_id=? AND model_version=? AND metric_version=?
           ORDER BY team
         """, (int(game_id), model_version, metric_version)).fetchall()]
+
+
+def team_weekly_trend(repository, team: str, season: int, *,
+                      model_version: str = MODEL_VERSION,
+                      metric_version: str = METRIC_VERSION) -> list[dict[str, Any]]:
+    """One team's offense/defense EPA, success and explosive rate, by week.
+
+    Defense here is what the opponent's OWN offense did that game -- the same
+    row `defensive_epa_allowed_per_play` is already built from -- read off the
+    opponent's own team-game row rather than recomputed, so it stays exactly
+    consistent with the rest of this table.
+    """
+    initialize(repository)
+    with repository._reader() as connection:
+        rows = connection.execute("""
+          SELECT g.week, a.epa_per_play, a.success_rate, a.explosive_rate,
+                 d.epa_per_play AS defense_epa_per_play,
+                 d.success_rate AS defense_success_rate,
+                 d.explosive_rate AS defense_explosive_rate
+          FROM cfb_team_game_advanced a
+          JOIN games g ON g.game_id = a.game_id
+          LEFT JOIN cfb_team_game_advanced d
+            ON d.game_id = a.game_id AND d.team = a.opponent
+            AND d.model_version = a.model_version AND d.metric_version = a.metric_version
+          WHERE a.team = ? AND g.season = ? AND a.model_version = ? AND a.metric_version = ?
+          ORDER BY g.week
+        """, (str(team), int(season), model_version, metric_version)).fetchall()
+    return [dict(row) for row in rows]

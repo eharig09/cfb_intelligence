@@ -157,14 +157,23 @@ def rank_matchups(signals: Sequence[MatchupSignal], limit: int | None = None) ->
     return scored[:limit] if limit else scored
 
 
+#: Reading order for display: each unit beside the companion that produces or
+#: defends against it (a rush attack beside the blocking that opens it, a pass
+#: attack beside the protection that buys it time), rather than the pure
+#: interest-score order ranking uses internally.
+DISPLAY_ORDER = ("Rushing", "Run blocking", "Pass protection", "Passing", "Receiving")
+
+
 def game_matchup_report(pff_matchups: Iterable[dict[str, Any]], away_team: str,
                         home_team: str, limit: int | None = None) -> dict[str, Any]:
     """Ranked matchups for one game, with a headline count for the page."""
     ranked = rank_matchups(signals_from_pff(pff_matchups, away_team, home_team), limit)
     marquee = [item for item in ranked if item["archetype"] == "STRENGTH_VS_STRENGTH"]
     mismatches = [item for item in ranked if item["archetype"] == "MISMATCH"]
+    order = {label: index for index, label in enumerate(DISPLAY_ORDER)}
+    display = sorted(ranked, key=lambda item: order.get(item["label"], len(DISPLAY_ORDER)))
     return {
-        "matchups": ranked,
+        "matchups": display,
         "marquee_count": len(marquee),
         "mismatch_count": len(mismatches),
         "top_interest": ranked[0]["interest"] if ranked else 0.0,

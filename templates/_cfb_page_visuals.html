@@ -1,3 +1,62 @@
+{% macro probability_track(data) %}
+{% if data %}<div class="prod-prob">
+  <div class="prod-prob-scale" aria-hidden="true"><span>0%</span><span>50%</span><span>100%</span></div>
+  <div class="prod-prob-track" role="img" aria-label="{{ data.home_team }} win probability: {% for model in data.models %}{{ model.label }} {{ model.home_prob }} percent{% if not loop.last %}, {% endif %}{% endfor %}"><i class="prod-prob-mid"></i>{% for model in data.models %}<span class="prod-prob-dot {{ model.key }}" style="--at:{{ model.home_prob }}%" title="{{ model.label }}: {{ model.home_prob }}%"></span>{% endfor %}</div>
+  <div class="prod-prob-values">{% for model in data.models %}<span class="{{ model.key }}"><i></i><b>{{ model.home_prob | cell('f1') }}%</b><small>{{ model.label }}</small></span>{% endfor %}</div>
+  {% if data.spread_current is not none %}<div class="prod-prob-line"><span>Open <b>{{ data.home_team }} {{ data.spread_open | cell('signed') }}</b></span><span>Current <b>{{ data.home_team }} {{ data.spread_current | cell('signed') }}</b></span></div>{% endif %}
+  <p class="prod-prob-note">{{ data.home_team }} win probability, from each independent source.</p>
+</div>{% endif %}
+{% endmacro %}
+
+{% macro game_shape_module(data) %}
+{% if data and data.rows | selectattr('away') | list %}<div class="prod-shape">
+  {% for row in data.rows %}<div class="prod-shape-row"><strong>{{ row.label }}</strong>
+    <div class="prod-shape-bars"{% if not row.bar %} hidden{% endif %}><span class="away" style="--value:{{ row.bar_away }}%"></span><span class="home" style="--value:{{ row.bar_home }}%"></span></div>
+    <b>{{ row.away | cell(row.fmt) }}{{ row.unit }}</b><b>{{ row.home | cell(row.fmt) }}{{ row.unit }}</b>
+  </div>{% endfor %}
+  <div class="prod-shape-key"><span>{{ data.away_team }}</span><span>{{ data.home_team }}</span></div>
+  <div class="prod-shape-facts">
+    <span><b>{{ data.expected_possessions | cell('f1') }}</b>expected possessions, each team</span>
+    <span><b>{{ data.away_drives | cell('f1') }}</b>{{ data.away_team }} drives/game</span>
+    <span><b>{{ data.home_drives | cell('f1') }}</b>{{ data.home_team }} drives/game</span>
+  </div>
+</div>{% endif %}
+{% endmacro %}
+
+{% macro team_trend_chart(data, chart_id) %}
+{% if data %}<div class="prod-trend" data-prod-trend data-chart-id="{{ chart_id }}">
+  <div class="prod-switch" role="group" aria-label="Team trend metric">{% for metric in data.metrics %}<button type="button" class="{{ 'active' if loop.first else '' }}" data-trend-metric="{{ metric.key }}">{{ metric.label }}</button>{% endfor %}</div>
+  <div class="prod-trend-canvas"><canvas id="{{ chart_id }}" role="img" aria-label="Weekly offense and defense trend"></canvas></div>
+  <div class="prod-trend-key"><span><i class="offense"></i>Offense</span><span><i class="defense"></i>Defense</span></div>
+  <script type="application/json" data-trend-json>{{ data | tojson }}</script>
+</div>{% endif %}
+{% endmacro %}
+
+{% macro trend_scripts() %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>(function(){"use strict";
+if(typeof Chart==="undefined")return;
+Chart.defaults.color="#93a1b3";Chart.defaults.borderColor="#2a3542";Chart.defaults.font.family="Segoe UI, Arial, Helvetica, sans-serif";
+document.querySelectorAll("[data-prod-trend]").forEach(function(shell){
+  var canvas=shell.querySelector("canvas");
+  var payload=JSON.parse(shell.querySelector("[data-trend-json]").textContent);
+  var buttons=Array.prototype.slice.call(shell.querySelectorAll("[data-trend-metric]"));
+  function metric(key){return payload.metrics.filter(function(m){return m.key===key;})[0];}
+  var current=metric(buttons[0].dataset.trendMetric);
+  var chart=new Chart(canvas.getContext("2d"),{type:"line",data:{labels:payload.labels,datasets:[
+    {label:"Offense",data:current.offense,borderColor:"#6ea8f0",backgroundColor:"#6ea8f0",tension:.25,spanGaps:true},
+    {label:"Defense",data:current.defense,borderColor:"#ef7a7a",backgroundColor:"#ef7a7a",tension:.25,spanGaps:true}
+  ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+    plugins:{legend:{display:false}},
+    scales:{y:{grid:{color:"#2a3542"}},x:{grid:{display:false}}}}});
+  buttons.forEach(function(button){button.addEventListener("click",function(){
+    buttons.forEach(function(item){item.classList.toggle("active",item===button);});
+    var data=metric(button.dataset.trendMetric);
+    chart.data.datasets[0].data=data.offense;chart.data.datasets[1].data=data.defense;
+    chart.update();
+  });});
+});
+}());</script>{% endmacro %}
+
 {% macro matchup_edges(report, away, home) %}
 {% if report.matchups %}<div class="prod-edge" data-prod-edge>
   <div class="prod-switch" role="group" aria-label="Possession"><button type="button" class="active" data-prod-edge-tab="{{ away }}">{{ away }} with ball</button><button type="button" data-prod-edge-tab="{{ home }}">{{ home }} with ball</button></div>
@@ -33,6 +92,53 @@
       </div>{% endfor %}<div class="prod-los">LINE OF SCRIMMAGE</div>
     </div>
   </div>{% endfor %}
+</section>{% endif %}
+{% endmacro %}
+
+{% macro career_passing_field(profile, player_name) %}
+{% if profile and profile.attempts %}<div class="prod-field"><div class="prod-endzone">END ZONE</div>
+  {% for depth, label in [('deep','Deep 20+'),('intermediate','Intermediate 10–19'),('short','Short 0–9'),('behind_line','Behind LOS')] %}<div class="prod-zone-row"><span>{{ label }}</span>
+    {% for direction in ['left','middle','right'] %}{% set zone=profile.zones[(depth, direction)] %}
+    <button type="button" class="prod-zone {{ 'positive' if zone.epa_per_attempt is not none and zone.epa_per_attempt > 0.15 else 'negative' if zone.epa_per_attempt is not none and zone.epa_per_attempt < -0.05 else 'neutral' }}"><b>{{ zone.epa_per_attempt | cell('signed2') if zone.epa_per_attempt is not none else '—' }}</b><small>{{ zone.completions }}/{{ zone.attempts }} att</small><em>{{ direction | title }}</em>
+      <span class="prod-zone-tip"><strong>{{ label }} {{ direction }}</strong>{% for receiver in zone.receivers %}<span>{{ receiver.name }}<b>{{ receiver.receptions }} rec &middot; {{ receiver.yards }} yds &middot; {{ receiver.touchdowns }} TD</b></span>{% else %}<span>No named targets</span>{% endfor %}</span>
+    </button>{% endfor %}
+  </div>{% endfor %}<div class="prod-los">LINE OF SCRIMMAGE</div>
+</div>{% endif %}
+{% endmacro %}
+
+{% macro passer_profile_module(profile, career, player_name) %}
+{% if profile and profile.attempts %}<section class="section prod-passer">
+  <h2>Passing profile</h2>
+  <div class="section-note">Where {{ player_name }} throws and what it returns. Air yards and direction come
+      from CFBD per-attempt detail; EPA is our event-aligned ep-v2 model.</div>
+  <div class="prod-shape-facts">
+    <span><b>{{ profile.attempts }}</b>Attempts</span>
+    <span><b>{{ profile.completion_rate | cell('pct') }}</b>Completion</span>
+    <span><b>{{ profile.adot | cell('f1') }}</b>ADOT</span>
+    <span><b>{{ profile.yac_per_completion | cell('f1') }}</b>YAC / comp</span>
+    <span><b>{{ profile.epa_per_attempt | cell('signed2') }}</b>EPA / attempt</span>
+  </div>
+  {% set depth_total = profile.depth.values() | sum %}
+  <div class="prod-passer-split">
+    <div class="prod-passer-block">
+      <h3 class="subhead">Depth of target</h3>
+      {% for name, dlabel in [('behind_line','Behind LOS'),('short','Short (0-9)'),('intermediate','Intermediate (10-19)'),('deep','Deep (20+)')] %}
+      <div class="prod-passer-row"><span>{{ dlabel }}</span><b>{{ (profile.depth[name] / depth_total) | cell('pct') if depth_total else '—' }}</b></div>
+      {% endfor %}
+    </div>
+    <div class="prod-passer-block">
+      <h3 class="subhead">By direction</h3>
+      {% for label, bucket in [('Middle', profile.direction.middle), ('Outside', profile.direction.outside)] %}
+      <div class="prod-passer-row"><span>{{ label }}</span><b>{{ bucket.epa_per_attempt | cell('signed2') }}</b><small>{{ bucket.attempts }} att &middot; {{ bucket.adot | cell('f1') }} ADOT</small></div>
+      {% endfor %}
+      {% if profile.direction.middle_share is not none %}<p class="prod-passer-note">{{ profile.direction.middle_share | cell('pct') }} of attempts to the middle.</p>{% endif %}
+    </div>
+  </div>
+  {% if career and career.attempts %}
+  <h3 class="subhead">Career passing zones</h3>
+  <div class="section-note">{{ career.attempts }} charted attempts{% if career.seasons %}, {{ career.seasons[0] }}{% if career.seasons | length > 1 %}&ndash;{{ career.seasons[-1] }}{% endif %}{% endif %}, every stored season combined. Colored by EPA/attempt in that zone; hover or focus for receiver production.</div>
+  {{ career_passing_field(career, player_name) }}
+  {% endif %}
 </section>{% endif %}
 {% endmacro %}
 
