@@ -174,3 +174,34 @@ def team_pace(repository, team: str, seasons: Sequence[int]) -> dict[str, Any] |
     way, and saying whose it is honestly beats showing nothing.
     """
     return _aggregate(repository, [(season, team) for season in seasons])
+
+
+_DRIVES_SQL = """
+SELECT COUNT(DISTINCT p.game_id || '-' || p.drive_id) AS drives,
+       COUNT(DISTINCT p.game_id) AS games
+FROM cfb_plays p JOIN cfb_play_metrics m USING(play_id)
+WHERE m.metric_version = ? AND m.rush_pass IN ('rush', 'pass')
+  AND p.season = ? AND p.offense = ?
+"""
+
+
+def team_drives_per_game(repository, team: str, seasons: Sequence[int], *,
+                         metric_version: str = METRIC_VERSION) -> float | None:
+    """Real possessions per game, counted from distinct offensive drives.
+
+    Counted the same way tempo is: from actual play-by-play rather than an
+    assumed league-average plays-per-drive constant, so it is specific to how
+    this team's own offense has actually played.
+    """
+    from sports_aggregator.cfb.play_by_play import initialize
+
+    initialize(repository)
+    drives = games = 0
+    with repository._reader() as connection:
+        for season in seasons:
+            row = connection.execute(_DRIVES_SQL, (metric_version, int(season), str(team))).fetchone()
+            if row is None:
+                continue
+            drives += int(row["drives"] or 0)
+            games += int(row["games"] or 0)
+    return (drives / games) if games else None

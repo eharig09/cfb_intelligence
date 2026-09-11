@@ -78,6 +78,26 @@ def store_lines(repository: CFBRepository, season: int, payload: Iterable[dict[s
     return len(rows)
 
 
+def _moneyline_implied(odds: int | None) -> float | None:
+    """American odds to a raw implied probability -- still carries the vig."""
+    if odds is None:
+        return None
+    return 100 / (odds + 100) if odds > 0 else -odds / (-odds + 100)
+
+
+def _devigged_home_prob(home_odds: int | None, away_odds: int | None) -> float | None:
+    """Normalize both sides' implied probabilities to sum to 100%.
+
+    Removes the bookmaker's margin without needing to know its shape: summing
+    the raw implied probabilities of both sides of a two-way market and
+    dividing by that sum is the standard way to back the vig out.
+    """
+    home, away = _moneyline_implied(home_odds), _moneyline_implied(away_odds)
+    if home is None or away is None or home + away <= 0:
+        return None
+    return home / (home + away)
+
+
 def game_lines(repository: CFBRepository, game_id: int) -> dict[str, Any]:
     """Every provider quote for one game, with movement and disagreement."""
     initialize(repository)
@@ -93,8 +113,11 @@ def game_lines(repository: CFBRepository, game_id: int) -> dict[str, Any]:
             row["total_move"] = round(row["over_under"] - row["over_under_open"], 1)
         else:
             row["total_move"] = None
+        row["home_win_prob"] = _devigged_home_prob(row["home_moneyline"], row["away_moneyline"])
     spreads = [row["spread"] for row in rows if row["spread"] is not None]
     totals = [row["over_under"] for row in rows if row["over_under"] is not None]
+    spreads_open = [row["spread_open"] for row in rows if row["spread_open"] is not None]
+    home_probs = [row["home_win_prob"] for row in rows if row["home_win_prob"] is not None]
     return {
         "providers": rows,
         "count": len(rows),
@@ -104,6 +127,8 @@ def game_lines(repository: CFBRepository, game_id: int) -> dict[str, Any]:
         "total_range": (round(max(totals) - min(totals), 1) if len(totals) > 1 else 0.0),
         "consensus_spread": (round(sum(spreads) / len(spreads), 1) if spreads else None),
         "consensus_total": (round(sum(totals) / len(totals), 1) if totals else None),
+        "consensus_spread_open": (round(sum(spreads_open) / len(spreads_open), 1) if spreads_open else None),
+        "consensus_home_win_prob": (round(100 * sum(home_probs) / len(home_probs), 1) if home_probs else None),
     }
 
 

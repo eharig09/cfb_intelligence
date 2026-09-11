@@ -26,7 +26,6 @@ from sports_aggregator.cfb.game_phases import (
 from sports_aggregator.cfb.middle_of_field import (
     MIN_GAME_PLAYS, MIN_SEASON_PLAYS, game_middle, middle_verdict, team_season_middle,
 )
-from sports_aggregator.cfb.passing_plays import DEPTH_BANDS, MIN_SEASON_ATTEMPTS, passer_profile
 
 
 STYLE = ""  # served from static/cfb_analysis.css, not inlined per render
@@ -319,60 +318,6 @@ def render_phases(repository, game):
         'under %d plays is greyed.</div>%s%s</section>' % (MIN_PHASE_PLAYS, banner, grid))
 
 
-_DEPTH_LABELS = {"behind_line": "Behind LOS", "short": "Short (0-9)",
-                 "intermediate": "Intermediate (10-19)", "deep": "Deep (20+)"}
-
-
-def render_passer(repository, player: dict[str, Any], season: Any) -> Markup:
-    """A quarterback's season: depth, direction, and what the throws returned."""
-    player_id = str(player.get("player_id") or "")
-    try:
-        year = int(season or player.get("season") or 0)
-    except (TypeError, ValueError):
-        year = 0
-    if not player_id or not year:
-        return Markup("")
-    try:
-        profile = passer_profile(repository, player_id, year)
-    except Exception:
-        return Markup("")
-    # Silent for everyone who did not throw: this belongs on a passer's page,
-    # not as an empty panel on every lineman's.
-    if not profile["attempts"]:
-        return Markup("")
-
-    facts = "".join(
-        f'<div class="pass-qb-fact"><b>{value}</b><span>{escape(label)}</span></div>'
-        for label, value in (
-            ("Attempts", profile["attempts"]),
-            ("Completion", _pct(profile["completion_rate"])),
-            ("ADOT", _f1(profile["adot"])),
-            ("YAC / comp", _f1(profile["yac_per_completion"])),
-            ("EPA / attempt", _f2(profile["epa_per_attempt"]))))
-
-    air = profile["air_yards_available"]
-    depth_total = sum(profile["depth"].values()) or 1
-    depth = "".join(
-        f'<div><b>{_pct(profile["depth"][name] / depth_total)}</b>'
-        f'<span>{escape(_DEPTH_LABELS[name])}</span></div>'
-        for name, _low, _high in DEPTH_BANDS)
-
-    direction = _side("By direction", profile["direction"],
-                      minimum=MIN_SEASON_ATTEMPTS, better_high=True)
-    return Markup(
-        STYLE + '<section class="section pass-map"><h2>Passing profile</h2>'
-        '<div class="section-note">Where this quarterback throws and what it returns. '
-        "Air yards and direction come from CFBD per-attempt detail; EPA is our "
-        "event-aligned ep-v2 model.</div>"
-        f'<div class="pass-qb-facts">{facts}</div>'
-        f'<div class="pass-side-label">Depth of target</div>'
-        f'<div class="pass-depth">{depth}</div>'
-        f'<div class="pass-team">{direction}</div>'
-        f'<p class="pass-note">Depth is drawn from the {air} of {profile["attempts"]} '
-        f'attempts carrying air yards, and direction from the '
-        f'{profile["direction"]["attempts"]} that carry it. CFBD publishes both on a '
-        'subset before 2026, so these are shares of what was measured rather than of '
-        'every throw.</p></section>')
 
 
 def install_passing_display(app) -> None:
@@ -391,6 +336,4 @@ def install_passing_display(app) -> None:
         lambda game: render_matchup(repository, dict(game)))
     app.jinja_env.globals["game_phase_epa"] = (
         lambda game: render_phases(repository, dict(game)))
-    app.jinja_env.globals["passing_passer_profile"] = (
-        lambda player, season=None: render_passer(repository, dict(player), season))
     app.extensions["passing_display_installed"] = True

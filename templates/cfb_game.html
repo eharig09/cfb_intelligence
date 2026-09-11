@@ -1,6 +1,6 @@
 {% extends "_layout.html" %}
 {% from "_tables.html" import conference_mark, data_table, linked_piece_meta, story_list, tabbed_tables, tabs_script %}
-{% from "_cfb_page_visuals.html" import matchup_edges, passing_field, recent_form, visual_scripts %}
+{% from "_cfb_page_visuals.html" import game_shape_module, matchup_edges, passing_field, probability_track, recent_form, visual_scripts %}
 
 {% block title %}{{ game.away_team }} at {{ game.home_team }} | Game Preview{% endblock %}
 
@@ -212,11 +212,25 @@
 <div data-mobile-tab-panel="stats">{{ passing_matchup_splits(game) }}</div>
 
 <section class="section" data-mobile-tab-panel="stats">
+    <h2>Projected game shape</h2>
+    <div class="section-note">
+        Each side's own tendency this season, read side by side rather than blended
+        into one forecast. Expected possessions is the average of both teams' own
+        drives per game.
+    </div>
+    {{ game_shape_module(game_shape) }}
+    {% if not (game_shape and game_shape.rows | selectattr('away') | list) %}
+    <div class="empty">Not enough charted play-by-play to project this game's shape yet.</div>
+    {% endif %}
+</section>
+
+<section class="section" data-mobile-tab-panel="stats">
     <h2>Models &amp; market</h2>
     <div class="section-note">
         Independent views of the same game. FPI, Elo and the betting market are kept
         apart deliberately &mdash; where they disagree is the information.
     </div>
+    {{ probability_track(model_probability) }}
     {{ data_table(model_table) }}
     {#- How each side has done against the number it was given, which is the
         question a line invites and the comparison above cannot answer. Bounded
