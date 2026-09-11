@@ -39,8 +39,7 @@ from sports_aggregator.cfb.unit_continuity import (
     unit_continuity, units_with_continuity)
 from sports_aggregator.cfb.matchups import game_matchup_report
 from sports_aggregator.cfb.player_matchups import player_matchups
-from sports_aggregator.cfb.page_visuals import (
-    depth_formations, recent_form_rows, schedule_journey)
+from sports_aggregator.cfb.page_visuals import depth_formations, recent_form_rows
 from sports_aggregator.cfb.passing_plays import matchup_field
 from sports_aggregator.cfb.pff import pff_summary
 from sports_aggregator.cfb.repository import CFBRepository
@@ -501,7 +500,6 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
         packet["team"]["team_id"], schedule_year)
     projection = projected_depth(
         _repository(), packet["team"]["team_id"], season)
-    schedule_elo = _repository().team_elo(schedule_year)
     return {
         "schedule_table": views.schedule_table(
             packet["schedule"], packet["team"]["team_id"], schedule_year,
@@ -514,8 +512,6 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
         "depth_units": views.depth_chart_tables(
             packet["depth_chart"], season, projection),
         "depth_formations": depth_formations(packet["depth_chart"], projection),
-        "schedule_journey": schedule_journey(
-            packet["schedule"], packet["team"]["team_id"], schedule_elo),
         # The interest score the dropped "Key returning production" table
         # carried, keyed both ways because a PFF row links to a roster by id
         # when it can and by name when it cannot.
@@ -772,8 +768,18 @@ def game_preview(game_id: int):
         history=history,
         history_games_table=views.historical_games_table(
             history["recent"], caption=f"Recent meetings — {game['away_team']} perspective"),
-        away_recent_form=recent_form_rows(history["away_recent"]),
-        home_recent_form=recent_form_rows(history["home_recent"]),
+        away_recent_form=recent_form_rows(history["away_recent"], upcoming={
+            "opponent": game["home_team"],
+            "site": "Neutral" if game["neutral_site"] else "Away",
+            "date_label": game.get("start_label"),
+            "opponent_elo": game.get("home_pregame_elo"),
+        }),
+        home_recent_form=recent_form_rows(history["home_recent"], upcoming={
+            "opponent": game["away_team"],
+            "site": "Neutral" if game["neutral_site"] else "Home",
+            "date_label": game.get("start_label"),
+            "opponent_elo": game.get("away_pregame_elo"),
+        }),
         ats=matchup_ats(repository, game, total=market.get("consensus_total")),
         prior_player_games=prior_player_games,
         prior_player_games_table=views.opponent_performance_table(prior_player_games),

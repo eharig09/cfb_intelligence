@@ -113,6 +113,7 @@ def _defense_production_group(production: dict[str, Any], season: int,
             "INT": interceptions.get("INT"),
             "FUM": fumbles.get("FUM"),
             "FR": fumbles.get("REC"),
+            "per_game": entry.get("per_game"),
             "_state": entry.get("state"),
         })
 
@@ -152,6 +153,9 @@ def _defense_production_group(production: dict[str, Any], season: int,
                 Column(key="INT", label="INT", format="int"),
                 Column(key="FUM", label="Fum", format="int"),
                 Column(key="FR", label="FR", format="int"),
+                Column(key="per_game", label="TKL/GM", format="f1",
+                       title="Total tackles per game, over the games played by "
+                             "whichever team the line was recorded under."),
             ],
             rows=rows, caption="Defense", note=note,
             empty="No defensive production is stored.",
@@ -225,6 +229,8 @@ def _defense_leaders(leaders: dict[str, Any], season: int,
             "SACKS": defense.get("SACKS"), "QB HUR": defense.get("QB HUR"),
             "PD": defense.get("PD"), "INT": ints.get("INT"),
             "FUM": fumbles.get("FUM"), "FR": fumbles.get("REC"),
+            "per_game": (round(_number(defense.get("TOT")) / entry["games_played"], 1)
+                        if entry.get("games_played") else None),
         })
     rows.sort(key=lambda row: (
         -_number(row.get("TOT")), -_number(row.get("TFL")),
@@ -249,6 +255,9 @@ def _defense_leaders(leaders: dict[str, Any], season: int,
         Column(key="INT", label="INT", format="int"),
         Column(key="FUM", label="Fum", format="int"),
         Column(key="FR", label="FR", format="int"),
+        Column(key="per_game", label="TKL/GM", format="f1",
+              title="Total tackles per game, over the games played by whichever "
+                    "team the line was recorded under."),
     ])
     return {
         "category": "defense", "label": "Defense",

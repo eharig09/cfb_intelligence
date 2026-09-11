@@ -769,8 +769,32 @@ table.data tbody tr:hover td.box-group { background: var(--head-bg); }
     box-shadow: inset 0 3px var(--edge-line);
 }
 
-/* Page-level navigation is activated only on phones by cfb_tables.js. */
+/* Page-level navigation is activated only on phones by cfb_tables.js --
+   except pages that run it in "always" mode (see a nav's
+   data-mobile-page-tabs="always" and cfb_tables.js's `active()` helper): a
+   full game preview or team page is long enough that desktop wants the same
+   one-section-at-a-time view phones already had, not one continuous scroll. */
 .mobile-page-tabs { display: none; }
+.matchup-page .mobile-page-tabs, .team-page .mobile-page-tabs {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(7.5rem, 1fr);
+    position: sticky; top: 0; z-index: 20; width: 100%; margin: 16px 0 4px;
+    overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none;
+    background: var(--surface-strong); border: 1px solid var(--surface-strong);
+    border-radius: 7px; box-shadow: var(--shadow-bar);
+}
+.matchup-page .mobile-page-tabs[hidden], .team-page .mobile-page-tabs[hidden] { display: none; }
+.matchup-page .mobile-page-tabs::-webkit-scrollbar, .team-page .mobile-page-tabs::-webkit-scrollbar { display: none; }
+.matchup-page .mobile-page-tabs button, .team-page .mobile-page-tabs button {
+    min-height: 44px; padding: 9px 16px; border: 0; border-right: 1px solid var(--on-strong-divider);
+    background: transparent; color: var(--on-strong-muted); font: 800 .74rem/1.15 var(--display-font);
+    text-transform: uppercase; letter-spacing: .05em; cursor: pointer;
+}
+.matchup-page .mobile-page-tabs button[aria-selected="true"], .team-page .mobile-page-tabs button[aria-selected="true"] {
+    background: var(--team); color: var(--team-on-fill); box-shadow: inset 0 -3px var(--on-strong);
+}
+.matchup-page .mobile-page-tabs button:focus-visible, .team-page .mobile-page-tabs button:focus-visible { outline: 2px solid var(--on-strong); outline-offset: -3px; }
+.matchup-page [data-mobile-tab-panel][hidden], .team-page [data-mobile-tab-panel][hidden] { display: none !important; }
+.matchup-page [data-mobile-tab-panel]:not([hidden]), .team-page [data-mobile-tab-panel]:not([hidden]) { animation: mobile-panel-in .16s ease-out; }
 
 /* ---------- breakpoints ---------- */
 

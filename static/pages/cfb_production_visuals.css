@@ -6,9 +6,11 @@
 .prod-switch { display: flex; flex-wrap: wrap; border: 1px solid var(--line); }
 .prod-switch button { flex: 1 1 auto; border: 0; border-right: 1px solid var(--line);
     background: var(--paper); color: var(--muted); padding: 7px 12px;
-    font: 800 .68rem var(--body-font); cursor: pointer; white-space: nowrap; }
+    font: 800 .68rem var(--body-font); cursor: pointer; white-space: nowrap;
+    transition: background .12s ease, color .12s ease; }
 .prod-switch button:last-child { border-right: 0; }
 .prod-switch button.active { background: var(--surface-strong); color: var(--on-strong); }
+.prod-switch button:not(.active):hover { background: var(--hover); color: var(--ink); }
 
 .section-head-row { display: flex; flex-wrap: wrap; justify-content: space-between;
     align-items: flex-end; gap: 12px; margin-bottom: 10px; }
@@ -19,11 +21,14 @@
    attack team's percentile filling from the left, the defense's from the
    right -- so the margin number has visible context instead of standing
    alone. */
-.prod-edge { margin-top: 12px; border: 1px solid var(--line); background: var(--paper); }
+.prod-edge { margin-top: 12px; border: 1px solid var(--line); background: var(--paper);
+    border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-soft); }
 .prod-edge-panel[hidden] { display: none; }
 .prod-edge-row { display: grid; grid-template-columns: 1fr 2fr 92px; align-items: center;
-    gap: 14px; width: 100%; padding: 10px 12px; border-top: 1px solid var(--cell-line); }
+    gap: 14px; width: 100%; padding: 10px 12px; border-top: 1px solid var(--cell-line);
+    transition: background .12s ease; }
 .prod-edge-row:first-child { border-top: 0; }
+.prod-edge-row:hover { background: var(--hover); }
 .prod-edge-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .prod-edge-head strong { font-size: .78rem; }
 .prod-edge-head span { color: var(--muted); font-size: .62rem; }
@@ -31,9 +36,11 @@
 .prod-edge-num { font: 800 .82rem var(--display-font); font-variant-numeric: tabular-nums; }
 .prod-edge-bar .prod-edge-num:last-child { text-align: right; }
 .prod-edge-track { position: relative; height: 7px; background: var(--line); }
+.prod-edge-track.attack { border-radius: 4px 0 0 4px; }
+.prod-edge-track.defend { border-radius: 0 4px 4px 0; }
 .prod-edge-track i { display: block; height: 100%; max-width: 100%; }
-.prod-edge-track.attack i { margin-left: auto; background: var(--attack); }
-.prod-edge-track.defend i { background: var(--defend); }
+.prod-edge-track.attack i { margin-left: auto; background: var(--attack); border-radius: 4px 0 0 4px; }
+.prod-edge-track.defend i { background: var(--defend); border-radius: 0 4px 4px 0; }
 .prod-edge-result { text-align: right; }
 .prod-edge-result b { display: block; font: 800 1rem var(--display-font); font-variant-numeric: tabular-nums; }
 .prod-edge-result small { color: var(--muted); font-size: .6rem; font-weight: 800; text-transform: uppercase; }
@@ -48,7 +55,8 @@
 .prod-pass-meta b { font-size: .78rem; }
 .prod-pass-meta span { color: var(--muted); font-size: .62rem; }
 .prod-pass-meta i { color: var(--muted); font-style: normal; }
-.prod-field { padding: 0 8px 8px; border: 1px solid var(--field-border); background: var(--field-bg); }
+.prod-field { padding: 0 8px 8px; border: 1px solid var(--field-border); background: var(--field-bg);
+    border-radius: 6px; box-shadow: var(--shadow-soft); }
 .prod-endzone, .prod-los { padding: 6px; text-align: center; color: var(--field-placeholder);
     font-size: .55rem; font-weight: 800; letter-spacing: .12em; }
 .prod-endzone { border-bottom: 3px double var(--line-strong); }
@@ -58,7 +66,9 @@
 .prod-zone-row > span { align-self: center; color: var(--field-placeholder); font-size: .56rem; }
 .prod-zone { position: relative; display: grid; place-items: center; gap: 1px;
     min-height: 54px; min-width: 0; border: 1px solid var(--line); color: var(--ink);
-    font: inherit; cursor: help; background: var(--tint); }
+    font: inherit; cursor: help; background: var(--tint); border-radius: 4px;
+    transition: transform .1s ease, box-shadow .1s ease; }
+.prod-zone:hover, .prod-zone:focus-visible { transform: scale(1.03); box-shadow: var(--shadow-soft); z-index: 2; }
 .prod-zone b { font: 800 .78rem var(--display-font); font-variant-numeric: tabular-nums; }
 .prod-zone small { color: var(--muted); font-size: .5rem; }
 .prod-zone em { color: var(--muted); font-size: .5rem; font-style: normal; }
@@ -66,7 +76,7 @@
 .prod-zone.negative { background: color-mix(in srgb, var(--red) 24%, var(--tint)); }
 .prod-zone-tip { position: absolute; left: 50%; bottom: calc(100% + 6px); z-index: 20;
     display: none; width: 200px; padding: 8px 10px; transform: translateX(-50%);
-    border: 1px solid var(--line-strong); background: var(--surface-strong);
+    border: 1px solid var(--line-strong); background: var(--surface-strong); border-radius: 5px;
     color: var(--on-strong); box-shadow: var(--shadow-panel); text-align: left; }
 .prod-zone-tip:after { content: ""; position: absolute; top: 100%; left: 50%;
     border: 6px solid transparent; border-top-color: var(--surface-strong); transform: translateX(-50%); }
@@ -81,30 +91,24 @@
 .prod-form h3 { margin: 0 0 8px; font: 800 .85rem var(--display-font); }
 .prod-form { min-width: 0; }
 .prod-form a { display: grid; grid-template-columns: 26px auto 1fr; gap: 3px 10px;
-    align-items: center; padding: 8px 10px; border: 1px solid var(--line);
-    margin-top: 6px; color: inherit; text-decoration: none; }
+    align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px;
+    margin-top: 6px; color: inherit; text-decoration: none; transition: background .12s ease, border-color .12s ease; }
 .prod-form a:first-of-type { margin-top: 0; }
-.prod-form a:hover { background: var(--hover); }
+.prod-form a:hover, .prod-form a:focus-visible { background: var(--hover); border-color: var(--line-strong); }
 .prod-form a > b { grid-row: 1 / 3; font: 800 1.1rem var(--display-font); }
 .prod-form a > strong { font: 800 .92rem var(--display-font); font-variant-numeric: tabular-nums; }
 .prod-form a span { color: var(--muted); font-size: .66rem; }
 .prod-form a small { grid-column: 2 / 4; color: var(--muted); font-size: .6rem; }
-
-/* Season journey */
-.prod-journey { display: flex; overflow-x: auto; gap: 2px; margin-top: 10px; padding-bottom: 4px; }
-.prod-journey a { position: relative; flex: 1 0 100px; min-width: 100px; border: 0;
-    border-top: 2px solid var(--line); background: var(--paper); color: inherit;
-    padding: 14px 8px 8px; text-align: left; text-decoration: none; }
-.prod-journey a.win { border-top-color: var(--green); }
-.prod-journey a.loss { border-top-color: var(--red); }
-.prod-journey a.future { border-top-color: var(--muted); }
-.prod-journey a span { display: block; color: var(--muted); font-size: .55rem; }
-.prod-journey a b { display: block; margin: 3px 0; font: 800 .78rem var(--display-font); }
-.prod-journey a.win b { color: var(--green); }
-.prod-journey a.loss b { color: var(--red); }
-.prod-journey a strong { display: block; font-size: .68rem; }
-.prod-journey a em { display: block; margin-top: 2px; color: var(--muted); font-size: .53rem;
-    font-style: normal; }
+/* The upcoming game itself, appended after recent results so the card reads
+   "recent form leading into this matchup" rather than stopping at the past. */
+.prod-form .next { display: grid; grid-template-columns: 26px auto 1fr; gap: 3px 10px;
+    align-items: center; padding: 8px 10px; border: 1px dashed var(--edge); border-radius: 5px;
+    margin-top: 6px; background: color-mix(in srgb, var(--edge) 10%, transparent); }
+.prod-form .next:first-child { margin-top: 0; }
+.prod-form .next > b { grid-row: 1 / 3; color: var(--edge); font: 800 .68rem var(--display-font); }
+.prod-form .next > strong { font: 800 .92rem var(--display-font); }
+.prod-form .next span { color: var(--muted); font-size: .66rem; }
+.prod-form .next small { grid-column: 2 / 4; color: var(--muted); font-size: .6rem; }
 
 /* Formation depth chart. Rows read top to bottom as depth from the line of
    scrimmage: the line itself, anything just off it, a labeled LOS divider,
@@ -113,7 +117,7 @@
 .prod-depth-count { margin-bottom: 8px; color: var(--muted); font-size: .62rem;
     text-transform: uppercase; letter-spacing: .06em; }
 .prod-depth-field { position: relative; padding: 16px 10px 22px; border: 1px solid var(--field-border);
-    background: var(--field-bg); }
+    background: var(--field-bg); border-radius: 6px; box-shadow: var(--shadow-soft); }
 .prod-depth-field[hidden] { display: none; }
 .prod-depth-row { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; }
 .prod-depth-line { justify-content: space-between; }
@@ -125,7 +129,9 @@
 .prod-depth-back { justify-content: center; gap: 20px; margin-bottom: 16px; }
 .prod-depth-back:last-child { margin-bottom: 0; }
 .prod-depth-player { min-width: 108px; padding: 6px 9px; border-left: 3px solid var(--team-light);
-    background: var(--paper); box-shadow: var(--shadow-soft); font-size: .63rem; }
+    border-radius: 0 4px 4px 0; background: var(--paper); box-shadow: var(--shadow-soft);
+    font-size: .63rem; transition: box-shadow .12s ease; }
+.prod-depth-player:hover { box-shadow: var(--shadow-raised); }
 .prod-depth-field.defense .prod-depth-player { border-left-color: var(--red); }
 .prod-depth-player > span { display: block; margin-bottom: 2px; color: var(--muted);
     font-size: .5rem; font-weight: 800; letter-spacing: .05em; }
@@ -137,7 +143,8 @@
     border-top: 1px solid var(--cell-line); color: var(--muted); font-size: .55rem; }
 
 @media (max-width: 700px) {
-    .prod-edge-row { flex-wrap: wrap; }
+    .prod-edge-row { grid-template-columns: 1fr; gap: 6px; }
+    .prod-edge-result { text-align: left; }
     .prod-zone-row { grid-template-columns: 66px repeat(3, 1fr); }
     .prod-zone small, .prod-zone em { display: none; }
     .prod-form a { grid-template-columns: 22px auto 1fr; }

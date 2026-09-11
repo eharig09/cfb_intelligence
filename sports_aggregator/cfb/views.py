@@ -2242,6 +2242,7 @@ def production_groups(production, season, *, interest=None):
                 "state": entry["state_label"],
                 "state_class": f"state-{entry['state'].lower()}",
                 "interest": score,
+                "per_game": entry.get("per_game"),
             }
             rows.append(row)
         counts = group["counts"]
@@ -2259,6 +2260,9 @@ def production_groups(production, season, *, interest=None):
                                  "snapshot; discounts small samples. Present "
                                  "only for players it graded."),
                     *category_columns(group["category"]),
+                    Column(key="per_game", label=f"{group['statistic']}/GM", format="f1",
+                           title=f"{group['statistic']} per game, over the games "
+                                 "played by whichever team the line was recorded for."),
                 ],
                 rows=rows,
                 caption=group["label"],
