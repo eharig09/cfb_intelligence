@@ -235,6 +235,13 @@ class CFBRepositoryTests(unittest.TestCase):
                            "startDate": "2025-09-06T19:30:00Z", "completed": True,
                            "homePoints": 21, "awayPoints": 14}
         self.repository.replace_games(2025, (Game.from_cfbd(historical_game),))
+        current_result = {
+            **GAME_PAYLOAD[0], "id": 98, "week": 1,
+            "startDate": "2026-08-29T19:30:00Z", "completed": True,
+            "homePoints": 31, "awayPoints": 17,
+        }
+        self.repository.replace_games(
+            2026, (Game.from_cfbd(item) for item in (current_result, GAME_PAYLOAD[0])))
         self.repository.replace_player_stats(2025, [
             {"season": 2025, "playerId": "p1", "player": "Alex Example",
              "team": "Michigan", "conference": "Big Ten", "position": "QB",
@@ -279,9 +286,10 @@ class CFBRepositoryTests(unittest.TestCase):
         self.assertIn(b"Conference player leaders", client.get("/college-football/conferences/big-ten/").data)
         self.assertEqual(client.get("/college-football/teams/1/").status_code, 200)
         current_team = client.get("/college-football/teams/1/?season=2025")
-        self.assertIn(b"Upcoming schedule", current_team.data)
-        self.assertIn(b"Upcoming (2026)", current_team.data)
-        self.assertNotIn(b"W 21-14", current_team.data)
+        self.assertIn(b"2026 schedule", current_team.data)
+        self.assertIn(b"W 31-17", current_team.data)
+        self.assertIn(b"/college-football/games/98/box-score/", current_team.data)
+        self.assertNotIn(b"Upcoming schedule", current_team.data)
         prior_schedule = client.get("/college-football/teams/1/?schedule_year=2025")
         self.assertIn(b"2025 schedule", prior_schedule.data)
         self.assertIn(b"W 21-14", prior_schedule.data)

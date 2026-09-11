@@ -68,6 +68,12 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(packet["home_context"]["site"]["record"], "1-0")
         self.assertEqual(packet["home_context"]["coach"]["record"], "2-1")
         self.assertAlmostEqual(packet["away_record"]["ppg_for"], 19.0)
+        self.assertEqual(len(packet["away_recent"]), 3)
+        self.assertEqual(len(packet["home_recent"]), 2)
+        self.assertEqual(packet["away_recent"][0]["game_id"], 92)
+        self.assertEqual(packet["away_recent"][-1]["opponent"], "Iowa")
+        self.assertTrue(all(row["game_url"].endswith("/box-score/")
+                            for row in packet["away_recent"]))
 
     def test_team_game_log_and_position_production(self):
         self.repository.replace_player_stats(2024, (
@@ -150,6 +156,9 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(preview.status_code, 200)
         self.assertIn(b"Coach Example", preview.data)
         self.assertIn(b"Recent meetings", preview.data)
+        self.assertIn(b"Recent form", preview.data)
+        self.assertIn(b"Wisconsin - last 3", preview.data)
+        self.assertIn(b"Michigan - last 2", preview.data)
         self.assertIn(b"Box score", preview.data)
         self.assertEqual(client.get("/college-football/games/100/box-score/").status_code, 200)
         self.assertEqual(client.get("/api/v1/cfb/games/100/box-score").status_code, 200)
