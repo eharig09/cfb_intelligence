@@ -250,6 +250,85 @@ def team_season_splits(repository: CFBRepository, team: str, season: int, *,
     return {"team": team, "season": int(season), "offense": offense, "defense": defense}
 
 
+def team_season_field(repository: CFBRepository, team: str, season: int, *,
+                      role: str = "offense", model_version: str = MODEL_VERSION,
+                      ) -> dict[str, Any]:
+    """Depth-by-direction passing profile, including receiver output by zone."""
+    initialize(repository)
+    column = "p.offense" if role == "offense" else "p.defense"
+    with repository._reader() as connection:
+        rows = connection.execute(
+            f"""SELECT p.pass_direction,p.air_yards,p.outcome,p.target,p.target_id,
+                       p.total_yards,e.epa,COALESCE(c.scoring,0) scoring,c.play_text
+                FROM cfbd_passing_plays p
+                LEFT JOIN cfb_play_epa e ON e.play_id=p.play_id AND e.model_version=?
+                LEFT JOIN cfb_play_metrics m ON m.play_id=p.play_id
+                LEFT JOIN cfb_plays c ON c.play_id=p.play_id
+                WHERE p.season=? AND {column}=? AND p.pass_direction IS NOT NULL
+                  AND p.air_yards IS NOT NULL AND COALESCE(m.garbage_time,0)=0""",
+            (model_version, int(season), str(team))).fetchall()
+    zones = {(depth, direction): {"attempts": 0, "completions": 0, "yards": 0.0,
+                                  "epa": 0.0, "epa_plays": 0, "receivers": {}}
+             for depth, _low, _high in DEPTH_BANDS for direction in ("left", "middle", "right")}
+    for row in rows:
+        direction = str(row["pass_direction"] or "").casefold()
+        if direction not in {"left", "middle", "right"}:
+            continue
+        depth = _band(float(row["air_yards"]))
+        zone = zones[(depth, direction)]
+        zone["attempts"] += 1
+        complete = row["outcome"] == "completion"
+        zone["completions"] += int(complete)
+        zone["yards"] += float(row["total_yards"] or 0)
+        if row["epa"] is not None:
+            zone["epa"] += float(row["epa"]); zone["epa_plays"] += 1
+        target = str(row["target"] or "").strip()
+        if target:
+            receiver = zone["receivers"].setdefault(target, {
+                "name": target, "player_id": row["target_id"], "receptions": 0,
+                "yards": 0, "touchdowns": 0, "targets": 0})
+            receiver["targets"] += 1
+            if complete:
+                receiver["receptions"] += 1
+                receiver["yards"] += round(float(row["total_yards"] or 0))
+                touchdown = bool(row["scoring"]) and "touchdown" in str(row["play_text"] or "").casefold()
+                receiver["touchdowns"] += int(touchdown)
+    output = {}
+    for key, zone in zones.items():
+        receivers = sorted(zone.pop("receivers").values(),
+                           key=lambda item: (-item["receptions"], -item["yards"], item["name"]))
+        output[key] = {**zone,
+                       "epa_per_attempt": zone["epa"] / zone["epa_plays"] if zone["epa_plays"] else None,
+                       "receivers": receivers[:5]}
+    return {"team": team, "season": int(season), "role": role, "zones": output,
+            "attempts": len(rows)}
+
+
+def matchup_field(repository: CFBRepository, game: dict[str, Any], *,
+                  model_version: str = MODEL_VERSION) -> list[dict[str, Any]]:
+    """Both passing offenses against the defense each will face."""
+    season = int(game.get("season") or 0)
+    away, home = str(game.get("away_team") or ""), str(game.get("home_team") or "")
+    profiles = {team: {role: team_season_field(repository, team, season, role=role,
+                                                model_version=model_version)
+                       for role in ("offense", "defense")} for team in (away, home)}
+    panels = []
+    for attacker, defender in ((away, home), (home, away)):
+        zones = []
+        for depth, _low, _high in reversed(DEPTH_BANDS):
+            for direction in ("left", "middle", "right"):
+                offense = profiles[attacker]["offense"]["zones"][(depth, direction)]
+                defense = profiles[defender]["defense"]["zones"][(depth, direction)]
+                off_epa, def_epa = offense["epa_per_attempt"], defense["epa_per_attempt"]
+                edge = off_epa - def_epa if off_epa is not None and def_epa is not None else None
+                zones.append({"depth": depth, "direction": direction, "offense": offense,
+                              "defense": defense, "edge": edge})
+        panels.append({"attacker": attacker, "defender": defender, "zones": zones,
+                       "attempts": profiles[attacker]["offense"]["attempts"],
+                       "allowed_attempts": profiles[defender]["defense"]["attempts"]})
+    return panels
+
+
 def coverage(repository: CFBRepository, season: int) -> dict[str, Any]:
     """How much of a season is classified, for callers that must disclose it."""
     initialize(repository)

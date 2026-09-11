@@ -1,10 +1,12 @@
 {% extends "_layout.html" %}
 {% from "_tables.html" import data_table, story_list, tabbed_tables, tabs_script %}
+{% from "_cfb_page_visuals.html" import depth_formation, season_journey, visual_scripts %}
 
 {% block title %}{{ team.school }}{% if team.mascot %} {{ team.mascot }}{% endif %} | {{ season }} Team Intelligence{% endblock %}
 
 {% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_team.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_production_visuals.css') }}">
 {% endblock %}
 
 {% block body_attrs %} style="--team-light:{{ identity.accent }};--team-dark:{{ identity.accent_dark }};--team-fill:{{ identity.fill }};--team-on-fill:{{ identity.on_fill }};--conference-light:{{ identity.conference_color }};--conference-dark:{{ identity.conference_color_dark }}"{% endblock %}
@@ -78,6 +80,7 @@
                    href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=option.year) }}#tab-overview">{{ option.label }}</a>
                 {% endfor %}
             </nav>
+            {{ season_journey(schedule_journey) }}
             {{ data_table(schedule_table) }}
             {{ data_table(opponent_quality_table) }}
         </section>
@@ -170,6 +173,7 @@
                 Not an official depth chart. Ordering blends production, grade and recruiting
                 rating, and discounts the rating: it describes someone who has not played.
             </div>
+            {{ depth_formation(depth_formations, season) }}
             {% for unit in depth_units %}
             <div class="depth-unit">
                 <h3>{{ unit.unit }}</h3>
@@ -206,4 +210,4 @@
 </div>
 {% endblock %}
 
-{% block scripts %}{{ tabs_script() }}{% endblock %}
+{% block scripts %}{{ tabs_script() }}{{ visual_scripts() }}{% endblock %}

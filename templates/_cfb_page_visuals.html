@@ -1,0 +1,60 @@
+{% macro matchup_edges(report, away, home) %}
+{% if report.matchups %}<div class="prod-edge" data-prod-edge>
+  <div class="prod-switch" role="group" aria-label="Possession"><button type="button" class="active" data-prod-edge-tab="{{ away }}">{{ away }} with ball</button><button type="button" data-prod-edge-tab="{{ home }}">{{ home }} with ball</button></div>
+  {% for team in [away, home] %}<div class="prod-edge-panel" data-prod-edge-panel="{{ team }}"
+    style="--attack:var({{ '--away-team' if team == away else '--home-team' }});--defend:var({{ '--home-team' if team == away else '--away-team' }})"{% if not loop.first %} hidden{% endif %}>
+    {% for item in report.matchups if item.attack_team == team %}
+    <div class="prod-edge-row">
+      <div class="prod-edge-head"><strong>{{ item.label }}</strong><span>{{ item.attack_team }} {{ item.attack_label | lower }} vs {{ item.defend_team }} {{ item.defend_label | lower }}</span></div>
+      <div class="prod-edge-bar">
+        <b class="prod-edge-num">{{ item.attack_grade | cell('f1') }}</b>
+        <span class="prod-edge-track attack"><i style="width:{{ (item.attack_grade or 0) | round | int }}%"></i></span>
+        <span class="prod-edge-track defend"><i style="width:{{ (item.defend_grade or 0) | round | int }}%"></i></span>
+        <b class="prod-edge-num">{{ item.defend_grade | cell('f1') }}</b>
+      </div>
+      <div class="prod-edge-result{{ ' is-attack' if item.advantage == item.attack_team else ' is-defend' if item.advantage == item.defend_team else '' }}"><b>{{ item.margin | cell('f1') }}</b><small>{{ item.advantage or 'Even' }}</small></div>
+    </div>
+    {% endfor %}
+  </div>{% endfor %}
+</div>{% endif %}
+{% endmacro %}
+
+{% macro passing_field(panels) %}
+{% if panels and panels | sum(attribute='attempts') %}<section class="section cfb-pass-field" data-prod-pass data-mobile-tab-panel="matchups">
+  <div class="section-head-row"><div><h2>Passing field matchup</h2><div class="section-note">EPA/attempt edge &middot; offense minus opposing defense allowed. Hover or focus a zone for receiver production.</div></div><div class="prod-switch" role="group" aria-label="Passing offense">{% for panel in panels %}<button type="button" class="{{ 'active' if loop.first else '' }}" data-prod-pass-tab="{{ panel.attacker }}">{{ panel.attacker }} O</button>{% endfor %}</div></div>
+  {% for panel in panels %}<div class="prod-pass-panel" data-prod-pass-panel="{{ panel.attacker }}"{% if not loop.first %} hidden{% endif %}>
+    <div class="prod-pass-meta"><b>{{ panel.attacker }} offense</b><span>{{ panel.attempts }} charted att</span><i>vs</i><b>{{ panel.defender }} defense</b><span>{{ panel.allowed_attempts }} charted att</span></div>
+    <div class="prod-field"><div class="prod-endzone">END ZONE</div>
+      {% for depth, label in [('deep','Deep 20+'),('intermediate','Intermediate 10–19'),('short','Short 0–9'),('behind_line','Behind LOS')] %}<div class="prod-zone-row"><span>{{ label }}</span>
+        {% for direction in ['left','middle','right'] %}{% set zone=(panel.zones | selectattr('depth','equalto',depth) | selectattr('direction','equalto',direction) | first) %}
+        <button type="button" class="prod-zone {{ 'positive' if zone.edge is not none and zone.edge > 0.05 else 'negative' if zone.edge is not none and zone.edge < -0.05 else 'neutral' }}"><b>{{ zone.edge | cell('signed2') if zone.edge is not none else '—' }}</b><small>O {{ zone.offense.epa_per_attempt | cell('signed2') }} &middot; D {{ zone.defense.epa_per_attempt | cell('signed2') }}</small><em>{{ direction | title }}</em>
+          <span class="prod-zone-tip"><strong>{{ label }} {{ direction }}</strong>{% for receiver in zone.offense.receivers %}<span>{{ receiver.name }}<b>{{ receiver.receptions }} rec &middot; {{ receiver.yards }} yds &middot; {{ receiver.touchdowns }} TD</b></span>{% else %}<span>No named targets</span>{% endfor %}</span>
+        </button>{% endfor %}
+      </div>{% endfor %}<div class="prod-los">LINE OF SCRIMMAGE</div>
+    </div>
+  </div>{% endfor %}
+</section>{% endif %}
+{% endmacro %}
+
+{% macro recent_form(team, games) %}
+<div class="prod-form"><h3>{{ team }}</h3>{% for game in games %}<a href="{{ game.game_url }}" class="{{ 'loss' if game.result == 'L' else 'win' if game.result == 'W' else '' }}"><b>{{ game.result or '—' }}</b><strong>{{ game.full_score or '—' }}</strong><span>{{ game.site }} &middot; {{ game.opponent }} &middot; {{ game.date_label }}</span><small>{{ game.shape }}{% if game.margin_label %} &middot; margin {{ game.margin_label }}{% endif %}{% if game.opponent_elo %} &middot; opp Elo {{ game.opponent_elo }}{% endif %}</small></a>{% else %}<div class="empty">No completed games before this matchup.</div>{% endfor %}</div>
+{% endmacro %}
+
+{% macro season_journey(games) %}
+{% if games %}<div class="prod-journey" aria-label="Season journey">{% for game in games %}<a href="{{ url_for('cfb.game_box_score' if game.completed else 'cfb.game_preview', game_id=game.game_id) }}" class="{{ 'loss' if game.result == 'L' else 'win' if game.result == 'W' else 'future' }}"><span>W{{ game.week }}</span><b>{{ game.result or 'NEXT' }}</b><strong>{{ game.opponent }}</strong><em>{{ game.score or 'TBD' }}</em><small>{{ game.site }}{% if game.opponent_rank %} &middot; Elo #{{ game.opponent_rank }}{% elif game.opponent_elo %} &middot; Elo {{ game.opponent_elo }}{% endif %}</small></a>{% endfor %}</div>{% endif %}
+{% endmacro %}
+
+{% macro _depth_player(slot, season) %}<div class="prod-depth-player"><span>{{ slot.label }}</span>{% if slot.starter %}<a href="{{ url_for('cfb.player_preview',player_id=slot.starter.player_id,season=season) }}">{{ slot.starter.name }}</a><b>{{ slot.starter.grade or 'PFF —' }}</b><small>{{ slot.starter.status }} &middot; {% if slot.backup %}2: {{ slot.backup.name }}{% else %}2: —{% endif %}</small>{% else %}<strong>Open</strong><b>PFF —</b>{% endif %}</div>{% endmacro %}
+
+{% macro depth_formation(formations, season) %}
+<div class="prod-depth" data-prod-depth><div class="prod-switch" role="group" aria-label="Depth unit"><button type="button" class="active" data-prod-depth-tab="offense">Offense &middot; {{ formations.offense.label }}</button><button type="button" data-prod-depth-tab="defense">Defense &middot; {{ formations.defense.label }}</button></div>
+{% for side in ['offense','defense'] %}{% set formation=formations[side] %}<div class="prod-depth-field {{ side }}" data-prod-depth-panel="{{ side }}"{% if not loop.first %} hidden{% endif %}>
+  <div class="prod-depth-count">{{ formation.count }} starters</div>
+  <div class="prod-depth-row prod-depth-line">{% for slot in formation.line %}{{ _depth_player(slot, season) }}{% endfor %}</div>
+  <div class="prod-depth-row prod-depth-offline">{% for slot in formation.off_line %}{{ _depth_player(slot, season) }}{% endfor %}</div>
+  <div class="prod-depth-los">LINE OF SCRIMMAGE</div>
+  {% for row in formation.backfield %}<div class="prod-depth-row prod-depth-back">{% for slot in row %}{{ _depth_player(slot, season) }}{% endfor %}</div>{% endfor %}
+</div>{% endfor %}</div>
+{% endmacro %}
+
+{% macro visual_scripts() %}<script>(function(){"use strict";function wire(root,tabName,panelName){document.querySelectorAll(root).forEach(function(shell){var tabs=Array.prototype.slice.call(shell.querySelectorAll(tabName));tabs.forEach(function(tab){tab.addEventListener("click",function(){tabs.forEach(function(item){item.classList.toggle("active",item===tab);});shell.querySelectorAll(panelName).forEach(function(panel){panel.hidden=panel.dataset[panelName.indexOf('edge')>-1?'prodEdgePanel':panelName.indexOf('pass')>-1?'prodPassPanel':'prodDepthPanel']!==tab.dataset[tabName.indexOf('edge')>-1?'prodEdgeTab':tabName.indexOf('pass')>-1?'prodPassTab':'prodDepthTab'];});});});});}wire_STA();function wire_STA(){wire('[data-prod-edge]','[data-prod-edge-tab]','[data-prod-edge-panel]');wire('[data-prod-pass]','[data-prod-pass-tab]','[data-prod-pass-panel]');wire('[data-prod-depth]','[data-prod-depth-tab]','[data-prod-depth-panel]');}}());</script>{% endmacro %}

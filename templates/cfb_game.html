@@ -1,10 +1,12 @@
 {% extends "_layout.html" %}
 {% from "_tables.html" import conference_mark, data_table, linked_piece_meta, story_list, tabbed_tables, tabs_script %}
+{% from "_cfb_page_visuals.html" import matchup_edges, passing_field, recent_form, visual_scripts %}
 
 {% block title %}{{ game.away_team }} at {{ game.home_team }} | Game Preview{% endblock %}
 
 {% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_game.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_production_visuals.css') }}">
 {% endblock %}
 
 {% block body_attrs %} class="matchup-page" style="--team-light:{{ home_brand.accent }};--team-dark:{{ home_brand.accent_dark }};--away-team-light:{{ away_brand.accent }};--away-team-dark:{{ away_brand.accent_dark }};--home-team-light:{{ home_brand.accent }};--home-team-dark:{{ home_brand.accent_dark }};--conference-light:{{ home_brand.conference_color }};--conference-dark:{{ home_brand.conference_color_dark }}"{% endblock %}
@@ -130,8 +132,8 @@
         the full box score; the current matchup is not included.
     </div>
     <div class="split recent-form">
-        <div>{{ data_table(away_recent_games_table) }}</div>
-        <div>{{ data_table(home_recent_games_table) }}</div>
+        <div>{{ recent_form(game.away_team, away_recent_form) }}</div>
+        <div>{{ recent_form(game.home_team, home_recent_form) }}</div>
     </div>
 </section>
 
@@ -348,9 +350,12 @@
         <span><b>{{ matchup_report.top_interest | cell('f1') }}</b> top watch score</span>
     </div>
     {% endif %}
+    {{ matchup_edges(matchup_report, game.away_team, game.home_team) }}
     {{ data_table(matchup_table) }}
     {{ data_table(pff_units_table) }}
 </section>
+
+{{ passing_field(passing_field_panels) }}
 
 <section class="section" data-mobile-tab-panel="matchups">
     <h2>Player and unit watches</h2>
@@ -476,4 +481,4 @@
 </section>
 {% endblock %}
 
-{% block scripts %}{{ tabs_script() }}{% endblock %}
+{% block scripts %}{{ tabs_script() }}{{ visual_scripts() }}{% endblock %}
