@@ -198,6 +198,19 @@ class TurningPointRenderTests(unittest.TestCase):
         self.assertIn("Malcolm Simmons 27-yard catch", html)
         self.assertIn("swing to San José State", html)  # home WP fell -> helped away
 
+    def test_a_quarterback_first_touchdown_names_the_receiver(self):
+        from sports_aggregator.cfb.postgame_analytics_display import _turn_summary
+        row = self._row(
+            event_offense="Texas", offense="Texas", event_defense="Vanderbilt", defense="Vanderbilt",
+            play_type="Passing Touchdown", yards_gained=6,
+            play_text=("No Huddle-Shotgun #16 A.Manning pass complete short right to "
+                       "#4 C.Baxter caught at VAN00, for 6 yards to the VAN00 TOUCHDOWN"),
+            home_wp_before=0.40, home_wp_after=0.47)
+        html = _turn_summary(row, {"away_team": "Vanderbilt", "home_team": "Texas"},
+                             {}, "Texas", "Vanderbilt")
+        self.assertIn("C.Baxter 6-yard catch from A.Manning", html)
+        self.assertNotIn("A.Manning 6-yard catch", html)
+
     def test_a_game_sealing_swing_says_so(self):
         from sports_aggregator.cfb.postgame_analytics_display import _turn_summary
         row = self._row(play_text="field goal attempt GOOD", event_yards_to_goal=20,
