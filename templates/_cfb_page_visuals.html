@@ -57,27 +57,6 @@ document.querySelectorAll("[data-prod-trend]").forEach(function(shell){
 });
 }());</script>{% endmacro %}
 
-{% macro matchup_edges(report, away, home) %}
-{% if report.matchups %}<div class="prod-edge" data-prod-edge>
-  <div class="prod-switch" role="group" aria-label="Possession"><button type="button" class="active" data-prod-edge-tab="{{ away }}">{{ away }} with ball</button><button type="button" data-prod-edge-tab="{{ home }}">{{ home }} with ball</button></div>
-  {% for team in [away, home] %}<div class="prod-edge-panel" data-prod-edge-panel="{{ team }}"
-    style="--attack:var({{ '--away-team' if team == away else '--home-team' }});--defend:var({{ '--home-team' if team == away else '--away-team' }})"{% if not loop.first %} hidden{% endif %}>
-    {% for item in report.matchups if item.attack_team == team %}
-    <div class="prod-edge-row">
-      <div class="prod-edge-head"><strong>{{ item.label }}</strong><span>{{ item.attack_team }} {{ item.attack_label | lower }} vs {{ item.defend_team }} {{ item.defend_label | lower }}</span></div>
-      <div class="prod-edge-bar">
-        <b class="prod-edge-num">{{ item.attack_grade | cell('f1') }}</b>
-        <span class="prod-edge-track attack"><i style="width:{{ (item.attack_grade or 0) | round | int }}%"></i></span>
-        <span class="prod-edge-track defend"><i style="width:{{ (item.defend_grade or 0) | round | int }}%"></i></span>
-        <b class="prod-edge-num">{{ item.defend_grade | cell('f1') }}</b>
-      </div>
-      <div class="prod-edge-result{{ ' is-attack' if item.advantage == item.attack_team else ' is-defend' if item.advantage == item.defend_team else '' }}"><b>{{ item.margin | cell('f1') }}</b><small>{{ item.advantage or 'Even' }}</small></div>
-    </div>
-    {% endfor %}
-  </div>{% endfor %}
-</div>{% endif %}
-{% endmacro %}
-
 {% macro passing_field(panels) %}
 {% if panels and panels | sum(attribute='attempts') %}<section class="section cfb-pass-field" data-prod-pass data-mobile-tab-panel="matchups">
   <div class="section-head-row"><div><h2>Passing field matchup</h2><div class="section-note">EPA/attempt edge &middot; this offense's average blended with what the defense allows here. Hover or focus a zone for receiver production.</div></div><div class="prod-switch" role="group" aria-label="Passing offense">{% for panel in panels %}<button type="button" class="{{ 'active' if loop.first else '' }}" data-prod-pass-tab="{{ panel.attacker }}">{{ panel.attacker }} O</button>{% endfor %}</div></div>
@@ -159,4 +138,4 @@ document.querySelectorAll("[data-prod-trend]").forEach(function(shell){
 </div>{% endfor %}</div>
 {% endmacro %}
 
-{% macro visual_scripts() %}<script>(function(){"use strict";function wire(root,tabName,panelName){document.querySelectorAll(root).forEach(function(shell){var tabs=Array.prototype.slice.call(shell.querySelectorAll(tabName));tabs.forEach(function(tab){tab.addEventListener("click",function(){tabs.forEach(function(item){item.classList.toggle("active",item===tab);});shell.querySelectorAll(panelName).forEach(function(panel){panel.hidden=panel.dataset[panelName.indexOf('edge')>-1?'prodEdgePanel':panelName.indexOf('pass')>-1?'prodPassPanel':'prodDepthPanel']!==tab.dataset[tabName.indexOf('edge')>-1?'prodEdgeTab':tabName.indexOf('pass')>-1?'prodPassTab':'prodDepthTab'];});});});});}wire_STA();function wire_STA(){wire('[data-prod-edge]','[data-prod-edge-tab]','[data-prod-edge-panel]');wire('[data-prod-pass]','[data-prod-pass-tab]','[data-prod-pass-panel]');wire('[data-prod-depth]','[data-prod-depth-tab]','[data-prod-depth-panel]');}}());</script>{% endmacro %}
+{% macro visual_scripts() %}<script>(function(){"use strict";function wire(root,tabName,panelName){document.querySelectorAll(root).forEach(function(shell){var tabs=Array.prototype.slice.call(shell.querySelectorAll(tabName));tabs.forEach(function(tab){tab.addEventListener("click",function(){tabs.forEach(function(item){item.classList.toggle("active",item===tab);});shell.querySelectorAll(panelName).forEach(function(panel){panel.hidden=panel.dataset[panelName.indexOf('pass')>-1?'prodPassPanel':'prodDepthPanel']!==tab.dataset[tabName.indexOf('pass')>-1?'prodPassTab':'prodDepthTab'];});});});});}wire_STA();function wire_STA(){wire('[data-prod-pass]','[data-prod-pass-tab]','[data-prod-pass-panel]');wire('[data-prod-depth]','[data-prod-depth-tab]','[data-prod-depth-panel]');}}());</script>{% endmacro %}

@@ -17,35 +17,6 @@
 .section-head-row h2 { margin: 0; }
 .section-head-row .section-note { margin: 4px 0 0; }
 
-/* Matchup edge board. Each row shows both grades as a two-sided bar -- the
-   attack team's percentile filling from the left, the defense's from the
-   right -- so the margin number has visible context instead of standing
-   alone. */
-.prod-edge { margin-top: 12px; border: 1px solid var(--line); background: var(--paper);
-    border-radius: 6px; overflow: hidden; box-shadow: var(--shadow-soft); }
-.prod-edge-panel[hidden] { display: none; }
-.prod-edge-row { display: grid; grid-template-columns: 1fr 2fr 92px; align-items: center;
-    gap: 14px; width: 100%; padding: 10px 12px; border-top: 1px solid var(--cell-line);
-    transition: background .12s ease; }
-.prod-edge-row:first-child { border-top: 0; }
-.prod-edge-row:hover { background: var(--hover); }
-.prod-edge-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.prod-edge-head strong { font-size: .78rem; }
-.prod-edge-head span { color: var(--muted); font-size: .62rem; }
-.prod-edge-bar { display: grid; grid-template-columns: 2.6em 1fr 1fr 2.6em; align-items: center; gap: 6px; }
-.prod-edge-num { font: 800 .82rem var(--display-font); font-variant-numeric: tabular-nums; }
-.prod-edge-bar .prod-edge-num:last-child { text-align: right; }
-.prod-edge-track { position: relative; height: 7px; background: var(--line); }
-.prod-edge-track.attack { border-radius: 4px 0 0 4px; }
-.prod-edge-track.defend { border-radius: 0 4px 4px 0; }
-.prod-edge-track i { display: block; height: 100%; max-width: 100%; }
-.prod-edge-track.attack i { margin-left: auto; background: var(--attack); border-radius: 4px 0 0 4px; }
-.prod-edge-track.defend i { background: var(--defend); border-radius: 0 4px 4px 0; }
-.prod-edge-result { text-align: right; }
-.prod-edge-result b { display: block; font: 800 1rem var(--display-font); font-variant-numeric: tabular-nums; }
-.prod-edge-result small { color: var(--muted); font-size: .6rem; font-weight: 800; text-transform: uppercase; }
-.prod-edge-result.is-attack small { color: var(--attack); }
-.prod-edge-result.is-defend small { color: var(--defend); }
 
 /* Passing field matchup */
 .cfb-pass-field .prod-switch { flex: 0 0 auto; width: auto; }
@@ -144,8 +115,6 @@
     border-top: 1px solid var(--cell-line); color: var(--muted); font-size: .55rem; }
 
 @media (max-width: 700px) {
-    .prod-edge-row { grid-template-columns: 1fr; gap: 6px; }
-    .prod-edge-result { text-align: left; }
     .prod-zone-row { grid-template-columns: 66px repeat(3, 1fr); }
     .prod-zone small, .prod-zone em { display: none; }
     .prod-form a { grid-template-columns: 22px auto 1fr; }
