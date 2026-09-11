@@ -124,6 +124,18 @@
 </section>
 
 <section class="section" data-mobile-tab-panel="overview">
+    <h2>Recent form</h2>
+    <div class="section-note">
+        Up to three completed games before this matchup for each team. Scores open
+        the full box score; the current matchup is not included.
+    </div>
+    <div class="split recent-form">
+        <div>{{ data_table(away_recent_games_table) }}</div>
+        <div>{{ data_table(home_recent_games_table) }}</div>
+    </div>
+</section>
+
+<section class="section" data-mobile-tab-panel="overview">
     <h2>Players with history against this opponent</h2>
     <div class="section-note">
         Past box-score production for players on the current rosters who have already

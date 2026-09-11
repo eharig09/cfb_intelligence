@@ -114,6 +114,8 @@ h1 b { color: var(--rust); }
     }
     .split { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); }
     @media (min-width: 780px) { .split { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .recent-form { gap: 18px; }
+    .recent-form .table-wrap { margin-bottom: 0; }
     .matchup-summary { display: flex; gap: 18px; flex-wrap: wrap; margin: 0 0 13px; font-size: .8rem; color: var(--muted); }
     .matchup-summary b { font: 800 1.15rem var(--display-font); color: var(--rust); margin-right: 4px; }
     .content-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--gap); align-items: start; }

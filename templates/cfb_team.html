@@ -67,9 +67,10 @@
 <div class="layout team-layout">
     <div>
         <section class="section" id="tab-overview" data-mobile-tab-panel="overview">
-            <h2>{% if schedule_is_upcoming %}Upcoming schedule{% else %}{{ schedule_year }} schedule{% endif %}</h2>
+            <h2>{{ schedule_year }} schedule</h2>
             <div class="section-note">
-                Completed seasons are in the full historical game log.
+                The complete season in schedule order. Completed games open their box
+                score; future games open the matchup preview.
             </div>
             <nav class="schedule-switch" aria-label="Schedule season">
                 {% for option in schedule_options %}

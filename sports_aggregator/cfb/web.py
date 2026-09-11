@@ -419,13 +419,11 @@ def team_preview(team_id: int):
         abort(400)
     packet = _team_packet(team_id, season)
     selected_schedule = _label_games(repository.team_schedule(team_id, schedule_year))
-    schedule_is_upcoming = schedule_year == current_schedule_year
-    if schedule_is_upcoming:
-        selected_schedule = [game for game in selected_schedule if not game.get("completed")]
+    schedule_is_current = schedule_year == current_schedule_year
     packet["schedule"] = selected_schedule
     prior_year = max((year for year in stored_years if year < current_schedule_year), default=None)
     schedule_options = [{"year": current_schedule_year,
-                         "label": f"Upcoming ({current_schedule_year})"}]
+                         "label": str(current_schedule_year)}]
     if prior_year is not None:
         schedule_options.append({"year": prior_year, "label": str(prior_year)})
     next_game = next((game for game in selected_schedule
@@ -437,10 +435,10 @@ def team_preview(team_id: int):
             record=(packet.get("metrics") or {}).get("record"),
             next_game=next_game),
         **_team_tables(packet, season, schedule_year=schedule_year,
-                       schedule_is_upcoming=schedule_is_upcoming,
+                       schedule_is_current=schedule_is_current,
                        stats_year=stats_year, stats_mode=stats_mode),
         schedule_year=schedule_year, schedule_options=schedule_options,
-        schedule_is_upcoming=schedule_is_upcoming, stats_year=stats_year,
+        schedule_is_current=schedule_is_current, stats_year=stats_year,
         stats_mode=stats_mode, stats_year_options=(season, season - 1),
     )
 
@@ -478,7 +476,7 @@ def team_history_stats(team_id: int):
 
 
 def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
-                 schedule_is_upcoming: bool = False, stats_year: int | None = None,
+                 schedule_is_current: bool = False, stats_year: int | None = None,
                  stats_mode: str = "per_game") -> dict:
     """Rendered tables for the team page, derived from the JSON packet."""
     movements = packet["movements"]
@@ -497,11 +495,9 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
             packet["schedule"], packet["team"]["team_id"], schedule_year,
             _repository().team_brands(), _repository().team_elo(schedule_year),
             lines_by_game(_repository(), schedule_year),
-            caption=(f"Upcoming {schedule_year} schedule" if schedule_is_upcoming
-                     else f"{schedule_year} schedule"),
+            caption=f"{schedule_year} schedule",
             week_zero_cutoff=season_week_zero_cutoff(_repository(), schedule_year),
-            empty=(f"No remaining {schedule_year} games are stored." if schedule_is_upcoming
-                   else f"No {schedule_year} schedule is stored."),
+            empty=f"No {schedule_year} schedule is stored.",
         ),
         "depth_units": views.depth_chart_tables(
             packet["depth_chart"], season,
@@ -532,7 +528,7 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
         "team_stats_table": views.team_summary_table(selected_metrics, stats_year, stats_mode),
         "opponent_quality_table": views.team_opponent_quality_table(
             packet["team"]["school"], opponent_quality, schedule_year,
-            upcoming=schedule_is_upcoming),
+            upcoming=schedule_is_current),
         "fpi_season": fpi_team_season(_repository(), season, packet["team"]["team_id"]),
         "unit_continuity_table": views.unit_continuity_table(
             units_with_continuity(_repository(), packet["team"]["team_id"],
@@ -761,6 +757,12 @@ def game_preview(game_id: int):
         history=history,
         history_games_table=views.historical_games_table(
             history["recent"], caption=f"Recent meetings — {game['away_team']} perspective"),
+        away_recent_games_table=views.recent_team_games_table(
+            history["away_recent"], season, repository.team_brands(),
+            caption=f"{game['away_team']} - last {len(history['away_recent'])}"),
+        home_recent_games_table=views.recent_team_games_table(
+            history["home_recent"], season, repository.team_brands(),
+            caption=f"{game['home_team']} - last {len(history['home_recent'])}"),
         ats=matchup_ats(repository, game, total=market.get("consensus_total")),
         prior_player_games=prior_player_games,
         prior_player_games_table=views.opponent_performance_table(prior_player_games),

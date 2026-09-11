@@ -39,6 +39,30 @@
   --edge-tint:color-mix(in srgb,var(--team-away) 14%,transparent);
 }
 
+/* The matchup page reuses the analytical grids without the postgame report
+   wrapper. Give those grids the app's normal table scale explicitly; otherwise
+   unresolved report-only variables fall back to browser defaults and make this
+   one section look substantially larger than every table around it. */
+.matchup-page{
+  --fs-h2:clamp(1.12rem,2.3vw,1.35rem);
+  --fs-h3:1.02rem;
+  --fs-h4:.9rem;
+  --fs-body:.84rem;
+  --fs-data:.84rem;
+  --fs-data-lg:.9rem;
+  --fs-label:.63rem;
+  --fs-micro:.64rem;
+  --sp-block:24px;
+  --sp-section:18px;
+  --num-font:var(--body-font);
+  --team-away:var(--away-team-dark,var(--team));
+  --team-home:var(--home-team-dark,var(--team));
+  --edge-tint:color-mix(in srgb,var(--team-away) 14%,transparent);
+}
+.matchup-page .mof-block h3{font:800 var(--fs-h3)/1.2 var(--display-font)}
+.matchup-page .mof-row{padding:8px 9px}
+.matchup-page .pass-thin{font-style:normal}
+
 /* Every block the jump nav targets clears the sticky header when linked to. */
 .postgame-shell,.pg-tendency,.pg-qb-air,.pg-analytics,.report-chapter{scroll-margin-top:88px}
 

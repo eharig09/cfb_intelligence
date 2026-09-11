@@ -180,6 +180,43 @@ def historical_games_table(games: Sequence[dict[str, Any]], *,
         empty="No completed historical games are stored for this selection.")
 
 
+def recent_team_games_table(games: Sequence[dict[str, Any]], season: int,
+                            brands: dict[int, dict[str, Any]] | None = None, *,
+                            caption: str = "Recent games") -> Table:
+    """Compact form guide for a matchup page, capped by its history packet."""
+    rows = []
+    for game in games:
+        row = {
+            "date": game.get("date_label"),
+            "opponent": game.get("opponent"),
+            "opponent_url": _team_url(game.get("opponent_id"), season),
+            "site": game.get("site"),
+            "result": game.get("result"),
+            "result_class": {"W": "win", "L": "loss"}.get(
+                game.get("result"), "pending"),
+            "score": game.get("score"),
+            "score_sort": leading_number(game.get("score")),
+            "detail": "Box score",
+            "detail_url": game.get("game_url"),
+        }
+        brand_cell(row, "opponent", (brands or {}).get(game.get("opponent_id")))
+        rows.append(row)
+    return Table(
+        columns=[
+            Column("date", "Date"),
+            Column("site", "Site"),
+            Column("opponent", "Opponent", emphasis=True),
+            Column("result", "Result", emphasis=True),
+            Column("score", "Score", align="right", sort="number"),
+            Column("detail", "", align="right"),
+        ],
+        rows=rows,
+        caption=caption,
+        dense=True,
+        empty="No earlier completed games are stored for this team.",
+    )
+
+
 def season_history_table(seasons: Sequence[dict[str, Any]]) -> Table:
     rows = [{**row, "record_sort": record_order(row.get("record"))} for row in seasons]
     return Table(

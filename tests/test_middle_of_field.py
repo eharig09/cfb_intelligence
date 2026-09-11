@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+import re
 import sqlite3
 import tempfile
 import unittest
@@ -162,6 +164,18 @@ class SeasonMiddleTests(MiddleFixture):
 
     def test_a_season_with_nothing_stored_reports_no_plays(self):
         self.assertEqual(team_season_middle(self.repository, "Nobody", 2026)["offense"]["plays"], 0)
+
+
+class StyleIntegrationTests(unittest.TestCase):
+    def test_matchup_page_defines_the_analysis_type_scale(self):
+        css = (Path(__file__).parents[1] / "static" / "cfb_analysis.css").read_text(
+            encoding="utf-8")
+        block = re.search(r"\.matchup-page\s*\{([^}]+)\}", css)
+        self.assertIsNotNone(block)
+        for token in ("--fs-h3", "--fs-data", "--fs-data-lg", "--fs-label",
+                      "--fs-micro", "--num-font"):
+            self.assertIn(token, block.group(1))
+        self.assertIn(".matchup-page .pass-thin{font-style:normal}", css)
 
 
 class RenderTests(MiddleFixture):

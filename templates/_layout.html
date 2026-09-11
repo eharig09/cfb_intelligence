@@ -72,7 +72,7 @@
 {% endif %}
 </main>
 <div class="scroll-context" id="scroll-context" hidden><strong id="scroll-context-page"></strong><span id="scroll-context-section"></span></div>
-{% if team is defined and schedule_year is defined and schedule_is_upcoming is defined and schedule_is_upcoming %}
+{% if team is defined and schedule_year is defined and schedule_is_current is defined and schedule_is_current %}
 {% set team_elo = team_elo_summary(team.team_id, schedule_year) %}
 <div id="team-elo-data" hidden
  data-home="{{ team_elo.remaining_home if team_elo.remaining_home is not none else '' }}" data-home-games="{{ team_elo.remaining_home_games }}"

@@ -106,7 +106,7 @@ def _completed_games(repository: CFBRepository, *, before: str | None = None
 
 
 def matchup_history(repository: CFBRepository, game: dict[str, Any],
-                    recent_limit: int = 10) -> dict[str, Any]:
+                    recent_limit: int = 10, team_recent_limit: int = 3) -> dict[str, Any]:
     """History packet for one scheduled or completed matchup."""
     all_games = _completed_games(repository, before=game["start_date"])
     away_id, home_id = game["away_team_id"], game["home_team_id"]
@@ -147,6 +147,20 @@ def matchup_history(repository: CFBRepository, game: dict[str, Any],
             "score": f"{row['points_for']}-{row['points_against']}",
             "game_url": f"/college-football/games/{row['game_id']}/box-score/",
         })
+
+    def recent_team_games(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        result = []
+        for row in sorted(rows, key=lambda item: item["start_date"], reverse=True)[
+                :team_recent_limit]:
+            local = _local_start(row["start_date"])
+            result.append({
+                **row,
+                "date_label": local.strftime("%b %d, %Y"),
+                "score": f"{row['points_for']}-{row['points_against']}",
+                "game_url": f"/college-football/games/{row['game_id']}/box-score/",
+            })
+        return result
+
     coverage = sorted({row["season"] for row in all_games})
     return {
         "meetings": len(meetings), "first_meeting": min((row["season"] for row in meetings), default=None),
@@ -156,6 +170,8 @@ def matchup_history(repository: CFBRepository, game: dict[str, Any],
         "away_context": context(away_id, away_all, game.get("home_conference"), home_id),
         "home_context": context(home_id, home_all, game.get("away_conference"), away_id),
         "slot": slot, "recent": recent,
+        "away_recent": recent_team_games(away_all),
+        "home_recent": recent_team_games(home_all),
         "coverage": {"from": min(coverage) if coverage else None,
                      "through": max(coverage) if coverage else None},
     }
