@@ -320,7 +320,12 @@ def matchup_field(repository: CFBRepository, game: dict[str, Any], *,
                 offense = profiles[attacker]["offense"]["zones"][(depth, direction)]
                 defense = profiles[defender]["defense"]["zones"][(depth, direction)]
                 off_epa, def_epa = offense["epa_per_attempt"], defense["epa_per_attempt"]
-                edge = off_epa - def_epa if off_epa is not None and def_epa is not None else None
+                # def_epa is EPA/attempt earned by whoever THREW into this zone
+                # against this defense -- the same "value to the offense" scale
+                # as off_epa, not an inverted defensive-quality score. A high
+                # def_epa means the defense allows a lot here, which favors the
+                # attacker, so the two signals are blended, not subtracted.
+                edge = (off_epa + def_epa) / 2 if off_epa is not None and def_epa is not None else None
                 zones.append({"depth": depth, "direction": direction, "offense": offense,
                               "defense": defense, "edge": edge})
         panels.append({"attacker": attacker, "defender": defender, "zones": zones,

@@ -104,7 +104,15 @@ def depth_formations(depth_chart: dict[str, Any],
     }
 
 
-def recent_form_rows(games: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def recent_form_rows(games: list[dict[str, Any]], *,
+                     upcoming: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Completed games leading into a matchup, with that matchup itself last.
+
+    `upcoming` appends the game being previewed as a "NEXT" card, so the recent
+    form leads somewhere instead of just stopping -- the same context the old,
+    separate season-journey timeline carried, without duplicating the schedule
+    table with a second list of every game in the season.
+    """
     rows = []
     for game in games:
         points_for, points_against = game.get("points_for"), game.get("points_against")
@@ -118,27 +126,7 @@ def recent_form_rows(games: list[dict[str, Any]]) -> list[dict[str, Any]]:
                                else "One score" if margin is not None and abs(margin) <= 8
                                else "Multi-score" if margin is not None else None),
                      "opponent_elo": opponent_elo})
+    if upcoming:
+        rows.append({**upcoming, "result": "NEXT"})
     return rows
-
-
-def schedule_journey(schedule: list[dict[str, Any]], team_id: int,
-                     elo: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
-    rows = []
-    for game in schedule:
-        home = game.get("home_team_id") == team_id
-        opponent_id = game.get("away_team_id") if home else game.get("home_team_id")
-        team_points = game.get("home_points") if home else game.get("away_points")
-        opponent_points = game.get("away_points") if home else game.get("home_points")
-        complete = bool(game.get("completed"))
-        result = None
-        if complete and team_points is not None and opponent_points is not None:
-            result = "W" if team_points > opponent_points else "L" if team_points < opponent_points else "T"
-        rating = elo.get(opponent_id) or {}
-        rows.append({
-            "week": game.get("week"), "opponent": game.get("away_team") if home else game.get("home_team"),
-            "site": "Home" if home else "Away", "result": result,
-            "score": f"{team_points}–{opponent_points}" if complete and team_points is not None else game.get("date_label"),
-            "opponent_elo": rating.get("elo"), "opponent_rank": rating.get("elo_rank"),
-            "completed": complete, "game_id": game.get("game_id"),
-        })
     return rows

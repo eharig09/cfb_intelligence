@@ -1930,6 +1930,16 @@ class CFBRepository:
                 if prior is not None:
                     available = prior
             groups={}
+            # Per-game rates need the games played by whichever team a line was
+            # actually recorded for -- the scope team for most rows, but an
+            # arrival's origin school for a line merged in from a transfer.
+            # Cached per team since a conference board spans many of them.
+            team_games_cache: dict[str, int] = {}
+            def team_games(school: str) -> int:
+                if school not in team_games_cache:
+                    team_games_cache[school] = self._season_games_played(
+                        connection, available, "team", school)
+                return team_games_cache[school]
             active_ids: list[str] | None = None
             if available < season:
                 # A prior-season fallback is useful only for players who are
@@ -1993,7 +2003,8 @@ class CFBRepository:
                     "stat_type":stat_type,
                     "qualifier":(f"min {threshold[1]:g} {threshold[0]}" if threshold else None),
                     "players":[{**dict(row),"stats":line.get(row["player_id"],{}),
-                                "arrival":False} for row in rows],
+                                "arrival":False, "games_played":team_games(row["team"])}
+                               for row in rows],
                 }
             if team:
                 self._merge_arrivals(connection, groups, season, team, limit)
@@ -2040,6 +2051,15 @@ class CFBRepository:
         """Fold transferred-in production into the team's leader groups."""
         arrivals = self._arrival_stat_lines(
             connection, season, team, tuple(self.LEADER_CATEGORIES))
+        # Arrival lines are always drawn from season - 1 (see
+        # _arrival_stat_lines), so their per-game rate needs that origin
+        # school's games in that same prior season, not the board's own season.
+        origin_games_cache: dict[str, int] = {}
+        def origin_games(school: str) -> int:
+            if school not in origin_games_cache:
+                origin_games_cache[school] = self._season_games_played(
+                    connection, season - 1, "team", school)
+            return origin_games_cache[school]
         for category, rows in arrivals.items():
             statistic = sort_stat(category)
             lines: dict[str, dict[str, Any]] = {}
@@ -2048,6 +2068,7 @@ class CFBRepository:
                     "player_id": row["player_id"], "player": row["player"],
                     "position": row["position"], "team": row["team"],
                     "origin": row["origin"], "arrival": True, "stats": {},
+                    "games_played": origin_games(row["team"]),
                 })
                 value = row["numeric_value"]
                 entry["stats"][row["stat_type"]] = (

@@ -241,13 +241,25 @@ def leader_table(category: str, players: Sequence[dict[str, Any]], *,
                  include_team: bool = True, limit: int | None = None) -> Table:
     """A leaderboard that shows the whole stat line, not one anonymous number."""
     selected = list(players[:limit] if limit else players)
+    headline_stat = sort_stat(category)
+
+    def per_game(player: dict[str, Any]) -> float | None:
+        games = player.get("games_played")
+        if not games or not headline_stat:
+            return None
+        try:
+            return round(float(player.get("stats", {}).get(headline_stat) or 0) / games, 1)
+        except (TypeError, ValueError):
+            return None
+
     ranked = [
         {**player.get("stats", {}),
          "rank": index,
          "player": player.get("player"),
          "player_id": player.get("player_id"),
          "position": player.get("position"),
-         "team": player.get("team")}
+         "team": player.get("team"),
+         "per_game": per_game(player)}
         for index, player in enumerate(selected, start=1)
     ]
     columns = [
@@ -258,6 +270,10 @@ def leader_table(category: str, players: Sequence[dict[str, Any]], *,
     if include_team:
         columns.append(Column(key="team", label="Team", align="left"))
     columns.extend(category_columns(category))
+    if headline_stat:
+        columns.append(Column(key="per_game", label=f"{headline_stat}/GM", format="f1",
+                              title=f"{headline_stat} per game, over the games played "
+                                    "by whichever team the line was recorded for."))
     return Table(
         columns=columns,
         rows=ranked,

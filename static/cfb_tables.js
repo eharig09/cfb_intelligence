@@ -54,6 +54,12 @@
     var mobile = window.matchMedia("(max-width: 767px)");
 
     function setup(nav) {
+        // A page can opt into running these page-level tabs at every width,
+        // not just below the phone/tablet breakpoint -- see cfb_game.html,
+        // where a full matchup report is long enough that desktop wants the
+        // same one-section-at-a-time view mobile already had.
+        var always = nav.dataset.mobilePageTabs === "always";
+        var active = function () { return always || mobile.matches; };
         var buttons = Array.prototype.slice.call(nav.querySelectorAll("[data-mobile-tab]"));
         var panels = Array.prototype.slice.call(document.querySelectorAll("[data-mobile-tab-panel]"));
         if (!buttons.length || !panels.length) return;
@@ -97,7 +103,7 @@
                 if (active && moveFocus) button.focus({ preventScroll: true });
             });
             panels.forEach(function (panel) {
-                panel.hidden = mobile.matches && panel.dataset.mobileTabPanel !== name;
+                panel.hidden = active() && panel.dataset.mobileTabPanel !== name;
             });
             try {
                 window.sessionStorage.setItem("cfb-page-tab:" + window.location.pathname, name);
@@ -108,8 +114,8 @@
         }
 
         function applyMode() {
-            nav.hidden = !mobile.matches;
-            if (mobile.matches) {
+            nav.hidden = !active();
+            if (active()) {
                 select(selectedFromHash(), false, false);
             } else {
                 panels.forEach(function (panel) { panel.hidden = false; });
@@ -130,7 +136,7 @@
             });
         });
         window.addEventListener("hashchange", function () {
-            if (mobile.matches) select(selectedFromHash(), false, false);
+            if (active()) select(selectedFromHash(), false, false);
         });
         if (mobile.addEventListener) mobile.addEventListener("change", applyMode);
         else mobile.addListener(applyMode);

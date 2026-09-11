@@ -100,6 +100,15 @@ def _pff_by_player(connection, season: int) -> dict[str, dict[str, Any]]:
     return result
 
 
+def _team_games_played(connection, season: int, team: str) -> int:
+    """Completed games for one team in one season, the per-game denominator."""
+    row = connection.execute(
+        """SELECT COUNT(*) FROM games
+           WHERE season=? AND completed=1 AND (home_team=? OR away_team=?)""",
+        (season, team, team)).fetchone()
+    return int(row[0] or 0)
+
+
 def team_production(repository: CFBRepository, team_id: int, season: int, *,
                     stat_season: int | None = None, per_category: int = 200) -> dict[str, Any]:
     """Returning, arrived and departed production for one team.
@@ -107,6 +116,11 @@ def team_production(repository: CFBRepository, team_id: int, season: int, *,
     The team page is a data surface, not a six-player preview.  Keep a generous
     default so the scrollable table can expose every qualifying row; callers
     that genuinely need a compact leaderboard can still pass a smaller limit.
+
+    ``stat_season`` defaults to last season rather than the one requested: a
+    season in progress does not have a settled sample yet, and last season's
+    full line is more informative than a partial one that will keep reshuffling
+    every week (the same reasoning ``team_player_leaders`` settles on).
     """
     team = repository.get_team(team_id)
     if team is None:
@@ -122,6 +136,17 @@ def team_production(repository: CFBRepository, team_id: int, season: int, *,
             "WHERE season=? AND team=?", (season, team["school"]))]
         identifiers = [row["player_id"] for row in current] + list(departures)
         lines = _stat_lines(connection, identifiers, stat_season)
+        games_played = _team_games_played(connection, stat_season, team["school"])
+        # Arrived production was earned at another school, against that
+        # school's schedule, so its per-game rate needs that team's own game
+        # count -- not this roster's -- as the denominator.
+        other_teams = {entry["team"] for entry in lines.values()
+                       if entry["team"] and entry["team"] != team["school"]}
+        games_by_team = {team["school"]: games_played}
+        games_by_team.update({
+            other: _team_games_played(connection, stat_season, other)
+            for other in other_teams
+        })
 
     by_category: dict[str, list[dict[str, Any]]] = {}
     for (player_id, category), entry in lines.items():
@@ -148,6 +173,7 @@ def team_production(repository: CFBRepository, team_id: int, season: int, *,
         else:
             state, note, counterpart = RETURNING, "Returning", None
         earned_at = entry["team"] if entry["team"] != team["school"] else None
+        entry_games = games_by_team.get(entry["team"]) or 0
         by_category.setdefault(category, []).append({
             **entry,
             "state": state,
@@ -157,14 +183,14 @@ def team_production(repository: CFBRepository, team_id: int, season: int, *,
             "earned_at": earned_at,
             "headline_stat": statistic,
             "headline_value": headline_value,
+            "games_played": entry_games or None,
+            "per_game": round(headline_value / entry_games, 1) if entry_games else None,
         })
 
     groups = []
     totals = {RETURNING: 0.0, ARRIVED: 0.0, DEPARTED: 0.0}
     for category in CATEGORY_ORDER:
-        entries = by_category.get(category)
-        if not entries:
-            continue
+        entries = by_category.get(category) or []
         entries.sort(key=lambda row: -row["headline_value"])
         for entry in entries:
             totals[entry["state"]] += entry["headline_value"]
@@ -184,6 +210,7 @@ def team_production(repository: CFBRepository, team_id: int, season: int, *,
         share = round(100 * kept / (kept + totals[DEPARTED]), 1)
     return {
         "season": season, "stat_season": stat_season, "team": team["school"],
+        "games_played": games_played,
         "groups": groups,
         "totals": {state: round(value, 1) for state, value in totals.items()},
         "retained_share": share,

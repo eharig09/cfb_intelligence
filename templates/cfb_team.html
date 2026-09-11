@@ -1,6 +1,6 @@
 {% extends "_layout.html" %}
 {% from "_tables.html" import data_table, story_list, tabbed_tables, tabs_script %}
-{% from "_cfb_page_visuals.html" import depth_formation, season_journey, visual_scripts %}
+{% from "_cfb_page_visuals.html" import depth_formation, visual_scripts %}
 
 {% block title %}{{ team.school }}{% if team.mascot %} {{ team.mascot }}{% endif %} | {{ season }} Team Intelligence{% endblock %}
 
@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='pages/cfb_production_visuals.css') }}">
 {% endblock %}
 
-{% block body_attrs %} style="--team-light:{{ identity.accent }};--team-dark:{{ identity.accent_dark }};--team-fill:{{ identity.fill }};--team-on-fill:{{ identity.on_fill }};--conference-light:{{ identity.conference_color }};--conference-dark:{{ identity.conference_color_dark }}"{% endblock %}
+{% block body_attrs %} class="team-page" style="--team-light:{{ identity.accent }};--team-dark:{{ identity.accent_dark }};--team-fill:{{ identity.fill }};--team-on-fill:{{ identity.on_fill }};--conference-light:{{ identity.conference_color }};--conference-dark:{{ identity.conference_color_dark }}"{% endblock %}
 
 {% block breadcrumb %}
 <a href="{{ url_for('cfb.conference_preview', slug=team.conference | lower | replace(' ', '-'), season=season) if team.conference else url_for('cfb.today', season=season) }}">&larr; {{ team.conference or 'College Football Today' }}</a>
@@ -59,11 +59,10 @@
     <div class="fact"><b>{{ movements.counts.get('DRAFTED', 0) }}</b><span>Drafted departures</span></div>
 </div>
 
-<nav class="mobile-page-tabs" data-mobile-page-tabs role="tablist" aria-label="Team page sections">
+<nav class="mobile-page-tabs" data-mobile-page-tabs="always" role="tablist" aria-label="Team page sections">
     <button type="button" role="tab" data-mobile-tab="overview" aria-selected="true">Overview</button>
     <button type="button" role="tab" data-mobile-tab="roster" aria-selected="false">Roster</button>
     <button type="button" role="tab" data-mobile-tab="stats" aria-selected="false">Stats</button>
-    <button type="button" role="tab" data-mobile-tab="news" aria-selected="false">News</button>
 </nav>
 
 <div class="layout team-layout">
@@ -80,7 +79,6 @@
                    href="{{ url_for('cfb.team_preview', team_id=team.team_id, schedule_year=option.year) }}#tab-overview">{{ option.label }}</a>
                 {% endfor %}
             </nav>
-            {{ season_journey(schedule_journey) }}
             {{ data_table(schedule_table) }}
             {{ data_table(opponent_quality_table) }}
         </section>
@@ -126,8 +124,10 @@
         <section class="section" data-mobile-tab-panel="roster">
             <h2>Player production</h2>
             <div class="section-note">
-                {{ production.stat_season }} production. Arrived production was earned at
-                another school.
+                {{ production.stat_season }} production{% if production.games_played %}, over
+                {{ production.games_played }} games{% endif %}. Arrived production was earned at
+                another school, over that school's own games played; per-game rates use whichever
+                team a line was recorded under.
                 {% if production.retained_share is not none %}
                 <strong>{{ production.retained_share }}%</strong> of it is on the {{ season }}
                 roster.{% endif %}
@@ -194,12 +194,12 @@
     </div>
 
     <aside>
-        <section class="section" data-mobile-tab-panel="news">
+        <section class="section">
             <h2>Team reporting</h2>
             <div class="section-note">Stories that resolved to {{ team.school }} specifically.</div>
             {{ story_list(stories, 'No story has resolved to this team yet.') }}
         </section>
-        <section class="section" data-mobile-tab-panel="news">
+        <section class="section">
             <h2>Around the {{ team.conference or 'conference' }}</h2>
             <div class="section-note">
                 Other programmes in the conference; each shows the team it concerns.

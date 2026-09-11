@@ -77,7 +77,7 @@
     {% endfor %}
 </div>
 
-<nav class="mobile-page-tabs" data-mobile-page-tabs role="tablist" aria-label="Matchup page sections">
+<nav class="mobile-page-tabs" data-mobile-page-tabs="always" role="tablist" aria-label="Matchup page sections">
     <button type="button" role="tab" data-mobile-tab="overview" aria-selected="true">Overview</button>
     <button type="button" role="tab" data-mobile-tab="stats" aria-selected="false">Stats</button>
     <button type="button" role="tab" data-mobile-tab="matchups" aria-selected="false">Matchups</button>
@@ -183,6 +183,30 @@
     </nav>
     {{ data_table(totals_table) }}
     {{ data_table(opponent_quality_table) }}
+</section>
+
+<section class="section" data-mobile-tab-panel="stats">
+    <h2>Current production leaders</h2>
+    <div class="section-note">
+        {% if away_leaders.season or home_leaders.season %}
+            {%- set unsettled = (away_leaders.season and away_leaders.season != game.season)
+                                or (home_leaders.season and home_leaders.season != game.season) -%}
+            {% if unsettled %}Ranked on last season while {{ game.season }} settles; each row also shows this year to date.
+            {% else %}{{ game.season }} season to date, with last year's line beneath each name.{% endif %}
+        {% else %}Awaiting the player-stat stream{% endif %}
+    </div>
+    <div class="split">
+        <div>
+            <h3 class="label">{{ game.away_team }}</h3>
+            {% if away_leader_groups %}{{ tabbed_tables(away_leader_groups, 'away-leaders') }}
+            {% else %}<div class="empty">No synchronized player leaders.</div>{% endif %}
+        </div>
+        <div>
+            <h3 class="label">{{ game.home_team }}</h3>
+            {% if home_leader_groups %}{{ tabbed_tables(home_leader_groups, 'home-leaders') }}
+            {% else %}<div class="empty">No synchronized player leaders.</div>{% endif %}
+        </div>
+    </div>
 </section>
 
 <div data-mobile-tab-panel="stats">{{ passing_matchup_splits(game) }}</div>
@@ -408,30 +432,6 @@
         <div>
             {{ data_table(home_portal_in_table) }}
             {{ data_table(home_portal_out_table) }}
-        </div>
-    </div>
-</section>
-
-<section class="section" data-mobile-tab-panel="players">
-    <h2>Current production leaders</h2>
-    <div class="section-note">
-        {% if away_leaders.season or home_leaders.season %}
-            {%- set unsettled = (away_leaders.season and away_leaders.season != game.season)
-                                or (home_leaders.season and home_leaders.season != game.season) -%}
-            {% if unsettled %}Ranked on last season while {{ game.season }} settles; each row also shows this year to date.
-            {% else %}{{ game.season }} season to date, with last year's line beneath each name.{% endif %}
-        {% else %}Awaiting the player-stat stream{% endif %}
-    </div>
-    <div class="split">
-        <div>
-            <h3 class="label">{{ game.away_team }}</h3>
-            {% if away_leader_groups %}{{ tabbed_tables(away_leader_groups, 'away-leaders') }}
-            {% else %}<div class="empty">No synchronized player leaders.</div>{% endif %}
-        </div>
-        <div>
-            <h3 class="label">{{ game.home_team }}</h3>
-            {% if home_leader_groups %}{{ tabbed_tables(home_leader_groups, 'home-leaders') }}
-            {% else %}<div class="empty">No synchronized player leaders.</div>{% endif %}
         </div>
     </div>
 </section>

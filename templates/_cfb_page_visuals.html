@@ -21,7 +21,7 @@
 
 {% macro passing_field(panels) %}
 {% if panels and panels | sum(attribute='attempts') %}<section class="section cfb-pass-field" data-prod-pass data-mobile-tab-panel="matchups">
-  <div class="section-head-row"><div><h2>Passing field matchup</h2><div class="section-note">EPA/attempt edge &middot; offense minus opposing defense allowed. Hover or focus a zone for receiver production.</div></div><div class="prod-switch" role="group" aria-label="Passing offense">{% for panel in panels %}<button type="button" class="{{ 'active' if loop.first else '' }}" data-prod-pass-tab="{{ panel.attacker }}">{{ panel.attacker }} O</button>{% endfor %}</div></div>
+  <div class="section-head-row"><div><h2>Passing field matchup</h2><div class="section-note">EPA/attempt edge &middot; this offense's average blended with what the defense allows here. Hover or focus a zone for receiver production.</div></div><div class="prod-switch" role="group" aria-label="Passing offense">{% for panel in panels %}<button type="button" class="{{ 'active' if loop.first else '' }}" data-prod-pass-tab="{{ panel.attacker }}">{{ panel.attacker }} O</button>{% endfor %}</div></div>
   {% for panel in panels %}<div class="prod-pass-panel" data-prod-pass-panel="{{ panel.attacker }}"{% if not loop.first %} hidden{% endif %}>
     <div class="prod-pass-meta"><b>{{ panel.attacker }} offense</b><span>{{ panel.attempts }} charted att</span><i>vs</i><b>{{ panel.defender }} defense</b><span>{{ panel.allowed_attempts }} charted att</span></div>
     <div class="prod-field"><div class="prod-endzone">END ZONE</div>
@@ -37,11 +37,7 @@
 {% endmacro %}
 
 {% macro recent_form(team, games) %}
-<div class="prod-form"><h3>{{ team }}</h3>{% for game in games %}<a href="{{ game.game_url }}" class="{{ 'loss' if game.result == 'L' else 'win' if game.result == 'W' else '' }}"><b>{{ game.result or '—' }}</b><strong>{{ game.full_score or '—' }}</strong><span>{{ game.site }} &middot; {{ game.opponent }} &middot; {{ game.date_label }}</span><small>{{ game.shape }}{% if game.margin_label %} &middot; margin {{ game.margin_label }}{% endif %}{% if game.opponent_elo %} &middot; opp Elo {{ game.opponent_elo }}{% endif %}</small></a>{% else %}<div class="empty">No completed games before this matchup.</div>{% endfor %}</div>
-{% endmacro %}
-
-{% macro season_journey(games) %}
-{% if games %}<div class="prod-journey" aria-label="Season journey">{% for game in games %}<a href="{{ url_for('cfb.game_box_score' if game.completed else 'cfb.game_preview', game_id=game.game_id) }}" class="{{ 'loss' if game.result == 'L' else 'win' if game.result == 'W' else 'future' }}"><span>W{{ game.week }}</span><b>{{ game.result or 'NEXT' }}</b><strong>{{ game.opponent }}</strong><em>{{ game.score or 'TBD' }}</em><small>{{ game.site }}{% if game.opponent_rank %} &middot; Elo #{{ game.opponent_rank }}{% elif game.opponent_elo %} &middot; Elo {{ game.opponent_elo }}{% endif %}</small></a>{% endfor %}</div>{% endif %}
+<div class="prod-form"><h3>{{ team }}</h3>{% for game in games %}{% if game.result == 'NEXT' %}<div class="next"><b>NEXT</b><strong>{{ game.opponent }}</strong><span>{{ game.site }} &middot; {{ game.date_label }}</span><small>{% if game.opponent_elo %}opp Elo {{ game.opponent_elo }}{% endif %}</small></div>{% else %}<a href="{{ game.game_url }}" class="{{ 'loss' if game.result == 'L' else 'win' if game.result == 'W' else '' }}"><b>{{ game.result or '—' }}</b><strong>{{ game.full_score or '—' }}</strong><span>{{ game.site }} &middot; {{ game.opponent }} &middot; {{ game.date_label }}</span><small>{{ game.shape }}{% if game.margin_label %} &middot; margin {{ game.margin_label }}{% endif %}{% if game.opponent_elo %} &middot; opp Elo {{ game.opponent_elo }}{% endif %}</small></a>{% endif %}{% else %}<div class="empty">No completed games before this matchup.</div>{% endfor %}</div>
 {% endmacro %}
 
 {% macro _depth_player(slot, season) %}<div class="prod-depth-player"><span>{{ slot.label }}</span>{% if slot.starter %}<a href="{{ url_for('cfb.player_preview',player_id=slot.starter.player_id,season=season) }}">{{ slot.starter.name }}</a><b>{{ slot.starter.grade or 'PFF —' }}</b><small>{{ slot.starter.status }} &middot; {% if slot.backup %}2: {{ slot.backup.name }}{% else %}2: —{% endif %}</small>{% else %}<strong>Open</strong><b>PFF —</b>{% endif %}</div>{% endmacro %}
