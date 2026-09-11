@@ -39,6 +39,9 @@ from sports_aggregator.cfb.unit_continuity import (
     unit_continuity, units_with_continuity)
 from sports_aggregator.cfb.matchups import game_matchup_report
 from sports_aggregator.cfb.player_matchups import player_matchups
+from sports_aggregator.cfb.page_visuals import (
+    depth_formations, recent_form_rows, schedule_journey)
+from sports_aggregator.cfb.passing_plays import matchup_field
 from sports_aggregator.cfb.pff import pff_summary
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb import views
@@ -355,6 +358,12 @@ def elo_ratings():
     )
 
 
+@cfb_pages.get("/college-football/visual-lab/")
+def visual_lab():
+    """Static, clearly labelled prototypes for proposed page visuals."""
+    return render_template("cfb_visual_lab.html")
+
+
 @cfb_pages.get("/college-football/conferences/<slug>/")
 @cached_page
 def conference_preview(slug: str):
@@ -490,6 +499,9 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
     # opponent ratings.
     opponent_quality = _repository().opponent_quality(
         packet["team"]["team_id"], schedule_year)
+    projection = projected_depth(
+        _repository(), packet["team"]["team_id"], season)
+    schedule_elo = _repository().team_elo(schedule_year)
     return {
         "schedule_table": views.schedule_table(
             packet["schedule"], packet["team"]["team_id"], schedule_year,
@@ -500,8 +512,10 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
             empty=f"No {schedule_year} schedule is stored.",
         ),
         "depth_units": views.depth_chart_tables(
-            packet["depth_chart"], season,
-            projected_depth(_repository(), packet["team"]["team_id"], season)),
+            packet["depth_chart"], season, projection),
+        "depth_formations": depth_formations(packet["depth_chart"], projection),
+        "schedule_journey": schedule_journey(
+            packet["schedule"], packet["team"]["team_id"], schedule_elo),
         # The interest score the dropped "Key returning production" table
         # carried, keyed both ways because a PFF row links to a roster by id
         # when it can and by name when it cannot.
@@ -708,6 +722,7 @@ def game_preview(game_id: int):
                            direction="out", limit=12), season,
             caption=f"{game['home_team']} portal departures", departed=True),
         matchup_report=matchup_report,
+        passing_field_panels=matchup_field(repository, game),
         matchup_table=views.matchup_watch_table(matchup_report, brands_by_school),
         player_matchup_table=views.player_matchup_table(
             player_matchups(repository, game["home_team_id"], game["away_team_id"]),
@@ -757,12 +772,8 @@ def game_preview(game_id: int):
         history=history,
         history_games_table=views.historical_games_table(
             history["recent"], caption=f"Recent meetings — {game['away_team']} perspective"),
-        away_recent_games_table=views.recent_team_games_table(
-            history["away_recent"], season, repository.team_brands(),
-            caption=f"{game['away_team']} - last {len(history['away_recent'])}"),
-        home_recent_games_table=views.recent_team_games_table(
-            history["home_recent"], season, repository.team_brands(),
-            caption=f"{game['home_team']} - last {len(history['home_recent'])}"),
+        away_recent_form=recent_form_rows(history["away_recent"]),
+        home_recent_form=recent_form_rows(history["home_recent"]),
         ats=matchup_ats(repository, game, total=market.get("consensus_total")),
         prior_player_games=prior_player_games,
         prior_player_games_table=views.opponent_performance_table(prior_player_games),
