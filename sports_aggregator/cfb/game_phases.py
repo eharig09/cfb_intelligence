@@ -29,26 +29,30 @@ HALVES = {"first": (1, 2), "second": (3, 4)}
 
 _SQL = """
   SELECT p.offense AS team, p.period AS period,
-         COUNT(*) AS plays,
-         SUM(p.yards_gained) AS total_yards,
-         SUM(e.epa) AS total_epa,
-         SUM(CASE WHEN e.epa IS NOT NULL THEN 1 ELSE 0 END) AS scored,
-         SUM(COALESCE(m.success, 0)) AS successes
+         COUNT(*) AS all_plays,
+         SUM(CASE WHEN COALESCE(m.garbage_time, 0) = 0 THEN 1 ELSE 0 END) AS plays,
+         SUM(CASE WHEN COALESCE(m.garbage_time, 0) = 0 THEN p.yards_gained ELSE 0 END) AS total_yards,
+         SUM(CASE WHEN COALESCE(m.garbage_time, 0) = 0 THEN e.epa ELSE NULL END) AS total_epa,
+         SUM(CASE WHEN COALESCE(m.garbage_time, 0) = 0 AND e.epa IS NOT NULL
+                  THEN 1 ELSE 0 END) AS scored,
+         SUM(CASE WHEN COALESCE(m.garbage_time, 0) = 0
+                  THEN COALESCE(m.success, 0) ELSE 0 END) AS successes
   FROM cfb_plays p
   LEFT JOIN cfb_play_epa e ON e.play_id = p.play_id AND e.model_version = ?
   LEFT JOIN cfb_play_metrics m ON m.play_id = p.play_id
-  WHERE p.period BETWEEN 1 AND 4 AND m.rush_pass IN ('rush', 'pass')
-    AND COALESCE(m.garbage_time, 0) = 0 AND {scope}
+  WHERE p.period BETWEEN 1 AND 4 AND m.rush_pass IN ('rush', 'pass') AND {scope}
   GROUP BY p.offense, p.period
 """
 
 
 def _blank() -> dict[str, Any]:
-    return {"plays": 0, "scored": 0, "total_epa": 0.0, "total_yards": 0.0, "successes": 0}
+    return {"plays": 0, "all_plays": 0, "scored": 0, "total_epa": 0.0,
+            "total_yards": 0.0, "successes": 0}
 
 
 def _add(into: dict[str, Any], row) -> None:
     into["plays"] += row["plays"] or 0
+    into["all_plays"] += row["all_plays"] or 0
     into["scored"] += row["scored"] or 0
     into["total_epa"] += row["total_epa"] or 0.0
     into["total_yards"] += row["total_yards"] or 0.0
@@ -58,6 +62,12 @@ def _add(into: dict[str, Any], row) -> None:
 def _finish(bucket: dict[str, Any]) -> dict[str, Any]:
     plays, scored = bucket["plays"], bucket["scored"]
     return {"plays": plays,
+            # A blowout can run every snap of a phase past the garbage-time
+            # margin, which zeroes `plays` the same way a phase with no plays
+            # at all would -- distinguishing the two here means the display
+            # can say "garbage time" instead of rendering a bare dash that
+            # reads as missing data.
+            "garbage_only": plays == 0 and bucket["all_plays"] > 0,
             "yards": bucket["total_yards"],
             "yards_per_play": (bucket["total_yards"] / plays) if plays else None,
             "total_epa": bucket["total_epa"] if scored else None,

@@ -250,6 +250,11 @@ PHASE_COLUMNS = ((("quarters", 1), "Q1"), (("quarters", 2), "Q2"),
 
 def _phase_cell(bucket, *, best=False):
     plays = bucket.get("plays") or 0
+    if bucket.get("garbage_only"):
+        # Snaps were run, just all past the garbage-time margin -- a bare
+        # dash here is indistinguishable from a phase with no plays at all
+        # and reads as missing data rather than a blowout.
+        return '<div class="mof-cell"><strong class="pass-thin">—</strong><span class="pass-thin">Garbage time</span></div>'
     thin = plays < MIN_PHASE_PLAYS
     yards = bucket.get("yards")
     detail = "%d plays" % plays
@@ -315,7 +320,9 @@ def render_phases(repository, game):
         'overtime starts at the twenty-five with no clock, so folding it into the '
         'fourth quarter would compare plays the model was never fitted on. Rates '
         'are EPA per play on rush and pass snaps outside garbage time; a phase '
-        'under %d plays is greyed.</div>%s%s</section>' % (MIN_PHASE_PLAYS, banner, grid))
+        'under %d plays is greyed, and a blowout can leave a whole quarter or half '
+        'marked garbage time rather than counted here at all.</div>%s%s</section>'
+        % (MIN_PHASE_PLAYS, banner, grid))
 
 
 
