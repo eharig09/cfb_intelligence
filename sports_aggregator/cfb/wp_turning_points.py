@@ -16,6 +16,28 @@ ADMIN_WORDS = (
     "end of 4th", "end of half", "end of game", "end of regulation", "no play",
 )
 
+#: A kickoff, punt, or missed-FG-return row carries the *kicking* team's
+#: pre-kick down/distance/yardline (a kickoff is always stored as something
+#: like 1st & 10 from the 35, a punt as the punting team's actual down and
+#: line of scrimmage) -- never the return's result. Only `yards_gained` and
+#: the play text reflect what the return actually did. Those placeholder
+#: fields still pass the down/distance/field-position ranges `_valid_state`
+#: checks below, so a kickoff was being anchored as a real down-and-distance
+#: state and compared against the next real snap as if it were one -- producing
+#: a "swing" attributed to the wrong team, sized off two states that were never
+#: a coherent before/after in the first place. Excluding them here does not
+#: stop a scoring return from being the *event* a turning point describes
+#: (`_event_priority` still ranks a return touchdown above everything else in
+#: its segment); it only stops kickoffs and punts from being used as the
+#: before/after anchor themselves.
+KICK_PLAY_TYPES = frozenset({
+    "Kickoff", "Kickoff Return (Offense)", "Kickoff Return Touchdown",
+    "Punt", "Punt Return", "Punt Return Touchdown",
+    "Blocked Punt", "Blocked Punt Touchdown",
+    "Blocked Field Goal", "Blocked Field Goal Touchdown",
+    "Missed Field Goal Return",
+})
+
 
 def _home_score(row: dict[str, Any]) -> tuple[int | None, int | None]:
     try:
@@ -41,6 +63,7 @@ def _administrative(row: dict[str, Any]) -> bool:
 
 def _valid_state(row: dict[str, Any]) -> bool:
     if _administrative(row): return False
+    if str(row.get("play_type") or "") in KICK_PLAY_TYPES: return False
     try:
         period=int(row.get("period") or 0); down=int(row.get("down") or 0); ytg=int(row.get("yards_to_goal")); distance=row.get("distance")
     except (TypeError, ValueError): return False
