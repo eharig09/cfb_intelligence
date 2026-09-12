@@ -17,7 +17,7 @@ from typing import Any, Iterable, Iterator
 from sports_aggregator.cfb.identity import conference_slug as _conference_slug
 from sports_aggregator.cfb.models import Game, PollRanking, Team, normalize_alias
 from sports_aggregator.cfb.statlines import (
-    CATEGORY_ORDER, category_label, qualifier, sort_stat)
+    CATEGORY_ORDER, category_columns, category_label, qualifier, sort_stat)
 
 
 SCHEMA = """
@@ -2008,6 +2008,45 @@ class CFBRepository:
                 }
             if team:
                 self._merge_arrivals(connection, groups, season, team, limit)
+
+            # A category with no returning or incoming production still
+            # deserves a place on the board: it means this team has no proven
+            # answer there, which is itself worth knowing, not a reason to
+            # drop "Passing" from the tabs entirely. Surface whoever leads
+            # the category so far this season -- below the usual qualifying
+            # threshold, since the whole point is there is no established
+            # line yet -- with a zeroed headline (there is no returning or
+            # incoming production to rank) and let the companion attachment
+            # below carry his real current-season number as the sub text.
+            if team and available < season and active_ids != []:
+                for category in self.LEADER_CATEGORIES:
+                    if category in groups:
+                        continue
+                    stat_type = sort_stat(category)
+                    if not stat_type:
+                        continue
+                    current_leader = connection.execute(
+                        """SELECT player_id,player,position,team FROM player_season_stats
+                           WHERE season=? AND team=? AND category=? AND stat_type=?
+                             AND numeric_value IS NOT NULL AND numeric_value>0
+                           ORDER BY numeric_value DESC,player LIMIT 1""",
+                        (season, team, category, stat_type)).fetchone()
+                    if current_leader is None:
+                        continue
+                    zero_stats = {column.key: 0 for column in category_columns(category)}
+                    groups[category] = {
+                        "label": category_label(category), "stat_type": stat_type,
+                        "qualifier": None,
+                        "players": [{
+                            "player_id": current_leader["player_id"],
+                            "player": current_leader["player"],
+                            "position": current_leader["position"],
+                            "team": current_leader["team"],
+                            "stats": zero_stats, "arrival": False,
+                            "games_played": team_games(current_leader["team"]),
+                            "no_baseline": True,
+                        }],
+                    }
 
             # Attach the other season's line for every listed player, so a board
             # ranked on 2025 still shows what a leader has done in 2026 (and a
