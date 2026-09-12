@@ -209,6 +209,24 @@ def _week_series(rows: list[dict[str, Any]], key: str, *, pct: bool = False) -> 
     return out
 
 
+def _weeks_with_ghosts(current_rows: list[dict[str, Any]],
+                       previous_rows: list[dict[str, Any]] | None, *,
+                       min_count: int = 3) -> tuple[list[dict[str, Any]], int]:
+    """Pad a sparse start-of-season trend with last season's closing weeks.
+
+    Week one or two of a new season is too few points to read as a trend, and
+    the honest fix isn't averaging them away -- it's borrowing the end of last
+    season's line so the chart has a shape from the first week, then quietly
+    losing those borrowed points one by one as this season's real sample
+    grows past `min_count`.
+    """
+    missing = max(0, min_count - len(current_rows)) if previous_rows else 0
+    ghosts = previous_rows[-missing:] if missing else []
+    labeled = [{**row, "ghost": True, "week_label": f"P{row['week']}"} for row in ghosts]
+    labeled += [{**row, "ghost": False, "week_label": f"W{row['week']}"} for row in current_rows]
+    return labeled, len(ghosts)
+
+
 def team_trend_chart_data(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Weekly offense/defense series, shaped for the generic `trend_chart` macro.
 
@@ -242,25 +260,78 @@ def team_trend_chart_data(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     }
 
 
-def player_trend_chart_data(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """One passer's week-by-week series, shaped for the generic `trend_chart` macro."""
-    if not rows:
+def player_trend_chart_data(rows: list[dict[str, Any]],
+                            previous_rows: list[dict[str, Any]] | None = None,
+                            *, min_count: int = 3) -> dict[str, Any] | None:
+    """One passer's week-by-week series, shaped for the generic `trend_chart` macro.
+
+    `previous_rows` (last season's version of the same weekly rows) backfills
+    a season that has not yet reached `min_count` real weeks -- see
+    `_weeks_with_ghosts`.
+    """
+    combined, ghost_count = _weeks_with_ghosts(rows, previous_rows, min_count=min_count)
+    if not combined:
         return None
-    labels = [f"W{row['week']}" for row in rows]
+    labels = [row["week_label"] for row in combined]
 
     def single(key: str, label: str, *, pct: bool = False) -> dict[str, Any]:
         return {"key": key, "label": label, "series": [
             {"key": key, "label": label, "color": "#6ea8f0",
-             "data": _week_series(rows, key, pct=pct)},
+             "data": _week_series(combined, key, pct=pct)},
         ]}
 
     return {
         "labels": labels,
+        "ghost_count": ghost_count,
         "metrics": [
             single("epa_per_attempt", "EPA / attempt"),
             single("completion_rate", "Completion rate", pct=True),
             single("yards_per_attempt", "Yards / attempt"),
         ],
+    }
+
+
+#: Which weekly box-score metrics read as "recent form" for a non-QB skill
+#: position -- rushers lead with scrimmage yards, receivers with receiving
+#: yards, since that is the number a reader already scans the box score for.
+SKILL_TREND_METRICS = {
+    "RB": (("scrimmage_yards", "Scrimmage yds"), ("yards_per_carry", "Yds / carry"),
+          ("rush_yards", "Rush yds")),
+    "FB": (("scrimmage_yards", "Scrimmage yds"), ("yards_per_carry", "Yds / carry"),
+          ("rush_yards", "Rush yds")),
+    "WR": (("receiving_yards", "Receiving yds"), ("yards_per_reception", "Yds / catch"),
+          ("receptions", "Receptions")),
+    "TE": (("receiving_yards", "Receiving yds"), ("yards_per_reception", "Yds / catch"),
+          ("receptions", "Receptions")),
+}
+
+
+def skill_player_trend_chart_data(rows: list[dict[str, Any]], position: str,
+                                  previous_rows: list[dict[str, Any]] | None = None,
+                                  *, min_count: int = 3) -> dict[str, Any] | None:
+    """A rusher or receiver's week-by-week series, for the same generic chart.
+
+    Passers get event-level EPA (`player_trend_chart_data`, from charted pass
+    plays); nothing tags a rusher or receiver on a play the same way, so this
+    reads the same weekly box-score numbers the game log already shows.
+    """
+    metrics_spec = SKILL_TREND_METRICS.get(str(position or "").upper())
+    if not metrics_spec:
+        return None
+    combined, ghost_count = _weeks_with_ghosts(rows, previous_rows, min_count=min_count)
+    if not combined:
+        return None
+    labels = [row["week_label"] for row in combined]
+
+    def single(key: str, label: str) -> dict[str, Any]:
+        return {"key": key, "label": label, "series": [
+            {"key": key, "label": label, "color": "#6ea8f0", "data": _week_series(combined, key)},
+        ]}
+
+    return {
+        "labels": labels,
+        "ghost_count": ghost_count,
+        "metrics": [single(key, label) for key, label in metrics_spec],
     }
 
 

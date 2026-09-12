@@ -92,14 +92,28 @@ def _streak(rows: list[dict[str, Any]]) -> str | None:
     return f"{result}{length}"
 
 
-def _completed_games(repository: CFBRepository, *, before: str | None = None
+def _completed_games(repository: CFBRepository, *, before: str | None = None,
+                     team_ids: Iterable[int] | None = None
                      ) -> list[dict[str, Any]]:
+    """Completed games, optionally scoped to the teams that actually need them.
+
+    Every caller here only ever wants one or two teams' worth of history, not
+    the whole database's -- so ``team_ids`` pushes that filter into SQL instead
+    of pulling every completed game ever played and discarding most of it in
+    Python.
+    """
     repository.initialize()
     sql = "SELECT * FROM games WHERE completed=1 AND home_points IS NOT NULL AND away_points IS NOT NULL"
     params: list[Any] = []
     if before:
         sql += " AND start_date<?"
         params.append(before)
+    if team_ids:
+        ids = list(team_ids)
+        placeholders = ",".join("?" for _ in ids)
+        sql += f" AND (home_team_id IN ({placeholders}) OR away_team_id IN ({placeholders}))"
+        params.extend(ids)
+        params.extend(ids)
     sql += " ORDER BY start_date DESC"
     with repository._reader() as connection:
         return [dict(row) for row in connection.execute(sql, params)]
@@ -108,8 +122,9 @@ def _completed_games(repository: CFBRepository, *, before: str | None = None
 def matchup_history(repository: CFBRepository, game: dict[str, Any],
                     recent_limit: int = 10, team_recent_limit: int = 3) -> dict[str, Any]:
     """History packet for one scheduled or completed matchup."""
-    all_games = _completed_games(repository, before=game["start_date"])
     away_id, home_id = game["away_team_id"], game["home_team_id"]
+    all_games = _completed_games(repository, before=game["start_date"],
+                                 team_ids=(away_id, home_id))
     meetings = [row for row in all_games if {row["home_team_id"], row["away_team_id"]}
                 == {home_id, away_id}]
     away_meetings = [_perspective(row, away_id) for row in meetings]
@@ -218,7 +233,7 @@ def team_game_history(repository: CFBRepository, team_id: int,
     team = repository.get_team(team_id)
     if team is None:
         return {"team": None, "games": [], "seasons": [], "summary": _record([])}
-    games = _completed_games(repository)
+    games = _completed_games(repository, team_ids=(team_id,))
     with closing(repository._connect()) as connection:
         stored_seasons = {row["season"]: dict(row) for row in connection.execute(
             """SELECT r.*,a.offense_success_rate,a.defense_success_rate,
@@ -486,6 +501,12 @@ def matchup_player_history(repository: CFBRepository, game: dict[str, Any]) -> l
             (game["season"], game["home_team_id"], game["away_team_id"]))}
         identifiers = list(roster)
         placeholders = ",".join("?" for _ in identifiers) or "NULL"
+        home_id, away_id = game["home_team_id"], game["away_team_id"]
+        # Every row that survives the loop below has opponent_id equal to
+        # whichever of these two teams the player *isn't* on -- so the game
+        # always involves one of them. Filtering on that in SQL avoids
+        # pulling a roster's entire career box-score history just to throw
+        # most of it away in Python afterward.
         rows = [dict(row) for row in connection.execute(
             f"""SELECT b.*,b.team box_team,b.team_id box_team_id,g.season,g.start_date,
                        g.home_team_id,g.home_team,g.away_team_id,g.away_team,
@@ -493,8 +514,10 @@ def matchup_player_history(repository: CFBRepository, game: dict[str, Any]) -> l
                 FROM game_player_box_stats b JOIN games g ON g.game_id=b.game_id
                 LEFT JOIN players p ON p.player_id=b.player_id AND p.season=?
                      AND p.team=b.team
-                WHERE b.player_id IN ({placeholders}) AND g.start_date<?""",
-            (game["season"], *identifiers, game["start_date"]))]
+                WHERE b.player_id IN ({placeholders}) AND g.start_date<?
+                     AND (g.home_team_id IN (?,?) OR g.away_team_id IN (?,?))""",
+            (game["season"], *identifiers, game["start_date"],
+             home_id, away_id, home_id, away_id))]
     lines = _game_stat_lines(rows)
     result = []
     for row in lines:

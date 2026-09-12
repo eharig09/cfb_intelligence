@@ -177,6 +177,7 @@
 .prod-trend-key { display: flex; gap: 14px; margin-top: 10px; color: var(--muted); font-size: .62rem; }
 .prod-trend-key span { display: flex; align-items: center; gap: 5px; }
 .prod-trend-key i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.prod-trend-ghost-note { margin: 8px 0 0; color: var(--muted); font-size: .62rem; font-style: italic; }
 
 /* Player passing profile */
 .prod-passer-split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 16px; }

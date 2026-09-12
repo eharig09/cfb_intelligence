@@ -2227,6 +2227,19 @@ class CFBRepository:
         return groups.get(value, ("Other", value.title(), 99))
 
     def roster_movements(self, team_id: int, season: int) -> dict[str, Any]:
+        """Arrivals and departures for one team/season, held for the request.
+
+        This is one of the more expensive reads here -- four queries plus the
+        season-wide recruit, PFF-interest and production indexes -- and a
+        single team page calls it several times over (directly, and again
+        inside `team_production`, `team_depth_chart` and `pff_team_context`,
+        each for the same team and season). Cached the way `recruit_index` is,
+        for the same reason: correct within a request, gone at the end of it.
+        """
+        return _request_cached(self, f"roster_movements:{int(team_id)}:{int(season)}",
+                               lambda: self._build_roster_movements(team_id, season))
+
+    def _build_roster_movements(self, team_id: int, season: int) -> dict[str, Any]:
         # Local import: cfb.recruiting depends on this class.
         from sports_aggregator.cfb.recruiting import evidence_score
 
@@ -2431,7 +2444,8 @@ class CFBRepository:
         self._production_strengths[stat_season] = best
         return best
 
-    def team_depth_chart(self, team_id: int, season: int) -> dict[str, Any]:
+    def team_depth_chart(self, team_id: int, season: int, *,
+                         movements: dict[str, Any] | None = None) -> dict[str, Any]:
         # Imported here rather than at module scope: cfb.recruiting depends on
         # this class, so a top-level import would be circular.
         from sports_aggregator.cfb.recruiting import evidence_score
@@ -2441,7 +2455,8 @@ class CFBRepository:
             return {"season": season, "units": {}, "summary": {}}
         roster = self.team_roster(team["school"], season)
         produced = self.player_production_strength(season - 1)
-        movements = self.roster_movements(team_id, season)
+        if movements is None:
+            movements = self.roster_movements(team_id, season)
         arrival_by_id = {row["player_id"]: row for row in movements["arrivals"]}
         self.initialize()
         with self._reader() as connection:
@@ -2512,12 +2527,19 @@ class CFBRepository:
                             "upperclassmen_pct": round(100 * upperclassmen / total, 1) if total else None,
                             "transfer_arrivals": movements["counts"].get("TRANSFER_IN", 0)}}
 
-    def team_quality_snapshot(self, team_id: int, season: int) -> dict[str, Any]:
+    def team_quality_snapshot(self, team_id: int, season: int, *,
+                              movements: dict[str, Any] | None = None) -> dict[str, Any]:
         team = self.get_team(team_id)
         if team is None:
             return {"state": "UNAVAILABLE", "cards": []}
         metrics = self.team_metrics(team["school"], season)
-        depth = self.team_depth_chart(team_id, season)
+        # Everything below builds the PRESEASON context cards, which a team
+        # with live in-season metrics never renders -- so the depth chart and
+        # PFF/returning-production lookups those cards need are worth running
+        # only once it's clear this team is still in that state.
+        if metrics["advanced"] or metrics["core"]:
+            return {"state": "LIVE", "season": season, "cards": [], "metrics": metrics}
+        depth = self.team_depth_chart(team_id, season, movements=movements)
         with self._reader() as connection:
             returning = connection.execute(
                 "SELECT * FROM returning_production WHERE season=? AND team=?",
@@ -2529,8 +2551,6 @@ class CFBRepository:
                    WHERE p.season=? AND p.cfbd_team_id=? AND p.interest_score IS NOT NULL""",
                 (season, season - 1, team_id),
             ).fetchone()[0]
-        if metrics["advanced"] or metrics["core"]:
-            return {"state": "LIVE", "season": season, "cards": [], "metrics": metrics}
         row = dict(returning) if returning else {}
         returning_value, returning_source = _returning_production_signal(row, bool(returning))
         # Formats name the scale explicitly: "rate" is a 0-1 fraction, "pct" is

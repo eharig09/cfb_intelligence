@@ -41,8 +41,10 @@ from sports_aggregator.cfb.matchups import game_matchup_report
 from sports_aggregator.cfb.player_matchups import player_matchups
 from sports_aggregator.cfb.page_visuals import (
     depth_formations, game_shape, model_probability_track, player_trend_chart_data,
-    recent_form_rows, team_trend_chart_data, upcoming_games_rows)
+    recent_form_rows, skill_player_trend_chart_data, team_trend_chart_data,
+    upcoming_games_rows)
 from sports_aggregator.cfb.coordinator_pace import team_drives_per_game, team_pace
+from sports_aggregator.cfb.player_game_log import player_weekly_trend
 from sports_aggregator.cfb.team_game_advanced import team_weekly_trend
 from sports_aggregator.cfb.passing_plays import (
     matchup_field, passer_career_field, passer_profile, passer_weekly_trend)
@@ -147,20 +149,25 @@ def _team_packet(team_id: int, season: int) -> dict:
         if story["story_id"] not in linked_ids
         and team_id not in {item["team_id"] for item in story.get("teams") or []}
     ][:10] if team.get("conference") else []
+    # Computed once and threaded through: roster_movements does several of its
+    # own queries (transfers, draft picks, recruit and PFF lookups), and
+    # quality/depth-chart/production each independently asked for the exact
+    # same team/season answer before they accepted it as an argument.
+    movements = repository.roster_movements(team_id, season)
     return {
         "season": season,
         "team": team,
         "rank": rank,
         "ranking_poll": rankings["poll"],
         "metrics": repository.team_metrics(team["school"], season),
-        "quality": repository.team_quality_snapshot(team_id, season),
+        "quality": repository.team_quality_snapshot(team_id, season, movements=movements),
         "schedule": _label_games(repository.team_schedule(team_id, season)),
         "roster": repository.team_roster(team["school"], season),
-        "depth_chart": repository.team_depth_chart(team_id, season),
-        "movements": repository.roster_movements(team_id, season),
+        "depth_chart": repository.team_depth_chart(team_id, season, movements=movements),
+        "movements": movements,
         "leaders": repository.team_player_leaders(team["school"], season),
         "pff": repository.pff_team_context(team_id, 2025),
-        "production": team_production(repository, team_id, season),
+        "production": team_production(repository, team_id, season, movements=movements),
         "stories": [{**story, "coverage_label": "Team linked"} for story in team_stories],
         "conference_stories": conference_stories,
     }
@@ -504,7 +511,7 @@ def _team_tables(packet: dict, season: int, *, schedule_year: int | None = None,
     opponent_quality = _repository().opponent_quality(
         packet["team"]["team_id"], schedule_year)
     projection = projected_depth(
-        _repository(), packet["team"]["team_id"], season)
+        _repository(), packet["team"]["team_id"], season, production=packet["production"])
     team_trend = team_trend_chart_data(
         team_weekly_trend(_repository(), packet["team"]["school"], stats_year))
     return {
@@ -589,6 +596,19 @@ def player_preview(player_id: str):
     opponent_history = (upcoming_player_opponent_history(
         repository, player_id, player["team_id"], season)
         if player.get("team_id") else {"game": None, "performances": []})
+    position = str(player.get("position") or "").upper()
+    if position == "QB":
+        current_trend = passer_weekly_trend(repository, player_id, season)
+        previous_trend = (passer_weekly_trend(repository, player_id, season - 1)
+                          if len(current_trend) < 3 else [])
+        player_trend = player_trend_chart_data(current_trend, previous_trend)
+    elif position in {"RB", "FB", "WR", "TE"}:
+        current_trend = player_weekly_trend(repository, player, season)
+        previous_trend = (player_weekly_trend(repository, player, season - 1)
+                          if len(current_trend) < 3 else [])
+        player_trend = skill_player_trend_chart_data(current_trend, position, previous_trend)
+    else:
+        player_trend = None
     return render_template(
         "cfb_player.html", season=season, player=player,
         meta=page_meta_for.player_meta(
@@ -597,8 +617,7 @@ def player_preview(player_id: str):
         stat_groups=views.player_stat_groups(player),
         passer_profile=passer_profile(repository, player_id, season),
         career_passing_field=passer_career_field(repository, player_id),
-        player_trend=player_trend_chart_data(
-            passer_weekly_trend(repository, player_id, season)),
+        player_trend=player_trend,
         pff_table=views.pff_grades_table(
             (player.get("pff") or []) + (player.get("pff_supplemental") or [])),
         stories=[{**story, "coverage_label": "Player linked"} for story in direct],
