@@ -40,12 +40,12 @@ from sports_aggregator.cfb.unit_continuity import (
 from sports_aggregator.cfb.matchups import game_matchup_report
 from sports_aggregator.cfb.player_matchups import player_matchups
 from sports_aggregator.cfb.page_visuals import (
-    depth_formations, game_shape, model_probability_track, recent_form_rows,
-    team_trend_chart_data, upcoming_games_rows)
+    depth_formations, game_shape, model_probability_track, player_trend_chart_data,
+    recent_form_rows, team_trend_chart_data, upcoming_games_rows)
 from sports_aggregator.cfb.coordinator_pace import team_drives_per_game, team_pace
 from sports_aggregator.cfb.team_game_advanced import team_weekly_trend
 from sports_aggregator.cfb.passing_plays import (
-    matchup_field, passer_career_field, passer_profile)
+    matchup_field, passer_career_field, passer_profile, passer_weekly_trend)
 from sports_aggregator.cfb.pff import pff_summary
 from sports_aggregator.cfb.repository import CFBRepository
 from sports_aggregator.cfb import views
@@ -597,6 +597,8 @@ def player_preview(player_id: str):
         stat_groups=views.player_stat_groups(player),
         passer_profile=passer_profile(repository, player_id, season),
         career_passing_field=passer_career_field(repository, player_id),
+        player_trend=player_trend_chart_data(
+            passer_weekly_trend(repository, player_id, season)),
         pff_table=views.pff_grades_table(
             (player.get("pff") or []) + (player.get("pff_supplemental") or [])),
         stories=[{**story, "coverage_label": "Player linked"} for story in direct],

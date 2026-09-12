@@ -198,8 +198,19 @@ def model_probability_track(game: dict[str, Any], fpi: dict[str, Any],
     }
 
 
+def _week_series(rows: list[dict[str, Any]], key: str, *, pct: bool = False) -> list[float | None]:
+    out = []
+    for row in rows:
+        value = row.get(key)
+        if value is None:
+            out.append(None)
+        else:
+            out.append(round(value * 100, 1) if pct else round(value, 3))
+    return out
+
+
 def team_trend_chart_data(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Weekly offense/defense series, shaped for a Chart.js line chart.
+    """Weekly offense/defense series, shaped for the generic `trend_chart` macro.
 
     Success and explosive rate are stored as 0-1 fractions (matching
     `team_advanced_stats`) and converted to percentages here, once, so the
@@ -210,26 +221,45 @@ def team_trend_chart_data(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     labels = [f"W{row['week']}" for row in rows]
 
     def series(key: str, *, pct: bool = False) -> list[float | None]:
-        out = []
-        for row in rows:
-            value = row.get(key)
-            if value is None:
-                out.append(None)
-            else:
-                out.append(round(value * 100, 1) if pct else round(value, 3))
-        return out
+        return _week_series(rows, key, pct=pct)
 
     return {
         "labels": labels,
         "metrics": [
-            {"key": "epa", "label": "EPA / play",
-             "offense": series("epa_per_play"), "defense": series("defense_epa_per_play")},
-            {"key": "success", "label": "Success rate",
-             "offense": series("success_rate", pct=True),
-             "defense": series("defense_success_rate", pct=True)},
-            {"key": "explosive", "label": "Explosive rate",
-             "offense": series("explosive_rate", pct=True),
-             "defense": series("defense_explosive_rate", pct=True)},
+            {"key": "epa", "label": "EPA / play", "series": [
+                {"key": "offense", "label": "Offense", "color": "#6ea8f0", "data": series("epa_per_play")},
+                {"key": "defense", "label": "Defense", "color": "#ef7a7a", "data": series("defense_epa_per_play")},
+            ]},
+            {"key": "success", "label": "Success rate", "series": [
+                {"key": "offense", "label": "Offense", "color": "#6ea8f0", "data": series("success_rate", pct=True)},
+                {"key": "defense", "label": "Defense", "color": "#ef7a7a", "data": series("defense_success_rate", pct=True)},
+            ]},
+            {"key": "explosive", "label": "Explosive rate", "series": [
+                {"key": "offense", "label": "Offense", "color": "#6ea8f0", "data": series("explosive_rate", pct=True)},
+                {"key": "defense", "label": "Defense", "color": "#ef7a7a", "data": series("defense_explosive_rate", pct=True)},
+            ]},
+        ],
+    }
+
+
+def player_trend_chart_data(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """One passer's week-by-week series, shaped for the generic `trend_chart` macro."""
+    if not rows:
+        return None
+    labels = [f"W{row['week']}" for row in rows]
+
+    def single(key: str, label: str, *, pct: bool = False) -> dict[str, Any]:
+        return {"key": key, "label": label, "series": [
+            {"key": key, "label": label, "color": "#6ea8f0",
+             "data": _week_series(rows, key, pct=pct)},
+        ]}
+
+    return {
+        "labels": labels,
+        "metrics": [
+            single("epa_per_attempt", "EPA / attempt"),
+            single("completion_rate", "Completion rate", pct=True),
+            single("yards_per_attempt", "Yards / attempt"),
         ],
     }
 
