@@ -796,6 +796,16 @@ table.data tbody tr:hover td.box-group { background: var(--head-bg); }
 .matchup-page [data-mobile-tab-panel][hidden], .team-page [data-mobile-tab-panel][hidden] { display: none !important; }
 .matchup-page [data-mobile-tab-panel]:not([hidden]), .team-page [data-mobile-tab-panel]:not([hidden]) { animation: mobile-panel-in .16s ease-out; }
 
+/* At >= 980px the "on this page" rail (cfb_section_nav.css) also sticks to
+   top: 0. Both bars stuck at the same offset would overlap instead of
+   stacking -- cfb_tables.js measures the rail's real height into this custom
+   property, so the tab bar sticks just underneath it instead of behind it. */
+@media (min-width: 980px) {
+    .matchup-page .mobile-page-tabs, .team-page .mobile-page-tabs {
+        top: var(--cfb-section-nav-h, 0px);
+    }
+}
+
 /* ---------- breakpoints ---------- */
 
 @media (min-width: 560px) {

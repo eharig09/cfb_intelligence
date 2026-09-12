@@ -245,6 +245,67 @@ def _stat_columns(position: str | None, available: set[tuple[str, str]]) -> list
     return present
 
 
+def player_weekly_trend(repository, player: dict[str, Any], season: int) -> list[dict[str, Any]]:
+    """One rusher or receiver's season broken out by week, for a trend chart.
+
+    Nothing tags a rusher or receiver on an individual play the way passer_id
+    does for a QB, so this reads the same per-game box-score rows the career
+    game log uses, scoped to one season and grouped by week instead of game.
+    """
+    repository.initialize()
+    with closing(repository._connect()) as connection:
+        player_ids, _career_teams = _career_identity(connection, player)
+        if not player_ids:
+            return []
+        placeholders = _placeholders(player_ids)
+        rows = connection.execute(
+            f"""SELECT gp.game_id,g.week,gp.category,gp.stat_type,gp.numeric_value
+                FROM game_player_box_stats gp JOIN games g USING(game_id)
+                WHERE gp.player_id IN ({placeholders}) AND g.season=?""",
+            [*player_ids, season],
+        ).fetchall()
+
+    games: dict[int, dict[str, Any]] = {}
+    weeks: dict[int, int] = {}
+    for raw in rows:
+        game_id = int(raw["game_id"])
+        weeks[game_id] = raw["week"]
+        value = raw["numeric_value"]
+        if value is None:
+            continue
+        key = _stat_key(raw["category"], raw["stat_type"])
+        games.setdefault(game_id, {})[key] = float(value)
+
+    def stat(values: dict[tuple[str, str], float], category: str, *types: str) -> float | None:
+        for stat_type in types:
+            value = values.get((category, stat_type))
+            if value is not None:
+                return value
+        return None
+
+    output = []
+    for game_id, values in games.items():
+        week = weeks.get(game_id)
+        if week is None:
+            continue
+        rush_att = stat(values, "rushing", "CAR", "ATT")
+        rush_yards = stat(values, "rushing", "YDS")
+        receptions = stat(values, "receiving", "REC")
+        receiving_yards = stat(values, "receiving", "YDS")
+        total_yards = (rush_yards or 0.0) + (receiving_yards or 0.0)
+        output.append({
+            "week": int(week),
+            "rush_yards": rush_yards,
+            "yards_per_carry": round(rush_yards / rush_att, 2) if rush_yards is not None and rush_att else None,
+            "receptions": receptions,
+            "receiving_yards": receiving_yards,
+            "yards_per_reception": (round(receiving_yards / receptions, 2)
+                                    if receiving_yards is not None and receptions else None),
+            "scrimmage_yards": total_yards if (rush_yards is not None or receiving_yards is not None) else None,
+        })
+    return sorted(output, key=lambda row: row["week"])
+
+
 def player_game_log_table(repository, player: dict[str, Any], season: int) -> Table:
     """Career game log from stored per-game player box scores."""
     del season  # Career log intentionally spans every stored season for this identity.

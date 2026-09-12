@@ -111,6 +111,11 @@
             if (updateHash && window.history && window.history.replaceState) {
                 window.history.replaceState(null, "", "#tab-" + name);
             }
+            // The "on this page" nav built further down this file lists every
+            // .section heading regardless of which tab owns it -- it needs to
+            // know a tab switch just changed which sections are actually on
+            // screen.
+            document.dispatchEvent(new CustomEvent("cfb:tabschanged"));
         }
 
         function applyMode() {
@@ -119,6 +124,7 @@
                 select(selectedFromHash(), false, false);
             } else {
                 panels.forEach(function (panel) { panel.hidden = false; });
+                document.dispatchEvent(new CustomEvent("cfb:tabschanged"));
             }
         }
 
@@ -242,26 +248,65 @@
     var top = nav.querySelector("[data-section-top]");
     var active = 0;
 
+    // A page with "always" tabs (team, matchup -- see the mobile-page-tabs
+    // block above) hides every .section outside the open tab, even on
+    // desktop. Offering or scroll-spying a section a reader cannot currently
+    // see is exactly what "breaks" this nav on those pages, so every method
+    // below works over the currently visible subset, recomputed on demand
+    // rather than assumed to be the full list built at parse time.
+    //
+    // Some panels (the "Middle of the field" split, wired in by
+    // passing_matchup_splits) render their own nested .section inside a
+    // [data-mobile-tab-panel] wrapper rather than carrying that attribute
+    // themselves, so only the wrapper's `hidden` gets toggled -- checking the
+    // section's own `hidden` missed that and left it "visible" on every tab.
+    // offsetParent is null once any ancestor (or the node itself) is
+    // display:none, so it catches both cases without special-casing the wrapper.
+    function visibleSections() {
+        return sections.filter(function (item) { return item.node.offsetParent !== null; });
+    }
+
     function select(index, move) {
-        index = Math.max(0, Math.min(sections.length - 1, index));
+        var shown = visibleSections();
+        if (!shown.length) return;
+        index = Math.max(0, Math.min(shown.length - 1, index));
         active = index;
-        sections.forEach(function (item, position) {
+        shown.forEach(function (item, position) {
             if (position === index) item.link.setAttribute("aria-current", "location");
             else item.link.removeAttribute("aria-current");
         });
         previous.disabled = index === 0;
-        next.disabled = index === sections.length - 1;
-        sections[index].link.scrollIntoView({ block: "nearest", inline: "nearest" });
-        if (move) sections[index].node.scrollIntoView({ behavior: "smooth", block: "start" });
+        next.disabled = index === shown.length - 1;
+        shown[index].link.scrollIntoView({ block: "nearest", inline: "nearest" });
+        if (move) shown[index].node.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     function currentSection() {
+        var shown = visibleSections();
+        if (!shown.length) return;
         var threshold = nav.getBoundingClientRect().bottom + 18;
         var index = 0;
-        sections.forEach(function (item, position) {
+        shown.forEach(function (item, position) {
             if (item.node.getBoundingClientRect().top <= threshold) index = position;
         });
         select(index, false);
+    }
+
+    function updateHeight() {
+        document.documentElement.style.setProperty("--cfb-section-nav-h", nav.offsetHeight + "px");
+    }
+
+    function refresh() {
+        var shown = visibleSections();
+        sections.forEach(function (item) { item.link.hidden = item.node.offsetParent === null; });
+        // cfb_section_nav.css forces `display: block` on this element at
+        // >= 980px with normal author-origin priority, which beats the `hidden`
+        // attribute's user-agent-stylesheet default outright regardless of
+        // specificity -- so hiding it here has to win the same way, with an
+        // inline style, not the `hidden` IDL property.
+        nav.style.display = shown.length < 2 ? "none" : "";
+        updateHeight();
+        currentSection();
     }
 
     previous.addEventListener("click", function () { select(active - 1, true); });
@@ -273,17 +318,27 @@
         }
     });
 
-    var queued = false;
+    var scrollQueued = false;
     window.addEventListener("scroll", function () {
-        if (queued) return;
-        queued = true;
+        if (scrollQueued) return;
+        scrollQueued = true;
         window.requestAnimationFrame(function () {
             currentSection();
-            queued = false;
+            scrollQueued = false;
         });
     }, { passive: true });
+    var resizeQueued = false;
+    window.addEventListener("resize", function () {
+        if (resizeQueued) return;
+        resizeQueued = true;
+        window.requestAnimationFrame(function () {
+            updateHeight();
+            resizeQueued = false;
+        });
+    }, { passive: true });
+    document.addEventListener("cfb:tabschanged", refresh);
 
-    currentSection();
+    refresh();
 }());
 
 /* A printed box score has to be the whole box score. The tail of a long

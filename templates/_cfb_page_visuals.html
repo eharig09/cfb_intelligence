@@ -28,6 +28,7 @@
   <div class="prod-switch" role="group" aria-label="{{ key_label }} metric">{% for metric in data.metrics %}<button type="button" class="{{ 'active' if loop.first else '' }}" data-trend-metric="{{ metric.key }}">{{ metric.label }}</button>{% endfor %}</div>
   <div class="prod-trend-canvas"><canvas id="{{ chart_id }}" role="img" aria-label="Weekly {{ key_label | lower }} trend"></canvas></div>
   <div class="prod-trend-key">{% for series in data.metrics[0].series %}<span><i style="background:{{ series.color }}"></i>{{ series.label }}</span>{% endfor %}</div>
+  {% if data.ghost_count %}<p class="prod-trend-ghost-note">Faded points are last season's closing games, shown until this season has 3 games of its own.</p>{% endif %}
   <script type="application/json" data-trend-json>{{ data | tojson }}</script>
 </div>{% endif %}
 {% endmacro %}
@@ -40,9 +41,17 @@ document.querySelectorAll("[data-prod-trend]").forEach(function(shell){
   var canvas=shell.querySelector("canvas");
   var payload=JSON.parse(shell.querySelector("[data-trend-json]").textContent);
   var buttons=Array.prototype.slice.call(shell.querySelectorAll("[data-trend-metric]"));
+  var ghostCount=payload.ghost_count||0;
+  function faded(color){return color+"80";}
   function metric(key){return payload.metrics.filter(function(m){return m.key===key;})[0];}
-  function datasetsFor(m){return m.series.map(function(s){return{label:s.label,data:s.data,
-    borderColor:s.color,backgroundColor:s.color,tension:.25,spanGaps:true};});}
+  function datasetsFor(m){return m.series.map(function(s){var dataset={label:s.label,data:s.data,
+    borderColor:s.color,backgroundColor:s.color,tension:.25,spanGaps:true};
+    if(ghostCount){dataset.segment={
+      borderColor:function(ctx){return ctx.p1DataIndex<=ghostCount?faded(s.color):s.color;},
+      borderDash:function(ctx){return ctx.p1DataIndex<=ghostCount?[4,3]:undefined;}};
+      dataset.pointBackgroundColor=s.data.map(function(_,i){return i<ghostCount?faded(s.color):s.color;});
+      dataset.pointBorderColor=dataset.pointBackgroundColor;}
+    return dataset;});}
   var current=metric(buttons[0].dataset.trendMetric);
   var chart=new Chart(canvas.getContext("2d"),{type:"line",data:{labels:payload.labels,
     datasets:datasetsFor(current)},
@@ -86,7 +95,7 @@ document.querySelectorAll("[data-prod-trend]").forEach(function(shell){
 </div>{% endif %}
 {% endmacro %}
 
-{% macro passer_profile_module(profile, career, player_name, trend=none) %}
+{% macro passer_profile_module(profile, career, player_name) %}
 {% if profile and profile.attempts %}<section class="section prod-passer">
   <h2>Passing profile</h2>
   <div class="section-note">Where {{ player_name }} throws and what it returns. Air yards and direction come
@@ -114,11 +123,6 @@ document.querySelectorAll("[data-prod-trend]").forEach(function(shell){
       {% if profile.direction.middle_share is not none %}<p class="prod-passer-note">{{ profile.direction.middle_share | cell('pct') }} of attempts to the middle.</p>{% endif %}
     </div>
   </div>
-  {% if trend %}
-  <h3 class="subhead">This season, by week</h3>
-  <div class="section-note">Weeks with only a few attempts are still shown -- a point on the chart, not averaged away.</div>
-  {{ trend_chart(trend, 'player-trend-chart', 'Weekly passing') }}
-  {% endif %}
   {% if career and career.attempts %}
   <h3 class="subhead">Career passing zones</h3>
   <div class="section-note">{{ career.attempts }} charted attempts{% if career.seasons %}, {{ career.seasons[0] }}{% if career.seasons | length > 1 %}&ndash;{{ career.seasons[-1] }}{% endif %}{% endif %}, every stored season combined. Colored by EPA/attempt in that zone; hover or focus for receiver production.</div>

@@ -71,16 +71,25 @@ def _stats_by_player(connection, player_ids: list[str], season: int) -> dict[str
     return grouped
 
 
-def _pff_by_player(connection, season: int) -> dict[str, dict[str, Any]]:
-    """Dataset-specific PFF grades for players already linked to CFBD identities."""
+def _pff_by_player(connection, season: int,
+                   player_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Dataset-specific PFF grades for players already linked to CFBD identities.
+
+    Scoped to the given ids (a team's current roster) rather than every
+    graded player in the season: the unscoped query pulled every FBS
+    program's PFF rows to answer a question about one team's ~85 players.
+    """
+    if not player_ids:
+        return {}
+    placeholders = ",".join("?" for _ in player_ids)
     rows = connection.execute(
-        """SELECT p.cfbd_player_id,p.interest_score,p.cfbd_team,
+        f"""SELECT p.cfbd_player_id,p.interest_score,p.cfbd_team,
                   m.dataset,m.primary_grade,m.usage_count,m.game_count,m.metrics_json
            FROM pff_players p
            LEFT JOIN pff_player_metrics m
              ON m.season=p.season AND m.pff_player_id=p.pff_player_id
-           WHERE p.season=? AND p.cfbd_player_id IS NOT NULL""",
-        (season,),
+           WHERE p.season=? AND p.cfbd_player_id IN ({placeholders})""",
+        (season, *player_ids),
     ).fetchall()
     result: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -110,7 +119,8 @@ def _team_games_played(connection, season: int, team: str) -> int:
 
 
 def team_production(repository: CFBRepository, team_id: int, season: int, *,
-                    stat_season: int | None = None, per_category: int = 200) -> dict[str, Any]:
+                    stat_season: int | None = None, per_category: int = 200,
+                    movements: dict[str, Any] | None = None) -> dict[str, Any]:
     """Returning, arrived and departed production for one team.
 
     The team page is a data surface, not a six-player preview.  Keep a generous
@@ -121,12 +131,17 @@ def team_production(repository: CFBRepository, team_id: int, season: int, *,
     season in progress does not have a settled sample yet, and last season's
     full line is more informative than a partial one that will keep reshuffling
     every week (the same reasoning ``team_player_leaders`` settles on).
+
+    ``movements`` lets a caller that already ran the (expensive, multi-query)
+    `roster_movements` for this team/season pass it straight through instead
+    of this function repeating it -- the team page always has one on hand.
     """
     team = repository.get_team(team_id)
     if team is None:
         return {"season": season, "stat_season": None, "groups": [], "totals": {}}
     stat_season = stat_season or (season - 1)
-    movements = repository.roster_movements(team_id, season)
+    if movements is None:
+        movements = repository.roster_movements(team_id, season)
     arrivals = {row["player_id"]: row for row in movements["arrivals"] if row.get("player_id")}
     departures = {row["player_id"]: row for row in movements["departures"] if row.get("player_id")}
 
@@ -218,17 +233,24 @@ def team_production(repository: CFBRepository, team_id: int, season: int, *,
 
 
 def projected_depth(repository: CFBRepository, team_id: int, season: int, *,
-                    stat_season: int | None = None) -> dict[str, dict[str, Any]]:
+                    stat_season: int | None = None,
+                    production: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
     """Production and grade evidence per current player for the depth board.
 
     Ordering still follows the strongest headline production / grade evidence,
     but the packet now carries every prior-season stat category and every linked
     PFF dataset so the UI can show a real position-specific profile instead of
     one headline number followed by a duplicate PFF score.
+
+    `production` lets a caller that already ran `team_production` for this
+    team/season (the team page always does, for its own production tables)
+    pass that result straight through, rather than this function repeating
+    the same category scan and per-team games-played lookups a second time.
     """
     stat_season = stat_season or (season - 1)
-    production = team_production(repository, team_id, season, stat_season=stat_season,
-                                 per_category=200)
+    if production is None:
+        production = team_production(repository, team_id, season, stat_season=stat_season,
+                                     per_category=200)
     team = repository.get_team(team_id)
     if team is None:
         return {}
@@ -240,7 +262,7 @@ def projected_depth(repository: CFBRepository, team_id: int, season: int, *,
         ).fetchall()]
         current_ids = [str(row["player_id"]) for row in current_rows]
         full_stats = _stats_by_player(connection, current_ids, stat_season)
-        grades = _pff_by_player(connection, stat_season)
+        grades = _pff_by_player(connection, stat_season, current_ids)
 
     evidence: dict[str, dict[str, Any]] = {}
     for group in production["groups"]:
