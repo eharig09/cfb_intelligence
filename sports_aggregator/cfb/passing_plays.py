@@ -492,6 +492,52 @@ def passer_profile(repository: CFBRepository, player_id: str, season: int, *,
     }
 
 
+def passer_weekly_trend(repository: CFBRepository, player_id: str, season: int, *,
+                        model_version: str = MODEL_VERSION) -> list[dict[str, Any]]:
+    """One quarterback's season broken out by week, for a trend chart.
+
+    Reuses `passer_profile`'s own filtering (garbage-time excluded, same
+    model_version) but groups by week instead of collapsing the season into
+    one line, so a week with two attempts is a real, if noisy, point on the
+    chart rather than being averaged away.
+    """
+    initialize(repository)
+    identifier = str(player_id)
+    with repository._reader() as connection:
+        rows = connection.execute(
+            """SELECT p.week, p.outcome, p.total_yards, e.epa
+               FROM cfbd_passing_plays p
+               LEFT JOIN cfb_play_epa e ON e.play_id = p.play_id AND e.model_version = ?
+               LEFT JOIN cfb_play_metrics m ON m.play_id = p.play_id
+               WHERE p.season = ? AND p.passer_id = ?
+                 AND COALESCE(m.garbage_time, 0) = 0""",
+            (model_version, int(season), identifier)).fetchall()
+    weeks: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        week = row["week"]
+        if week is None:
+            continue
+        bucket = weeks.setdefault(int(week), {"attempts": 0, "completions": 0,
+                                              "yards": 0.0, "epa": 0.0, "epa_plays": 0})
+        bucket["attempts"] += 1
+        if row["outcome"] == "completion":
+            bucket["completions"] += 1
+        bucket["yards"] += float(row["total_yards"] or 0)
+        if row["epa"] is not None:
+            bucket["epa"] += float(row["epa"]); bucket["epa_plays"] += 1
+    output = []
+    for week in sorted(weeks):
+        bucket = weeks[week]
+        attempts = bucket["attempts"]
+        output.append({
+            "week": week, "attempts": attempts,
+            "completion_rate": (bucket["completions"] / attempts) if attempts else None,
+            "yards_per_attempt": (bucket["yards"] / attempts) if attempts else None,
+            "epa_per_attempt": (bucket["epa"] / bucket["epa_plays"]) if bucket["epa_plays"] else None,
+        })
+    return output
+
+
 def season_passers(repository: CFBRepository, team: str, season: int,
                    *, minimum: int = 20) -> list[dict[str, Any]]:
     """Everyone who threw for a team, most attempts first."""

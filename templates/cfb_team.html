@@ -1,6 +1,6 @@
 {% extends "_layout.html" %}
 {% from "_tables.html" import data_table, story_list, tabbed_tables, tabs_script %}
-{% from "_cfb_page_visuals.html" import depth_formation, team_trend_chart, trend_scripts, visual_scripts %}
+{% from "_cfb_page_visuals.html" import depth_formation, trend_chart, trend_scripts, visual_scripts %}
 
 {% block title %}{{ team.school }}{% if team.mascot %} {{ team.mascot }}{% endif %} | {{ season }} Team Intelligence{% endblock %}
 
@@ -106,7 +106,7 @@
             {% if team_trend %}
             <h3 class="subhead">Team trajectory</h3>
             <div class="section-note">Weekly offense and defense, {{ stats_year }} season.</div>
-            {{ team_trend_chart(team_trend, 'team-trend-chart') }}
+            {{ trend_chart(team_trend, 'team-trend-chart', 'Team trend') }}
             {% endif %}
         </section>
         <section class="section" data-mobile-tab-panel="stats">
